@@ -85,6 +85,7 @@ const {
   DEFAULT_CLIENTS,
   KNOWN_CLIENTS,
   clientsCsvForSetting,
+  filterAccountingClientMap,
   normalizeClientsCsv
 } = require('../shared/clientTracking');
 const { seedSplitClients } = require('../shared/clientIdentitySplits');
@@ -97,6 +98,7 @@ const {
   normalizeHistoryIntervalMs,
   visibleDiagnosticRoots
 } = require('../shared/collector');
+const { PricingEngine } = require('../shared/pricing/engine');
 const {
   antigravitySyncLockPath,
   repairAntigravitySyncLock
@@ -528,6 +530,10 @@ const codexResetForecastClient = createCodexResetForecastClient({
 const STATUS_PAGE_HOSTS = new Set(SERVICE_STATUS_PROVIDERS.map((provider) => new URL(provider.pageUrl).hostname));
 const diagnosticJournal = createDiagnosticJournal();
 const recoverMacWidgetLaunchServicesRegistration = createMacWidgetLaunchServicesRecovery();
+let standalonePricingEngine = new PricingEngine({
+  customModelPricing: null,
+  lookupModelPricing
+});
 
 app.setName(APP_NAME);
 if (process.platform === 'win32') app.setAppUserModelId('com.javis.tokenmonitor');
@@ -2097,6 +2103,7 @@ function floatingBubblePayload() {
 function ensureSettingsLoaded() {
   if (settings) return settings;
   settings = readSettings();
+  standalonePricingEngine.loadOverrides(settings.customModelPricing);
   const persistedCodexAccounts = settings.codexManagedAccounts;
   const hydratedCodexAccounts = hydrateCodexManagedAccounts(persistedCodexAccounts);
   persistedSettingsSnapshot = cloneSettingsSnapshot(settings);
@@ -4583,20 +4590,70 @@ function historyResolverOptions() {
   const { url: hubUrl, secret } = effectiveHubConfig();
   const rawDevice = ownsUsageRuntime() ? (lastCollectedDevice || localDevice) : null;
   const ledgerHistory = localLedgerHistory(rawDevice?.history);
-  let resolvedLocalDevice = rawDevice;
   if (ledgerHistory) {
+    const periods = tokenLedgerStore?.readPeriods?.({
+      overlayHistory: ledgerHistory,
+      basePeriod: rawDevice?.periods?.allTime || rawDevice?.allTime
+    }) || null;
     if (rawDevice) {
-      resolvedLocalDevice = {
+      if (periods && rawDevice.periods) {
+        for (const name of ['today', 'month', 'allTime']) {
+          periods[name].sessions = rawDevice.periods?.[name]?.sessions || {};
+          periods[name].projects = rawDevice.periods?.[name]?.projects || {};
+          periods[name].clientModels = filterAccountingClientMap(rawDevice.periods?.[name]?.clientModels) || {};
+          if (rawDevice.periods?.[name]?.clientModelCosts) {
+            periods[name].clientModelCosts = {
+              ...filterAccountingClientMap(rawDevice.periods[name].clientModelCosts),
+              ...(periods[name].clientModelCosts || {})
+            };
+          }
+          if (Number(rawDevice.periods?.[name]?.unpricedTokens) > 0) {
+            periods[name].unpricedTokens = Math.max(
+              Number(periods[name].unpricedTokens || 0),
+              Number(rawDevice.periods[name].unpricedTokens)
+            );
+          }
+          if (Number(rawDevice.periods?.[name]?.costUsd) > Number(periods[name].costUsd)) {
+            periods[name].costUsd = rawDevice.periods[name].costUsd;
+            if (rawDevice.periods[name].clientCosts && typeof rawDevice.periods[name].clientCosts === 'object') {
+              periods[name].clientCosts = {
+                ...periods[name].clientCosts,
+                ...rawDevice.periods[name].clientCosts
+              };
+            }
+          }
+        }
+      }
+      const resolvedLocalDevice = {
         ...rawDevice,
         ...(rawDevice.periodWindows ? {} : { periodWindows: computePeriodWindows(new Date()) }),
+        ...(periods ? { periods, today: periods.today, month: periods.month, allTime: periods.allTime } : {}),
         history: ledgerHistory,
         historyAvailable: true
       };
+      if (localDevice) {
+        localDevice = {
+          ...localDevice,
+          ...(periods ? { periods, today: periods.today, month: periods.month, allTime: periods.allTime } : {}),
+          history: ledgerHistory,
+          historyAvailable: true
+        };
+      }
+      if (lastCollectedDevice) {
+        lastCollectedDevice = {
+          ...lastCollectedDevice,
+          ...(periods ? { periods, today: periods.today, month: periods.month, allTime: periods.allTime } : {}),
+          history: ledgerHistory,
+          historyAvailable: true
+        };
+      }
+      if (!lastCollectedDevice && !localDevice) {
+        localDevice = resolvedLocalDevice;
+      }
     } else {
       const now = new Date();
       const nowIso = now.toISOString();
-      const periods = tokenLedgerStore?.readPeriods?.({ overlayHistory: ledgerHistory }) || null;
-      resolvedLocalDevice = {
+      localDevice = {
         ...electronDeviceEnvelope(),
         hostname: os.hostname(),
         platform: `${process.platform}-${process.arch}`,
@@ -4619,7 +4676,7 @@ function historyResolverOptions() {
     // In sync/host mode the headless agent owns this machine's producer while its
     // PID is live. Do not let the widget's last pre-handoff snapshot compete with
     // the newer Hub record; local mode always owns its collector by contract.
-    localDevice: resolvedLocalDevice,
+    localDevice: ownsUsageRuntime() ? (lastCollectedDevice || localDevice) : null,
     mode,
     secret
   };
@@ -4637,21 +4694,105 @@ function localLedgerHistory(overlayHistory) {
   return tokenLedgerStore.readHistory({ overlayHistory });
 }
 
-function withLocalLedgerHistory(stats, overlayHistory) {
+function withLocalLedgerHistory(stats, overlayHistory, options = {}) {
   const history = localLedgerHistory(overlayHistory || stats?.history);
   if (!history || !stats || typeof stats !== 'object') return stats;
-  const periods = tokenLedgerStore.readPeriods({ overlayHistory: overlayHistory || stats.history });
+  const store = options?.tokenLedgerStore || (tokenLedgerStore ||= createTokenLedgerStore());
+  const periods = store.readPeriods({
+    overlayHistory: overlayHistory || stats.history,
+    basePeriod: stats.periods?.allTime
+  });
   if (!periods) return { ...stats, history, historyPreview: historyPreview(history), historyRevision: historyRevision(history) };
+  const targetDeviceId = String(options?.deviceId || settings?.deviceId || lastCollectedDevice?.deviceId || localDevice?.deviceId || '').trim();
+  const targetDevice = Array.isArray(stats.devices)
+    ? stats.devices.find((device, idx) => (targetDeviceId ? String(device?.deviceId || '').trim() === targetDeviceId : (idx === 0 || device?.local)))
+    : null;
+
   for (const name of ['today', 'month', 'allTime']) {
-    periods[name].sessions = stats.periods?.[name]?.sessions || {};
-    periods[name].projects = stats.periods?.[name]?.projects || {};
+    periods[name].sessions = stats.periods?.[name]?.sessions || targetDevice?.periods?.[name]?.sessions || targetDevice?.[name]?.sessions || {};
+    periods[name].projects = stats.periods?.[name]?.projects || targetDevice?.periods?.[name]?.projects || targetDevice?.[name]?.projects || {};
+    const sourceClientModels = stats.periods?.[name]?.clientModels || targetDevice?.periods?.[name]?.clientModels || targetDevice?.[name]?.clientModels;
+    if (sourceClientModels && typeof sourceClientModels === 'object') {
+      periods[name].clientModels = {
+        ...filterAccountingClientMap(sourceClientModels),
+        ...(periods[name].clientModels || {})
+      };
+    }
+    const sourceClientModelCosts = stats.periods?.[name]?.clientModelCosts || targetDevice?.periods?.[name]?.clientModelCosts || targetDevice?.[name]?.clientModelCosts;
+    if (sourceClientModelCosts && typeof sourceClientModelCosts === 'object') {
+      periods[name].clientModelCosts = {
+        ...filterAccountingClientMap(sourceClientModelCosts),
+        ...(periods[name].clientModelCosts || {})
+      };
+    }
+    const unpriced = Math.max(
+      Number(stats.periods?.[name]?.unpricedTokens || 0),
+      Number(targetDevice?.periods?.[name]?.unpricedTokens || 0),
+      Number(targetDevice?.[name]?.unpricedTokens || 0)
+    );
+    if (unpriced > 0) {
+      periods[name].unpricedTokens = Math.max(
+        Number(periods[name].unpricedTokens || 0),
+        unpriced
+      );
+    }
+    const deviceCost = Math.max(
+      Number(targetDevice?.periods?.[name]?.costUsd || 0),
+      Number(targetDevice?.[name]?.costUsd || 0)
+    );
+    const baselineCost = Math.max(
+      Number(stats.periods?.[name]?.costUsd || 0),
+      deviceCost
+    );
+    if (baselineCost > Number(periods[name].costUsd)) {
+      periods[name].costUsd = baselineCost;
+      if (stats.periods?.[name]?.clientCosts && typeof stats.periods[name].clientCosts === 'object') {
+        periods[name].clientCosts = {
+          ...periods[name].clientCosts,
+          ...stats.periods[name].clientCosts
+        };
+      }
+    }
   }
   const devices = Array.isArray(stats.devices) && stats.devices.length > 0
-    ? stats.devices.map((device, idx) => (idx === 0 ? { ...device, periods } : device))
+    ? stats.devices.map((device, idx) => {
+        const isLocal = targetDeviceId
+          ? String(device?.deviceId || '').trim() === targetDeviceId
+          : (idx === 0 || device.local);
+        if (!isLocal) return device;
+        return {
+          ...device,
+          periods,
+          today: periods.today,
+          month: periods.month,
+          allTime: periods.allTime
+        };
+      })
     : stats.devices;
+  if (localDevice) {
+    localDevice = {
+      ...localDevice,
+      periods,
+      today: periods.today,
+      month: periods.month,
+      allTime: periods.allTime
+    };
+  }
+  if (lastCollectedDevice) {
+    lastCollectedDevice = {
+      ...lastCollectedDevice,
+      periods,
+      today: periods.today,
+      month: periods.month,
+      allTime: periods.allTime
+    };
+  }
   return {
     ...stats,
     periods,
+    today: periods.today,
+    month: periods.month,
+    allTime: periods.allTime,
     history,
     devices,
     historyPreview: historyPreview(history),
@@ -5073,6 +5214,15 @@ function primeLocalStatsFromAnchor(usageOptions, widgetProducerOwner) {
   localStats = typeof withLocalLedgerHistory === 'function'
     ? withLocalLedgerHistory(withHistoryPreview(aggregateDevices([visible], 0), [visible]), visible?.history)
     : withHistoryPreview(aggregateDevices([visible], 0), [visible]);
+  const primeDeviceId = String(settings?.deviceId || lastCollectedDevice?.deviceId || localDevice?.deviceId || '').trim();
+  const primeSynced = Array.isArray(localStats?.devices) && (
+    localStats.devices.find((d) => primeDeviceId && String(d?.deviceId || '').trim() === primeDeviceId)
+    || localStats.devices.find((d) => d.local)
+    || localStats.devices[0]
+  );
+  if (primeSynced?.periods) {
+    localDevice = { ...localDevice, periods: primeSynced.periods, today: primeSynced.today, month: primeSynced.month, allTime: primeSynced.allTime };
+  }
   // Through the normal publisher, not straight to the renderer: the tray reads
   // what sendPush sets, and in tray mode the window is hidden, so a seed that
   // only reached the renderer would leave the one visible surface on zero.
@@ -5116,6 +5266,16 @@ function startLocalCollector() {
           ? withLocalLedgerHistory(stats, localDevice.history)
           : stats;
       });
+      const recordDeviceId = String(settings?.deviceId || lastCollectedDevice?.deviceId || localDevice?.deviceId || '').trim();
+      const recordSynced = Array.isArray(localStats?.devices) && (
+        localStats.devices.find((d) => recordDeviceId && String(d?.deviceId || '').trim() === recordDeviceId)
+        || localStats.devices.find((d) => d.local)
+        || localStats.devices[0]
+      );
+      if (recordSynced?.periods) {
+        localDevice = { ...localDevice, periods: recordSynced.periods, today: recordSynced.today, month: recordSynced.month, allTime: recordSynced.allTime };
+        lastCollectedDevice = localDevice;
+      }
       updateDiscordRpcDisplay(localStats);
       sendPush({ event: 'stats', data: { type: 'stats', reason, stats: localStats, at: new Date().toISOString() } }, { widgetProducerOwner });
       sendStatus(true, { reason });
@@ -7318,9 +7478,23 @@ function createDashboardWindow() {
 
 async function getDashboardHistory(options = {}) {
   const includeDevices = options?.includeDevices === true;
-  const resolved = includeDevices
-    ? await resolveCompleteHistoryWithDevices(historyResolverOptions())
-    : { history: await getCompleteHistory(), deviceHistories: undefined };
+  const ledgerHistory = localLedgerHistory(lastCollectedDevice?.history || localDevice?.history);
+  let resolved;
+  if (includeDevices) {
+    resolved = await resolveCompleteHistoryWithDevices(historyResolverOptions());
+    if (ledgerHistory) {
+      resolved.history = ledgerHistory;
+      if (Array.isArray(resolved.deviceHistories)) {
+        resolved.deviceHistories = resolved.deviceHistories.map((d) => (
+          (d?.local || String(d?.deviceId || '').trim() === String(localDevice?.deviceId || '').trim())
+            ? { ...d, history: ledgerHistory, historyAvailable: true }
+            : d
+        ));
+      }
+    }
+  } else {
+    resolved = { history: ledgerHistory || await getCompleteHistory(), deviceHistories: undefined };
+  }
   const history = resolved.history;
   const source = completeHistorySource(historyResolverOptions());
   return projectModelAliasHistory({
@@ -7531,6 +7705,22 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('pricing:lookup', async (_event, modelId) => {
     try {
+      const rates = standalonePricingEngine.resolveRates(modelId);
+      if (rates) {
+        return {
+          ok: true,
+          result: {
+            modelId,
+            source: rates.source,
+            pricing: {
+              inputCostPerToken: rates.inputCostPerToken,
+              outputCostPerToken: rates.outputCostPerToken,
+              cacheReadInputTokenCost: rates.cacheReadCostPerToken,
+              cacheCreationInputTokenCost: rates.cacheWriteCostPerToken
+            }
+          }
+        };
+      }
       return { ok: true, result: await lookupModelPricing(modelId) };
     } catch (error) {
       return { ok: false, error: error.message };
@@ -7797,6 +7987,7 @@ app.whenReady().then(() => {
     latestUsageHost?.updateTransformSettings?.(usageTransformSettings(settings));
     if (patch?.limitProviders !== undefined) initialLimitProvidersPending = false;
     if (JSON.stringify(settings.customModelPricing || []) !== previousCustomModelPricing) {
+      standalonePricingEngine.loadOverrides(settings.customModelPricing);
       regenerateTokscalePricing();
       refreshAfterPricingChange();
     }

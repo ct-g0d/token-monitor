@@ -428,8 +428,14 @@
   // unrelated unrecognized model look like it belongs to that vendor.
   const fallbackModelColors = ['#6ab4f0', '#5fbf8a', '#a57df0', '#d97bc4', '#f0d66a', '#f06a7b'];
 
+  function stripAccountPrefix(value) {
+    const s = String(value || '');
+    const m = s.match(/^~account:[^:]+:(.+)$/);
+    return m ? m[1] : s;
+  }
+
   function modelVendorFor(model) {
-    const name = String(model || '').toLowerCase();
+    const name = stripAccountPrefix(model).toLowerCase();
     if (/^(cursor-)?auto$/.test(name)) return 'cursor';
     if (/claude|anthropic|sonnet|opus|haiku/.test(name)) return 'claude';
     if (/gpt|openai|codex|^o[134](?:-|$)|o[134]-(mini|pro|preview)|chatgpt/.test(name)) return 'codex';
@@ -461,9 +467,10 @@
   }
 
   function modelColor(model) {
-    const vendor = modelVendorFor(model);
+    const canonical = stripAccountPrefix(model);
+    const vendor = modelVendorFor(canonical);
     if (vendor && clientColors[vendor]) return clientColors[vendor];
-    const name = String(model || '').toLowerCase();
+    const name = canonical.toLowerCase();
     let hash = 0;
     for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0;
     return fallbackModelColors[Math.abs(hash) % fallbackModelColors.length];

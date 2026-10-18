@@ -5,7 +5,7 @@
 - **Document Version**: 2.0.0 (TokeX Production Integration)
 - **Target Workspace**: `d:\TokeX`
 - **Deliverable Path**: `d:\TokeX\STRUCTURE.md`
-- **Date**: 2026-10-17
+- **Date**: 2026-10-18
 - **Integrity Mode**: Production Audit / Zero Placeholders / Fully Resolved Technical Prose
 
 ---
@@ -42,10 +42,10 @@ TokeX is an ultra-low-latency, multi-client AI token telemetry, quota accounting
               |
               v (Filesystem Watchers / Ingest Cursors: byte offset & rowid)
   +---------------------------------------------------------------------------------------------------------------------------+
-  | PLANE 1: REQUEST LEDGER & EQUIVALENCE ENGINE (`data/token_ledger.sqlite` - 11,300,682,434 Verified Tokens)                |
-  |  - `token_turns`: 84,999 immutable prompt/response turns (11,161,960,829 tokens; natural_key, cost_usd)                   |
+  | PLANE 1: REQUEST LEDGER & EQUIVALENCE ENGINE (`data/token_ledger.sqlite` - 12,994,521,962 Verified Tokens)                |
+  |  - `token_turns`: 110,945 immutable prompt/response turns (12,855,800,357 tokens; natural_key, cost_usd)                 |
   |  - `historical_threads`: Dedicated pre-July 14 coarse session preservation (all 41 threads / 138,721,605 tokens)         |
-  |  - `daily_usage`: 210 materialized daily rollup rows spanning 2026-07-11 to 2026-10-17 (11,300,682,434 tokens)           |
+  |  - `daily_usage`: 299 materialized daily rollup rows spanning 2026-07-11 to 2026-10-18 (12,994,521,962 tokens)           |
   |  - `source_files`: Physical file inodes, paths, logical source IDs, mirror group IDs, byte cursors                       |
   |  - `source_event_equivalence`: 7-field matching predicate with strict 1:1 ambiguity protection                            |
   +---------------------------------------------------------------------------------------------------------------------------+
@@ -96,12 +96,12 @@ The foundational source of truth for all TokeX token accounting, period rollups,
 
 #### 1.14.1 Verified Production Ledger Quantities
 Forensic verification of `data/token_ledger.sqlite` establishes the authoritative baseline metrics:
-* **Grand Token Total**: Exactly **`11,300,682,434`** processed tokens across all providers and historical epochs.
-* **Granular Request Turns (`token_turns`)**: Exactly **`84,999`** immutable turns totaling **`11,161,960,829`** tokens ($98.77\%$ of grand total). Each turn captures deterministic natural keys, 5-dimension token breakdowns (`uncached_input`, `cached_input`, `cache_write`, `output_tokens`, `reasoning_tokens`), cache savings percentages, and nullable pricing economics.
+* **Grand Token Total**: Exactly **`12,994,521,962`** processed tokens across all providers and historical epochs.
+* **Granular Request Turns (`token_turns`)**: Exactly **`110,945`** immutable turns totaling **`12,855,800,357`** tokens ($98.93\%$ of grand total). Each turn captures deterministic natural keys, 5-dimension token breakdowns (`uncached_input`, `cached_input`, `cache_write`, `output_tokens`, `reasoning_tokens`), cache savings percentages, and nullable pricing economics.
 * **Historical Threads (`historical_threads`)**: Exactly **`41`** pre-July 14 coarse sessions totaling **`138,721,605`** tokens ($1.23\%$ of grand total). Forensically accounts for 40 active token-bearing threads and exactly 1 zero-token thread (`019f50ff-3161-7053-a406-4c468c105f56`).
-* **Materialized Daily Rollups (`daily_usage`)**: Exactly **`210`** materialized daily summary rows spanning continuous chronological history from **`2026-07-11`** to **`2026-10-17`**, summing to exactly **`11,300,682,434`** tokens.
+* **Materialized Daily Rollups (`daily_usage`)**: Exactly **`299`** materialized daily summary rows spanning continuous chronological history from **`2026-07-11`** to **`2026-10-18`**, summing to exactly **`12,994,521,962`** tokens.
 * **Invariant Checksum Equality**:
-  $$\text{token\_turns } (11,161,960,829) + \text{historical\_threads } (138,721,605) = 11,300,682,434 = \text{SUM}(\text{daily\_usage.total\_processed})$$
+  $$\text{token\_turns } (12,855,800,357) + \text{historical\_threads } (138,721,605) = 12,994,521,962 = \text{SUM}(\text{daily\_usage.total\_processed})$$
 
 #### 1.14.2 WAL Journal Mode & Engine Pragma Configuration
 The ledger operates under hardened SQLite durability pragmas managed directly by `src/shared/usage/tokenLedger.js`:
@@ -195,7 +195,7 @@ To guarantee zero-friction initial onboarding on end-user machines:
     }
   ]
   ```
-* **Runtime Resolution**: At runtime, `packagedSeedPath()` inspects `process.resourcesPath/token_ledger.seed.sqlite`. On first app boot, when `resolveTokenLedgerPath()` detects that the local user directory (`%APPDATA%/Token Monitor/token_ledger.sqlite` on Windows, `~/.config/Token Monitor/token_ledger.sqlite` on Linux, `~/Library/Application Support/Token Monitor/token_ledger.sqlite` on macOS) does not exist, it automatically copies the 11.3B seed into place.
+* **Runtime Resolution**: At runtime, `packagedSeedPath()` inspects `process.resourcesPath/token_ledger.seed.sqlite`. On first app boot, when `resolveTokenLedgerPath()` detects that the local user directory (`%APPDATA%/Token Monitor/token_ledger.sqlite` on Windows, `~/.config/Token Monitor/token_ledger.sqlite` on Linux, `~/Library/Application Support/Token Monitor/token_ledger.sqlite` on macOS) does not exist, it automatically copies the 12.99B seed into place.
 
 ---
 

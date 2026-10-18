@@ -13,11 +13,22 @@
     return Number.isFinite(number) ? Math.max(0, number) : 0;
   }
 
+  function canonicalizeModelMap(map) {
+    if (!map || typeof map !== 'object') return map;
+    const result = {};
+    for (const [key, val] of Object.entries(map)) {
+      const match = key.match(/^~account:[^:]+:(.+)$/i);
+      const canonical = match ? match[1].trim() : key;
+      result[canonical] = (result[canonical] || 0) + (Number.isFinite(Number(val)) ? Number(val) : 0);
+    }
+    return result;
+  }
+
   function modelRowsForTool(period, client) {
     const clientKey = String(client || '').trim();
     if (!clientKey) return [];
-    const models = period?.clientModels?.[clientKey];
-    const costs = period?.clientModelCosts?.[clientKey];
+    const models = canonicalizeModelMap(period?.clientModels?.[clientKey]);
+    const costs = canonicalizeModelMap(period?.clientModelCosts?.[clientKey]);
     if ((!models || typeof models !== 'object') && (!costs || typeof costs !== 'object')) return [];
 
     const total = amount(period?.clients?.[clientKey]);

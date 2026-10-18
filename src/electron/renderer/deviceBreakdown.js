@@ -29,7 +29,13 @@
     const unattributedTokens = Math.max(0, totalTokens - attributedTokens);
     if (unattributedTokens > 0) clientEntries.push([UNATTRIBUTED_KEY, unattributedTokens]);
     const tools = clientEntries.map(([client, value]) => {
-      const models = positiveEntries(period.clientModels?.[client]).map(([model, modelValue]) => {
+      const modelMap = {};
+      for (const [model, modelValue] of positiveEntries(period.clientModels?.[client])) {
+        const m = String(model).match(/^~account:[^:]+:(.+)$/);
+        const canon = m ? m[1] : model;
+        modelMap[canon] = (modelMap[canon] || 0) + modelValue;
+      }
+      const models = positiveEntries(modelMap).map(([model, modelValue]) => {
         return {
           key: model,
           name: model,

@@ -30,6 +30,19 @@ function normalizeTrackedClientId(value) {
   return LEGACY_CLIENT_ID_ALIASES[id] || id;
 }
 
+// DeepSeek Harness can proxy the same provider subscriptions tracked natively
+// by Antigravity and Codex, so its usage is deliberately excluded from totals.
+const ACCOUNTING_EXCLUDED_CLIENTS = Object.freeze(new Set(['dsh']));
+
+function isAccountingExcludedClient(value) {
+  return ACCOUNTING_EXCLUDED_CLIENTS.has(normalizeTrackedClientId(value));
+}
+
+function filterAccountingClientMap(value) {
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.entries(value).filter(([client]) => !isAccountingExcludedClient(client)));
+}
+
 function normalizeClientsCsv(value) {
   const seen = new Set();
   const clients = [];
@@ -52,6 +65,9 @@ module.exports = {
   KNOWN_CLIENTS,
   LEGACY_CLIENT_ID_ALIASES,
   clientsCsvForSetting,
+  ACCOUNTING_EXCLUDED_CLIENTS,
+  filterAccountingClientMap,
+  isAccountingExcludedClient,
   normalizeClientsCsv,
   normalizeTrackedClientId
 };

@@ -9,10 +9,10 @@ This specification establishes the production schema, ingestion pipeline, cross-
 
 ### Implementation status — 2026-10-18
 
-The migration to the unified 11.3B token ledger is executed across four structured phases:
+The migration to the unified 12.99B token ledger is executed across four structured phases:
 
 * **Phase 1 (Schema & Seed Ledger): COMPLETE.**
-  Hardened SQLite schema (`data/token_ledger.sqlite`) established with immutable `token_turns`, 7-field equivalence engine (`source_event_equivalence`), dedicated `historical_threads` preservation (41 threads / 138,721,605 tokens), 5 materialized rollups (`hourly_usage`, `daily_usage`, `model_usage`, `provider_usage`, `session_summaries`), WAL journal mode (`PRAGMA journal_mode = WAL`, `PRAGMA synchronous = NORMAL`), and verified 11,300,682,434 token seed generation across 84,999 turns and 210 daily rows.
+  Hardened SQLite schema (`data/token_ledger.sqlite`) established with immutable `token_turns`, 7-field equivalence engine (`source_event_equivalence`), dedicated `historical_threads` preservation (41 threads / 138,721,605 tokens), 5 materialized rollups (`hourly_usage`, `daily_usage`, `model_usage`, `provider_usage`, `session_summaries`), WAL journal mode (`PRAGMA journal_mode = WAL`, `PRAGMA synchronous = NORMAL`), and verified 12,994,521,962 token seed generation across 110,945 turns and 299 daily rows.
 
 * **Phase 2 (Local Read Model & Cold-Start IPC Wiring): COMPLETE.**
   `src/shared/usage/tokenLedger.js` store implementation with read/write pipelines, overlay history blending without double-counting, automatic corruption detection and repair via `PRAGMA quick_check`, and seed reconciliation upsert (`reconcileDailyUsage`). `src/electron/main.js` equips `historyResolverOptions()` with `localLedgerHistory` and synthetic local device cold-start fallback, guaranteeing instant local UI hydration before collector runs.
@@ -24,6 +24,8 @@ The migration to the unified 11.3B token ledger is executed across four structur
   Collector compatibility adapter maintains backwards compatibility for live streaming and newer dates while provider ingestion adapters (Codex, Claude, Cursor, OpenCode, Antigravity) are progressively migrated into transactional ledger writers.
 
 The runtime slice is now implemented in `src/shared/usage/tokenLedger.js`. It reads the app-owned `token_ledger.sqlite` seed and user data in the local Token Monitor directory, derives local today/month/all-time periods from that source, and keeps the existing collector as a compatibility overlay for newer dates. Electron uses that ledger-backed history and period totals for local dashboard and stats reads through `src/electron/main.js`; Hub, iCloud, limits, live activity, and session-detail paths keep their existing contracts. The product has no runtime dependency on another desktop application's cache or database.
+
+**Comparison contract:** an external dashboard comparison must use the same inclusive date range as the local ledger. In the October 18, 2026 comparison, the `2026-07-21`–`2026-10-18` range contains 835,906,586 `gpt-5.6-sol` tokens and 1,013,100,692 `gpt-6.1-sol` tokens; the local all-time view also contains earlier local records and therefore is intentionally larger.
 
 Implementation order:
 
@@ -371,11 +373,11 @@ Ledger integrity is formally enforced through 5 automated verification gates. Th
 ### Gate 1: Checksum Equality Gate
 * **Condition:** The all-time rollups must match the grand sum of granular request turns and historical threads to the exact integer.
 * **Verified Values:**
-  - `token_turns`: Exactly 84,999 request turns totaling $11,161,960,829$ tokens.
+  - `token_turns`: Exactly 110,945 request turns totaling $12,855,800,357$ tokens.
   - `historical_threads`: Exactly 41 pre-July 14 threads totaling $138,721,605$ tokens.
-  - `daily_usage`: Exactly 210 daily rows totaling $11,300,682,434$ tokens.
+  - `daily_usage`: Exactly 299 daily rows totaling $12,994,521,962$ tokens.
 * **Mathematical Proof & Assertion:**
-  $$\text{token\_turns } (11,161,960,829) + \text{historical\_threads } (138,721,605) = 11,300,682,434 = \text{SUM}(\text{daily\_usage.total\_processed})$$
+  $$\text{token\_turns } (12,855,800,357) + \text{historical\_threads } (138,721,605) = 12,994,521,962 = \text{SUM}(\text{daily\_usage.total\_processed})$$
   ```sql
   SELECT 
     (SELECT SUM(processed_tokens) FROM token_turns) + 
@@ -384,15 +386,15 @@ Ledger integrity is formally enforced through 5 automated verification gates. Th
     (SELECT SUM(total_processed) FROM model_usage) AS model_total,
     (SELECT SUM(total_processed) FROM provider_usage) AS provider_total,
     (SELECT SUM(total_processed) FROM session_summaries) AS session_total;
-  -- Verified: grand_total == daily_total == model_total == provider_total == session_total == 11,300,682,434
+  -- Verified: grand_total == daily_total == model_total == provider_total == session_total == 12,994,521,962
   ```
 
 ### Gate 2: Temporal Monotonicity Gate
 * **Condition:** Materialized daily aggregates and granular records must maintain strict chronological continuity without negative delta timestamps, temporal inversion, or unmapped date gaps across the historical retention boundary.
-* **Verified Values:** Exactly 210 daily usage rows spanning the verified chronological window from `2026-07-11` to `2026-10-17`.
+* **Verified Values:** Exactly 299 daily usage rows spanning the verified chronological window from `2026-07-11` to `2026-10-18`.
 * **Assertion:**
   - `MIN(date_bucket) == '2026-07-11'`
-  - `MAX(date_bucket) == '2026-10-17'`
+  - `MAX(date_bucket) == '2026-10-18'`
   - Historical thread boundary contract: `SELECT COUNT(*) FROM hourly_usage WHERE hour_bucket < '2026-07-14'` == 0.
   - Historical threads unified in daily totals: `SELECT SUM(total_processed) FROM daily_usage WHERE date_bucket < '2026-07-14'` == 138,721,605.
 
@@ -400,7 +402,7 @@ Ledger integrity is formally enforced through 5 automated verification gates. Th
 * **Condition:** Every individual turn in `token_turns` must maintain strict foreign-key linkage back to its physical origin file in `source_files` and its migration batch in `ingestion_runs`.
 * **Assertion:**
   - Database enforces `PRAGMA foreign_keys = ON;`.
-  - Execution of `PRAGMA foreign_key_check;` returns exactly 0 violations across all 84,999 request turns.
+  - Execution of `PRAGMA foreign_key_check;` returns exactly 0 violations across all 110,945 request turns.
   - `token_turns.file_id` strictly references a valid `source_files(file_id)`.
   - `token_turns.ingestion_run_id` strictly references a valid `ingestion_runs(run_id)`.
   - Zero unanchored or orphaned turns exist in the database.
@@ -410,7 +412,7 @@ Ledger integrity is formally enforced through 5 automated verification gates. Th
 * **Assertion:**
   - Zero duplicate turns counted from mirrored file paths.
   - Re-scanning identical file trees inserts exactly 0 duplicate turns (`assert new_inserted == 0`).
-  - Equivalent turns preserve provenance and map to `dedupe_status = 'equivalent_to_raw'`, preventing the 2x inflation failure mode and maintaining the true grand total of 11,300,682,434 tokens.
+  - Equivalent turns preserve provenance and map to `dedupe_status = 'equivalent_to_raw'`, preventing the 2x inflation failure mode and maintaining the true grand total of 12,994,521,962 tokens.
 
 ### Gate 5: Sub-millisecond Rollup Query Latency Gate (< 1 ms p50)
 * **Condition:** All primary period and summary rollup queries must execute in sub-millisecond latency under Node 22 native `DatabaseSync` in-process execution with 64MB cache and WAL journal mode.
@@ -438,8 +440,8 @@ The phased transition from legacy tokscale filesystem scanning to the native Tok
 
 | Phase | Milestone Name | Implementation Scope & Deliverables | Verification Artifact | Status |
 |---|---|---|---|---|
-| **Phase 1** | **Schema & Seed Ledger** | Hardened SQLite schema (`data/token_ledger.sqlite`), immutable `token_turns`, 7-field equivalence engine, historical thread preservation (41 threads / 138.7M tokens), 5 materialized rollups, WAL journal mode (`PRAGMA journal_mode = WAL`, `PRAGMA synchronous = NORMAL`), and 11.3B seed ledger generation. | `data/token_ledger.sqlite` (11,300,682,434 tokens across 84,999 turns and 210 daily rows) | **COMPLETE** |
-| **Phase 2** | **Local Read Model & Cold-Start IPC Wiring** | `src/shared/usage/tokenLedger.js` store implementation, overlay history merging, automatic corruption detection and repair via `PRAGMA quick_check`, seed reconciliation upsert (`reconcileDailyUsage`), `src/electron/main.js` `historyResolverOptions()` integration with `localLedgerHistory`, and synthetic local device cold-start fallback. | `tests/shared/tokenLedger.test.js` (6 passing unit/integration tests) | **COMPLETE** |
+| **Phase 1** | **Schema & Seed Ledger** | Hardened SQLite schema (`data/token_ledger.sqlite`), immutable `token_turns`, 7-field equivalence engine, historical thread preservation (41 threads / 138.7M tokens), 5 materialized rollups, WAL journal mode (`PRAGMA journal_mode = WAL`, `PRAGMA synchronous = NORMAL`), and 12.99B seed ledger generation. | `data/token_ledger.sqlite` (12,994,521,962 tokens across 110,945 turns and 299 daily rows) | **COMPLETE** |
+| **Phase 2** | **Local Read Model & Cold-Start IPC Wiring** | `src/shared/usage/tokenLedger.js` store implementation, overlay history merging, automatic corruption detection and repair via `PRAGMA quick_check`, seed reconciliation upsert (`reconcileDailyUsage`), `src/electron/main.js` `historyResolverOptions()` integration with `localLedgerHistory`, and synthetic local device cold-start fallback. | `tests/shared/tokenLedger.test.js` (15 passing focused tests) | **COMPLETE** |
 | **Phase 3** | **Packaged Distribution & First-Run Provisioning** | Electron packaging pipeline configuration via `package.json` (`extraResources: [{ from: "data/token_ledger.sqlite", to: "token_ledger.seed.sqlite" }]`), multi-platform installer bundling (macOS DMG/ZIP, Windows NSIS/portable, Linux), runtime resolution via `process.resourcesPath`, and automated first-run copy to user profile (`resolveTokenLedgerPath`). | `package.json` build.extraResources configuration & packaged test verification | **COMPLETE** |
 | **Phase 4** | **Provider Ingestion Adapter Migration** | Gradual porting of individual client ingestion adapters (Codex, Claude, Cursor, OpenCode, Antigravity) into direct ledger transactions recording `source_files`, `ingestion_runs`, and equivalence edges. Collector compatibility adapter maintains backwards compatibility for live streaming and newer dates during the transition. | Ingestion compatibility adapter in `src/shared/usage/tokenLedger.js` | **IN PROGRESS** |
 

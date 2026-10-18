@@ -4,6 +4,7 @@
 'use strict';
 
 const { isSessionActivityClient } = require('./sessionActivityProviders');
+const { isAccountingExcludedClient } = require('./clientTracking');
 
 const PERIODS = ['today', 'month', 'allTime'];
 const { normalizeLiveActivity, canReplaceLiveActivity, sessionWithActivity } = require('./sessionLive');
@@ -11,7 +12,7 @@ const { aggregateLimits, normalizeLimitsSummary } = require('./limits/core');
 const { normalizeClientHealth } = require('./clientHealth');
 const {
   coerceHistory, dayKeyAddDays, hasDisjointReasoning, localDayKey, mergeHistories,
-  normalizeTokscaleClientName, normalizeTokscaleModelNameForClient
+  normalizeTokscaleClientName, normalizeTokscaleModelNameForClient, parseModelIdentifier
 } = require('./history');
 const { REASONIX_CLIENT } = require('./providers/reasonix/paths');
 const { filterReasonixSyntheticSessions, isReasonixSyntheticSession } = require('./providers/reasonix/sessionGuard');
@@ -329,7 +330,8 @@ function detectClient(obj) {
 }
 
 function normalizeModelName(value) {
-  const raw = String(value || '').trim().toLowerCase();
+  const { model } = parseModelIdentifier(value);
+  const raw = String(model || '').trim().toLowerCase();
   return raw || null;
 }
 
@@ -630,6 +632,7 @@ function emptySession(client, id) {
     projectLabel: '',
     title: '',
     sessionKind: '',
+    accountEmail: '',
     models: {},
     modelCosts: {},
     providers: {}
@@ -720,6 +723,7 @@ function mergeSession(target, source) {
   }
   if (!target.title && source.title) target.title = normalizeSessionTitle(source.title);
   if (!target.sessionKind && source.sessionKind) target.sessionKind = normalizeSessionKind(source.sessionKind);
+  if (!target.accountEmail && source.accountEmail) target.accountEmail = String(source.accountEmail);
   applyNativeSessionId(target, source);
   applyT3ThreadId(target, source);
   if (!target.parentSessionId && source.parentSessionId) {
@@ -779,6 +783,11 @@ function sessionFromRow(row) {
   session.title = normalizeSessionTitle(firstString(row, SESSION_TITLE_KEYS));
   session.sessionKind = normalizeSessionKind(row.sessionKind || row.session_kind);
   applyParentLink(session, row);
+  const rawModel = firstString(row, ['model', 'modelName', 'model_name']);
+  const { account } = parseModelIdentifier(rawModel);
+  if (account && !session.accountEmail) {
+    session.accountEmail = account;
+  }
   const model = detectModel(row, client);
   if (model && session.totalTokens > 0) session.models[model] = (session.models[model] || 0) + session.totalTokens;
   if (model && session.costUsd > 0) session.modelCosts[model] = (session.modelCosts[model] || 0) + session.costUsd;
@@ -834,6 +843,7 @@ function normalizeSession(input, fallbackKey) {
   session.projectLabel = String(input.projectLabel || input.project_label || '').trim();
   session.title = normalizeSessionTitle(input.title || input.sessionTitle || input.session_title);
   session.sessionKind = normalizeSessionKind(input.sessionKind || input.session_kind);
+  if (input.accountEmail) session.accountEmail = String(input.accountEmail);
   applyNativeSessionId(session, input);
   applyT3ThreadId(session, input);
   applyParentLink(session, input);
@@ -1142,6 +1152,13 @@ function entryThroughput(row, output) {
 
 function addUsageRowToPeriod(period, row, detectedClient = detectClient(row)) {
   const client = detectedClient;
+  const session = sessionFromRow(row);
+  // DSH sessions remain inspectable, but their provider usage is already
+  // represented by the native provider client and must not enter accounting.
+  if (isAccountingExcludedClient(client)) {
+    if (session) addSession(period, session);
+    return;
+  }
   const tokens = tokenValueForClient(row, client);
   const cost = costValue(row);
   const cacheRead = Math.max(0, Math.round(firstNumber(row, CACHE_READ_TOKEN_KEYS)));
@@ -1196,7 +1213,6 @@ function addUsageRowToPeriod(period, row, detectedClient = detectClient(row)) {
     if (!period.clientModelCosts[client]) period.clientModelCosts[client] = {};
     period.clientModelCosts[client][model] = (period.clientModelCosts[client][model] || 0) + cost;
   }
-  const session = sessionFromRow(row);
   if (session) addSession(period, session);
 }
 

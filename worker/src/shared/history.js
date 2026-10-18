@@ -6,6 +6,7 @@
 // Portable (Node-free) usage-history core. Mirrors usage.js conventions so the
 // Cloudflare Worker can import it. Pure functions only — no I/O.
 const { REASONIX_CLIENT } = require('./providers/reasonix/paths');
+const { isAccountingExcludedClient } = require('./clientTracking');
 
 const TOKSCALE_CLIENT_ALIASES = new Map([
   ['antigravity-cli', 'antigravity'],
@@ -30,8 +31,21 @@ function normalizeTokscaleClientName(value) {
   return TOKSCALE_CLIENT_ALIASES.get(raw) || raw;
 }
 
+function parseModelIdentifier(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return { account: null, model: null, raw: '' };
+  const match = raw.match(/^~account:([^:]+):(.+)$/i);
+  if (match) {
+    let account = match[1];
+    try { account = decodeURIComponent(account); } catch (_) {}
+    return { account, model: match[2].trim(), raw };
+  }
+  return { account: null, model: raw, raw };
+}
+
 function normalizeTokscaleModelNameForClient(value, client) {
-  const model = String(value ?? '').trim();
+  const { model } = parseModelIdentifier(value);
+  if (!model) return '';
   if (normalizeTokscaleClientName(client) === 'cursor' && /^(?:auto|default)$/i.test(model)) {
     return 'cursor-auto';
   }
@@ -171,7 +185,9 @@ function parseGraphResult(raw) {
     let unclassifiedTokens = 0;
     let tokenComponentsAvailable = true;
     const clientRows = Array.isArray(row.clients) ? row.clients : [];
-    for (const c of clientRows) {
+    const accountingClientRows = clientRows.filter((c) => !isAccountingExcludedClient(c?.client));
+    if (accountingClientRows.length === 0 && clientRows.length > 0) continue;
+    for (const c of accountingClientRows) {
       if (!c || typeof c !== 'object') continue;
       const client = normalizeTokscaleClientName(c.client) || 'unknown';
       const model = normalizeTokscaleModelNameForClient(c.modelId || c.model || c.model_id || 'unknown', client);
@@ -221,7 +237,7 @@ function parseGraphResult(raw) {
       pm.unclassifiedTokens += unclassified;
     }
     const componentSummary = applyComponentSummary(
-      normalizeTokscaleModelComponentSummary(row.tokenComponentSummary, clientRows),
+      normalizeTokscaleModelComponentSummary(row.tokenComponentSummary, accountingClientRows),
       tokens,
       perClient,
       perModel
@@ -621,6 +637,7 @@ function deviceHistoryRevision(devices) {
 
 module.exports = {
   hasDisjointReasoning, num, normalizeTokscaleClientName, normalizeTokscaleModelNameForClient,
+  parseModelIdentifier,
   normalizeTokscaleModelComponentSummary, sumOutputTokens, sumTokens,
   parseGraphResult, computeIntensities, localDayKey, dayKeyAddDays,
   computeStreaks, monthlyRollup, normalizeHistory, mergeHistories,

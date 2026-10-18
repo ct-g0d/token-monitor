@@ -144,7 +144,7 @@ function canonicalDir(dir, options = {}) {
   // realpathSync resolves on the host's actual filesystem, so only apply it when
   // the target platform is the host; a Windows path cannot be resolved here.
   let resolved = platform === process.platform
-    ? (() => { try { return fs.realpathSync(dir); } catch { return dir; } })()
+    ? (() => { try { return fs.realpathSync?.native ? fs.realpathSync.native(dir) : fs.realpathSync(dir); } catch { return dir; } })()
     : dir;
   resolved = mod.normalize(mod.resolve(resolved));
   return platform === 'win32' ? resolved.toLowerCase() : resolved;
@@ -167,12 +167,21 @@ function dirContains(root, leaf, mod) {
 // dropping the leg would silently lose that usage.
 function suppressedCustomScanIds(client, dir, options = {}) {
   const ids = tokscaleCustomScanClientIds(client);
-  if (client !== 'antigravity') return ids;
   const platform = options.platform || process.platform;
   const join = platform === 'win32' ? path.win32.join : path.posix.join;
   const home = options.home || os.homedir();
-  const extensionDir = canonicalDir(join(home, '.gemini', 'antigravity', 'conversations'), options);
   const mod = platformPath(platform);
+
+  if (client === 'codex') {
+    const defaultCodexDir = canonicalDir(join(home, '.codex', 'sessions'), options);
+    if (dirContains(defaultCodexDir, canonicalDir(dir, options), mod)) {
+      return [];
+    }
+    return ids;
+  }
+
+  if (client !== 'antigravity') return ids;
+  const extensionDir = canonicalDir(join(home, '.gemini', 'antigravity', 'conversations'), options);
   if (!dirContains(extensionDir, canonicalDir(dir, options), mod)) return ids;
   return ids.filter((id) => id !== 'antigravity-cli');
 }

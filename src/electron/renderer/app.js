@@ -2814,6 +2814,17 @@ function deviceRowsForPeriod() {
   }).sort((a, b) => b.value - a.value);
 }
 
+function canonicalizeModelMap(map) {
+  if (!map || typeof map !== 'object') return map;
+  const result = {};
+  for (const [key, val] of Object.entries(map)) {
+    const match = key.match(/^~account:[^:]+:(.+)$/i);
+    const canonical = match ? match[1].trim() : key;
+    result[canonical] = (result[canonical] || 0) + (Number.isFinite(Number(val)) ? Number(val) : 0);
+  }
+  return result;
+}
+
 function attributionComponent(period, field, key) {
   const aggregateField = {
     clientCacheReads: 'cacheReadTokens',
@@ -2825,8 +2836,9 @@ function attributionComponent(period, field, key) {
     clientUnclassifiedTokens: 'unclassifiedTokens',
     modelUnclassifiedTokens: 'unclassifiedTokens'
   }[field];
+  const source = field?.startsWith('model') ? canonicalizeModelMap(period?.[field]) : period?.[field];
   return usageAttributionRowsApi.attributionValue(
-    period?.[field],
+    source,
     period?.[aggregateField],
     key
   );

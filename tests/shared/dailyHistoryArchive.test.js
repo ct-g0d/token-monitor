@@ -910,12 +910,11 @@ test('durable reconstruction preserves client-specific reasoning output without 
     client('claude', 'opus', 100, 1, 1, { reasoning: 30 })
   ]), { todayKey: '2026-07-18' });
   const restored = historyFrom(graphFromDailyHistoryArchive([], archive, { todayKey: '2026-07-18' }));
-  assert.equal(restored.daily[0].tokens, 300);
-  assert.equal(restored.daily[0].outputTokens, 50);
+  assert.equal(restored.daily[0].tokens, 230);
+  assert.equal(restored.daily[0].outputTokens, 30);
   assert.equal(restored.daily[0].perClient.codex.tokens, 130);
   assert.equal(restored.daily[0].perClient.codex.outputTokens, 30);
-  assert.equal(restored.daily[0].perClient.dsh.tokens, 70);
-  assert.equal(restored.daily[0].perClient.dsh.outputTokens, 20);
+  assert.equal(restored.daily[0].perClient.dsh, undefined);
   assert.equal(restored.daily[0].perClient.claude.tokens, 100);
   assert.equal(restored.daily[0].perClient.claude.outputTokens, undefined);
 });

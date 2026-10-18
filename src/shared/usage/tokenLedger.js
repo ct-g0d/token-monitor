@@ -4,8 +4,18 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
 const { sharedDataDir } = require('../config');
-const { computeIntensities, localDayKey, monthlyRollup } = require('../history');
+const { computeIntensities, localDayKey, monthlyRollup, parseModelIdentifier } = require('../history');
 const { emptyPeriod } = require('../usage');
+const { filterAccountingClientMap, isAccountingExcludedClient } = require('../clientTracking');
+
+function canonicalModelKey(model) {
+  const parsed = parseModelIdentifier(model);
+  const raw = String(parsed?.model || model || '').trim();
+  if (/^gemini-3\.8-flash(?:-(?:tiered|n|high|low))?$/i.test(raw)) {
+    return 'gemini-3.8-flash';
+  }
+  return raw;
+}
 
 const LEDGER_FILE = 'token_ledger.sqlite';
 const RUNTIME_HISTORY_TABLE = 'runtime_history';
@@ -78,6 +88,43 @@ function mergeBreakdown(target, source) {
   return target;
 }
 
+function accountingHistoryRow(row) {
+  if (!row || typeof row !== 'object') return null;
+  if (isAccountingExcludedClient(row.client || row.provider)) return null;
+  const source = row.perClient;
+  if (!source || typeof source !== 'object') return row;
+  const entries = Object.entries(source).filter(([client]) => !isAccountingExcludedClient(client));
+  if (entries.length === Object.keys(source).length) return row;
+  if (entries.length === 0) return null;
+
+  const breakdowns = entries.map(([, value]) => normalizeBreakdown(
+    value, value?.tokens, value?.cost, value?.messages, value?.unpricedTokens
+  ));
+  const sum = (field) => breakdowns.reduce((total, value) => total + positive(value[field]), 0);
+  const clientModels = filterAccountingClientMap(row.clientModels);
+  const perModel = {};
+  for (const models of Object.values(clientModels || {})) {
+    for (const [model, count] of Object.entries(models || {})) {
+      const canonical = canonicalModelKey(model);
+      perModel[canonical] ||= { tokens: 0 };
+      perModel[canonical].tokens += positive(count);
+    }
+  }
+  return {
+    ...row,
+    tokens: sum('tokens'),
+    cost: sum('cost'),
+    messages: sum('messages'),
+    cacheReadTokens: sum('cacheReadTokens'),
+    cacheWriteTokens: sum('cacheWriteTokens'),
+    outputTokens: sum('outputTokens'),
+    unclassifiedTokens: sum('unclassifiedTokens'),
+    perClient: Object.fromEntries(entries),
+    perModel,
+    clientModels
+  };
+}
+
 function emptyDay(date) {
   return {
     date,
@@ -91,14 +138,18 @@ function emptyDay(date) {
     unclassifiedTokens: 0,
     tokenComponentsAvailable: true,
     perClient: {},
-    perModel: {}
+    perModel: {},
+    clientModels: {}
   };
 }
 
 function addDayRow(days, row) {
+  row = accountingHistoryRow(row);
+  if (!row) return;
   const date = String(row?.date || row?.date_bucket || '').slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
   const day = days.get(date) || emptyDay(date);
+  day.clientModels ||= {};
   const tokens = positive(row.tokens ?? row.total_processed);
   const cost = Math.max(0, finite(row.cost ?? row.total_known_cost_usd));
   const messages = positive(row.messages ?? row.turn_count);
@@ -114,19 +165,40 @@ function addDayRow(days, row) {
   if (unpriced > 0) day.unpricedTokens = (day.unpricedTokens || 0) + Math.min(tokens, unpriced);
   if (row.tokenComponentsAvailable === false) day.tokenComponentsAvailable = false;
 
+  if (row.clientModels && typeof row.clientModels === 'object') {
+    for (const [client, models] of Object.entries(row.clientModels)) {
+      if (models && typeof models === 'object') {
+        day.clientModels[client] ||= {};
+        for (const [model, count] of Object.entries(models)) {
+          const canonical = canonicalModelKey(model);
+          day.clientModels[client][canonical] = (day.clientModels[client][canonical] || 0) + positive(count);
+        }
+      }
+    }
+  }
+
   if (row.perClient || row.perModel) {
     for (const [client, value] of Object.entries(row.perClient || {})) {
       mergeBreakdown(day.perClient[client] ||= normalizeBreakdown(null, 0), normalizeBreakdown(value, value?.tokens, value?.cost, value?.messages, value?.unpricedTokens));
     }
     for (const [model, value] of Object.entries(row.perModel || {})) {
-      mergeBreakdown(day.perModel[model] ||= normalizeBreakdown(null, 0), normalizeBreakdown(value, value?.tokens, value?.cost, value?.messages, value?.unpricedTokens));
+      const canonical = canonicalModelKey(model);
+      mergeBreakdown(day.perModel[canonical] ||= normalizeBreakdown(null, 0), normalizeBreakdown(value, value?.tokens, value?.cost, value?.messages, value?.unpricedTokens));
+    }
+    if (!row.clientModels) {
+      const client = String(row.client || row.provider || (Object.keys(row.perClient || {}).length === 1 ? Object.keys(row.perClient)[0] : '')).trim();
+      const model = canonicalModelKey(row.model || row.model_codename || (Object.keys(row.perModel || {}).length === 1 ? Object.keys(row.perModel)[0] : ''));
+      if (client && model) {
+        day.clientModels[client] ||= {};
+        day.clientModels[client][model] = (day.clientModels[client][model] || 0) + tokens;
+      }
     }
     days.set(date, day);
     return;
   }
 
   const client = String(row.client || row.provider || '').trim() || 'unknown';
-  const model = String(row.model || row.model_codename || '').trim() || 'unknown';
+  const model = canonicalModelKey(row.model || row.model_codename || '') || 'unknown';
   const clientValue = normalizeBreakdown(
     row.perClient || row,
     tokens,
@@ -143,7 +215,93 @@ function addDayRow(days, row) {
     unpriced
   );
   mergeBreakdown(day.perModel[model] ||= normalizeBreakdown(null, 0), modelValue);
+  if (!row.clientModels && client && model) {
+    day.clientModels[client] ||= {};
+    day.clientModels[client][model] = (day.clientModels[client][model] || 0) + tokens;
+  }
   days.set(date, day);
+}
+
+function mergeOverlayDay(days, row) {
+  row = accountingHistoryRow(row);
+  if (!row) return;
+  const date = String(row?.date || row?.date_bucket || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+  const existingDay = days.get(date);
+  if (!existingDay) {
+    addDayRow(days, row);
+    return;
+  }
+
+  if (!row.perClient || typeof row.perClient !== 'object' || Object.keys(row.perClient).length === 0) {
+    const rowTokens = positive(row.tokens ?? row.total_processed);
+    if (rowTokens > existingDay.tokens) {
+      existingDay.tokens = rowTokens;
+      existingDay.cost = Math.max(existingDay.cost, finite(row.cost ?? row.total_known_cost_usd));
+    }
+    return;
+  }
+
+  for (const [client, rawClientVal] of Object.entries(row.perClient)) {
+    const clientVal = normalizeBreakdown(rawClientVal, rawClientVal?.tokens, rawClientVal?.cost, rawClientVal?.messages, rawClientVal?.unpricedTokens);
+    const existingClient = existingDay.perClient[client];
+    if (!existingClient) {
+      existingDay.perClient[client] = clientVal;
+      existingDay.tokens += clientVal.tokens;
+      existingDay.cost += clientVal.cost;
+      existingDay.messages += clientVal.messages;
+      existingDay.cacheReadTokens += clientVal.cacheReadTokens;
+      existingDay.cacheWriteTokens += clientVal.cacheWriteTokens;
+      existingDay.outputTokens += clientVal.outputTokens;
+      existingDay.unclassifiedTokens += clientVal.unclassifiedTokens;
+      if (clientVal.unpricedTokens) {
+        existingDay.unpricedTokens = (existingDay.unpricedTokens || 0) + clientVal.unpricedTokens;
+      }
+      if (row.clientModels?.[client]) {
+        existingDay.clientModels[client] ||= {};
+        for (const [model, count] of Object.entries(row.clientModels[client])) {
+          const canonical = canonicalModelKey(model);
+          existingDay.clientModels[client][canonical] = (existingDay.clientModels[client][canonical] || 0) + positive(count);
+          existingDay.perModel[canonical] ||= normalizeBreakdown(null, 0);
+          existingDay.perModel[canonical].tokens += positive(count);
+        }
+      }
+    } else {
+      if (clientVal.tokens > existingClient.tokens) {
+        const deltaTokens = clientVal.tokens - existingClient.tokens;
+        const deltaCost = Math.max(0, finite(clientVal.cost) - finite(existingClient.cost));
+        const deltaMessages = Math.max(0, positive(clientVal.messages) - positive(existingClient.messages));
+        const deltaCacheRead = Math.max(0, positive(clientVal.cacheReadTokens) - positive(existingClient.cacheReadTokens));
+        const deltaCacheWrite = Math.max(0, positive(clientVal.cacheWriteTokens) - positive(existingClient.cacheWriteTokens));
+        const deltaOutput = Math.max(0, positive(clientVal.outputTokens) - positive(existingClient.outputTokens));
+        const deltaUnclassified = Math.max(0, positive(clientVal.unclassifiedTokens) - positive(existingClient.unclassifiedTokens));
+
+        existingDay.tokens += deltaTokens;
+        existingDay.cost += deltaCost;
+        existingDay.messages += deltaMessages;
+        existingDay.cacheReadTokens += deltaCacheRead;
+        existingDay.cacheWriteTokens += deltaCacheWrite;
+        existingDay.outputTokens += deltaOutput;
+        existingDay.unclassifiedTokens += deltaUnclassified;
+
+        existingDay.perClient[client] = clientVal;
+
+        if (row.clientModels?.[client]) {
+          existingDay.clientModels[client] ||= {};
+          for (const [model, count] of Object.entries(row.clientModels[client])) {
+            const canonical = canonicalModelKey(model);
+            const currentCount = existingDay.clientModels[client][canonical] || 0;
+            if (positive(count) > currentCount) {
+              const modelDelta = positive(count) - currentCount;
+              existingDay.clientModels[client][canonical] = positive(count);
+              existingDay.perModel[canonical] ||= normalizeBreakdown(null, 0);
+              existingDay.perModel[canonical].tokens += modelDelta;
+            }
+          }
+        }
+      }
+    }
+  }
 }
 
 function getStatement(database, key, sql) {
@@ -344,6 +502,15 @@ function historyFromDays(days) {
       value.tokens = Math.round(value.tokens);
       value.cost = Number(value.cost.toFixed(6));
     }
+    if (day.clientModels && typeof day.clientModels === 'object') {
+      for (const models of Object.values(day.clientModels)) {
+        if (models && typeof models === 'object') {
+          for (const [m, count] of Object.entries(models)) {
+            models[m] = Math.round(positive(count));
+          }
+        }
+      }
+    }
   });
   computeIntensities(daily);
   const monthly = monthlyRollup(daily);
@@ -384,6 +551,7 @@ function historyFromDays(days) {
 
 function periodFromDays(days) {
   const period = emptyPeriod();
+  period.clientModels ||= {};
   for (const day of days) {
     period.totalTokens += positive(day.tokens);
     period.costUsd += Math.max(0, finite(day.cost));
@@ -391,6 +559,7 @@ function periodFromDays(days) {
     period.cacheWriteTokens += positive(day.cacheWriteTokens);
     period.outputTokens += positive(day.outputTokens);
     period.unclassifiedTokens += positive(day.unclassifiedTokens);
+    if (day.unpricedTokens) period.unpricedTokens = (period.unpricedTokens || 0) + positive(day.unpricedTokens);
     for (const [client, value] of Object.entries(day.perClient || {})) {
       period.clients[client] = (period.clients[client] || 0) + positive(value.tokens);
       period.clientCosts[client] = (period.clientCosts[client] || 0) + Math.max(0, finite(value.cost));
@@ -400,12 +569,29 @@ function periodFromDays(days) {
       period.clientUnclassifiedTokens[client] = (period.clientUnclassifiedTokens[client] || 0) + positive(value.unclassifiedTokens);
     }
     for (const [model, value] of Object.entries(day.perModel || {})) {
-      period.models[model] = (period.models[model] || 0) + positive(value.tokens);
-      period.modelCosts[model] = (period.modelCosts[model] || 0) + Math.max(0, finite(value.cost));
-      period.modelCacheReads[model] = (period.modelCacheReads[model] || 0) + positive(value.cacheReadTokens);
-      period.modelCacheWrites[model] = (period.modelCacheWrites[model] || 0) + positive(value.cacheWriteTokens);
-      period.modelOutputs[model] = (period.modelOutputs[model] || 0) + positive(value.outputTokens);
-      period.modelUnclassifiedTokens[model] = (period.modelUnclassifiedTokens[model] || 0) + positive(value.unclassifiedTokens);
+      const canonical = canonicalModelKey(model);
+      period.models[canonical] = (period.models[canonical] || 0) + positive(value.tokens);
+      period.modelCosts[canonical] = (period.modelCosts[canonical] || 0) + Math.max(0, finite(value.cost));
+      period.modelCacheReads[canonical] = (period.modelCacheReads[canonical] || 0) + positive(value.cacheReadTokens);
+      period.modelCacheWrites[canonical] = (period.modelCacheWrites[canonical] || 0) + positive(value.cacheWriteTokens);
+      period.modelOutputs[canonical] = (period.modelOutputs[canonical] || 0) + positive(value.outputTokens);
+      period.modelUnclassifiedTokens[canonical] = (period.modelUnclassifiedTokens[canonical] || 0) + positive(value.unclassifiedTokens);
+    }
+    if (day.clientModels && typeof day.clientModels === 'object' && Object.keys(day.clientModels).length > 0) {
+      for (const [client, models] of Object.entries(day.clientModels)) {
+        if (models && typeof models === 'object') {
+          period.clientModels[client] ||= {};
+          for (const [model, count] of Object.entries(models)) {
+            const canonical = canonicalModelKey(model);
+            period.clientModels[client][canonical] = (period.clientModels[client][canonical] || 0) + positive(count);
+          }
+        }
+      }
+    } else if (Object.keys(day.perClient || {}).length === 1 && Object.keys(day.perModel || {}).length === 1) {
+      const client = Object.keys(day.perClient)[0];
+      const model = canonicalModelKey(Object.keys(day.perModel)[0]);
+      period.clientModels[client] ||= {};
+      period.clientModels[client][model] = (period.clientModels[client][model] || 0) + positive(day.tokens);
     }
   }
   period.costUsd = Number(period.costUsd.toFixed(6));
@@ -495,10 +681,17 @@ function createTokenLedgerStore(options = {}) {
     const days = new Map();
     for (const row of baseRows(db, coveredDates)) addDayRow(days, row);
     for (const row of runtime) addDayRow(days, row);
+    const today = localDayKey();
+    const isSingleDayOverlay = overlay.length === 1;
+
     for (const row of overlay) {
       const date = String(row?.date || '').slice(0, 10);
-      days.delete(date);
-      addDayRow(days, row);
+      if (isSingleDayOverlay || date >= today) {
+        days.delete(date);
+        addDayRow(days, row);
+      } else {
+        mergeOverlayDay(days, row);
+      }
     }
     return historyFromDays(days);
   }
@@ -508,11 +701,53 @@ function createTokenLedgerStore(options = {}) {
     if (!history) return null;
     const today = localDayKey();
     const month = today.slice(0, 7);
-    return {
+    const periods = {
       today: periodFromDays(history.daily.filter((day) => day.date === today)),
       month: periodFromDays(history.daily.filter((day) => day.date.slice(0, 7) === month)),
       allTime: periodFromDays(history.daily)
     };
+
+    const periodNames = ['today', 'month', 'allTime'];
+    for (const name of periodNames) {
+      const period = periods[name];
+      const basePeriod = options.basePeriods?.[name]
+        || options.activePeriods?.[name]
+        || (options.basePeriod && options.basePeriod[name] ? options.basePeriod[name] : null)
+        || (options.activePeriod && options.activePeriod[name] ? options.activePeriod[name] : null)
+        || (name === 'allTime' ? (options.basePeriod || options.activePeriod) : null);
+
+      if (basePeriod && typeof basePeriod === 'object') {
+        const baseCost = Math.max(0, finite(basePeriod.costUsd));
+        if (baseCost > period.costUsd) {
+          period.costUsd = Number(baseCost.toFixed(6));
+        }
+        if (basePeriod.clientCosts && typeof basePeriod.clientCosts === 'object') {
+          period.clientCosts ||= {};
+          for (const [client, cost] of Object.entries(basePeriod.clientCosts)) {
+            const baseClientCost = Math.max(0, finite(cost));
+            if (baseClientCost > (period.clientCosts[client] || 0)) {
+              period.clientCosts[client] = Number(baseClientCost.toFixed(6));
+            }
+          }
+        }
+        if (basePeriod.clientModels && typeof basePeriod.clientModels === 'object') {
+          period.clientModels ||= {};
+          for (const [client, models] of Object.entries(filterAccountingClientMap(basePeriod.clientModels) || {})) {
+            if (models && typeof models === 'object') {
+              period.clientModels[client] ||= {};
+              for (const [model, count] of Object.entries(models)) {
+                const canonical = canonicalModelKey(model);
+                period.clientModels[client][canonical] = Math.max(period.clientModels[client][canonical] || 0, positive(count));
+              }
+            }
+          }
+        }
+        if (basePeriod.unpricedTokens) {
+          period.unpricedTokens = Math.max(period.unpricedTokens || 0, positive(basePeriod.unpricedTokens));
+        }
+      }
+    }
+    return periods;
   }
 
   function writeHistory(history) {
@@ -556,8 +791,11 @@ function createTokenLedgerStore(options = {}) {
 }
 
 module.exports = {
+  addDayRow,
   baseRows,
   createTokenLedgerStore,
+  emptyDay,
   packagedSeedPath,
+  periodFromDays,
   resolveTokenLedgerPath
 };

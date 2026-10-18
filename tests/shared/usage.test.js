@@ -1298,7 +1298,7 @@ test('normalizePeriod reconciles old Cursor default global models using client a
   assert.deepEqual(normalizePeriod(cursorOnlyWithoutUnpriced), cursorOnlyWithoutUnpriced);
 });
 
-test('extractUsageFromTokscale folds disjoint DSH reasoning into totals and output', () => {
+test('extractUsageFromTokscale excludes DSH usage while retaining session detail', () => {
   const period = extractUsageFromTokscale({
     entries: [{
       client: 'dsh',
@@ -1310,12 +1310,26 @@ test('extractUsageFromTokscale folds disjoint DSH reasoning into totals and outp
     }]
   });
 
-  assert.equal(period.totalTokens, 2910);
-  assert.equal(period.outputTokens, 25);
-  assert.equal(period.clientOutputs.dsh, 25);
+  assert.equal(period.totalTokens, 0);
+  assert.equal(period.outputTokens, 0);
+  assert.equal(period.clientOutputs.dsh, undefined);
   assert.equal(period.sessions['dsh:session-reasoning'].totalTokens, 2910);
   assert.equal(period.sessions['dsh:session-reasoning'].outputTokens, 25);
   assert.equal(period.sessions['dsh:session-reasoning'].reasoningTokens, 23);
+});
+
+test('native provider rows survive when DSH reports the same model name', () => {
+  const period = extractUsageFromTokscale({ entries: [
+    { client: 'dsh', model: 'gpt-6.1-sol', input: 100 },
+    { client: 'antigravity', model: 'gpt-6.1-sol', input: 200 },
+    { client: 'codex', model: 'gpt-6.1-sol', input: 300 }
+  ] });
+
+  assert.equal(period.totalTokens, 500);
+  assert.equal(period.clients.dsh, undefined);
+  assert.equal(period.clients.antigravity, 200);
+  assert.equal(period.clients.codex, 300);
+  assert.equal(period.models['gpt-6.1-sol'], 500);
 });
 
 test('aggregateDevices combines session usage across devices', () => {

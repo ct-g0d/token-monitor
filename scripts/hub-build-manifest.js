@@ -19,6 +19,7 @@ const WORKER_SHARED_MODULES = Object.freeze([
   'sessionLive.js',
   'sessionActivityProviders.js',
   'history.js',
+  'clientTracking.js',
   'providers/reasonix/paths.js',
   'providers/reasonix/sessionGuard.js',
   'providers/dsh/paths.js',

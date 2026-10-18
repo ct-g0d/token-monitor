@@ -10,7 +10,10 @@ try {
   trackingApi = require('../../src/shared/clientTracking');
 } catch (_) {}
 
-const { DEFAULT_CLIENTS, KNOWN_CLIENTS, clientsCsvForSetting } = trackingApi;
+const {
+  ACCOUNTING_EXCLUDED_CLIENTS, DEFAULT_CLIENTS, KNOWN_CLIENTS,
+  clientsCsvForSetting, filterAccountingClientMap, isAccountingExcludedClient
+} = trackingApi;
 const rootDir = path.join(__dirname, '..', '..');
 
 function readmeTrackedClientIds() {
@@ -38,6 +41,15 @@ test('clientsCsvForSetting uses defaults only for missing settings', () => {
   assert.equal(typeof clientsCsvForSetting, 'function');
   assert.equal(clientsCsvForSetting(undefined), DEFAULT_CLIENTS);
   assert.equal(clientsCsvForSetting(null), DEFAULT_CLIENTS);
+});
+
+test('accounting excludes DSH while keeping it a tracked source', () => {
+  assert.equal(ACCOUNTING_EXCLUDED_CLIENTS.has('dsh'), true);
+  assert.equal(isAccountingExcludedClient('dsh'), true);
+  assert.equal(isAccountingExcludedClient('codex'), false);
+  assert.deepEqual(filterAccountingClientMap({ dsh: { gpt: 10 }, codex: { gpt: 20 } }), {
+    codex: { gpt: 20 }
+  });
 });
 
 test('default tracked clients include current tokscale-supported tools', () => {

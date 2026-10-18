@@ -36,6 +36,29 @@ test('modelRowsForTool keeps the same model separated by tool and sorts usage', 
   ]);
 });
 
+test('modelRowsForTool collapses account-scoped model names into a single canonical row', () => {
+  const period = {
+    clients: { dsh: 1000 },
+    clientCosts: { dsh: 5 },
+    clientModels: {
+      dsh: {
+        '~account:user1%40gmail.com:gemini-3.8-flash-tiered': 600,
+        '~account:user2%40gmail.com:gemini-3.8-flash-tiered': 400
+      }
+    },
+    clientModelCosts: {
+      dsh: {
+        '~account:user1%40gmail.com:gemini-3.8-flash-tiered': 3,
+        '~account:user2%40gmail.com:gemini-3.8-flash-tiered': 2
+      }
+    }
+  };
+
+  assert.deepEqual(modelRowsForTool(period, 'dsh'), [
+    { key: 'gemini-3.8-flash-tiered', name: 'gemini-3.8-flash-tiered', value: 1000, cost: 5, percent: 100, unattributed: false }
+  ]);
+});
+
 test('modelRowsForTool tolerates missing, invalid, and cost-only attribution', () => {
   assert.deepEqual(modelRowsForTool(null, 'codex'), []);
   assert.deepEqual(modelRowsForTool({ clients: { codex: 0 }, clientModelCosts: { codex: { unknown: 2 } } }, 'codex'), [

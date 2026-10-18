@@ -5,7 +5,8 @@ const test = require('node:test');
 
 const {
   sumTokens, sumOutputTokens, num, parseGraphResult, computeIntensities, localDayKey,
-  computeStreaks, monthlyRollup, normalizeHistory, mergeHistories
+  computeStreaks, monthlyRollup, normalizeHistory, mergeHistories,
+  parseModelIdentifier, normalizeTokscaleModelNameForClient
 } = require('../../src/shared/history');
 
 function graphFromDays(days) {
@@ -176,6 +177,23 @@ test('parseGraphResult keeps Oh My Pi and Pi as separate history identities', ()
     pi: { tokens: 10, cost: 1, messages: 1, unclassifiedTokens: 0 },
     omp: { tokens: 20, cost: 2, messages: 1, unclassifiedTokens: 0 }
   });
+});
+
+test('parseGraphResult excludes DSH while retaining native rows for shared models', () => {
+  const day = parseGraphResult({ contributions: [{
+    date: '2026-08-25',
+    clients: [
+      { client: 'dsh', modelId: 'gpt-6.1-sol', tokens: { input: 100 }, cost: 1, messages: 1 },
+      { client: 'antigravity', modelId: 'gpt-6.1-sol', tokens: { input: 200 }, cost: 2, messages: 1 },
+      { client: 'codex', modelId: 'gpt-6.1-sol', tokens: { input: 300 }, cost: 3, messages: 1 }
+    ]
+  }] }).contributions[0];
+
+  assert.equal(day.tokens, 500);
+  assert.equal(day.perClient.dsh, undefined);
+  assert.equal(day.perClient.antigravity.tokens, 200);
+  assert.equal(day.perClient.codex.tokens, 300);
+  assert.equal(day.perModel['gpt-6.1-sol'].tokens, 500);
 });
 
 test('parseGraphResult folds Kilo extension and CLI rows into one history identity', () => {
@@ -580,4 +598,21 @@ test('historyPreview defaults to the compact 30-day daily window', () => {
   const preview = historyPreview(history);
   assert.equal(preview.daily.length, 30);
   assert.equal(preview.daily[0].date, '2026-07-02');
+});
+
+test('parseModelIdentifier extracts account email and canonical model', () => {
+  assert.deepEqual(parseModelIdentifier(''), { account: null, model: null, raw: '' });
+  assert.deepEqual(parseModelIdentifier('gpt-5.6-luna'), { account: null, model: 'gpt-5.6-luna', raw: 'gpt-5.6-luna' });
+  assert.deepEqual(
+    parseModelIdentifier('~account:charleschenantong2%40gmail.com:gemini-3.8-flash-tiered'),
+    {
+      account: 'charleschenantong2@gmail.com',
+      model: 'gemini-3.8-flash-tiered',
+      raw: '~account:charleschenantong2%40gmail.com:gemini-3.8-flash-tiered'
+    }
+  );
+  assert.equal(
+    normalizeTokscaleModelNameForClient('~account:charleschenantong%40gmail.com:gemini-3.8-flash-tiered', 'dsh'),
+    'gemini-3.8-flash-tiered'
+  );
 });

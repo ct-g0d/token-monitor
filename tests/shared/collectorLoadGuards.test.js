@@ -2395,7 +2395,9 @@ test('clientDataDirPresence requires an actual VS Code Copilot chat source', () 
     path.join('Library', 'Application Support', 'Code', 'User', 'workspaceStorage', 'plain-workspace')
   ]);
   const originalHomedir = os.homedir;
+  const originalAppData = process.env.APPDATA;
   os.homedir = () => tmp;
+  process.env.APPDATA = path.join(tmp, 'AppData', 'Roaming');
   try {
     const { clientDataDirPresence } = freshCollector();
     assert.deepEqual(clientDataDirPresence('copilot'), { copilot: false });
@@ -2403,6 +2405,8 @@ test('clientDataDirPresence requires an actual VS Code Copilot chat source', () 
     assert.deepEqual(clientDataDirPresence('copilot'), { copilot: true });
   } finally {
     os.homedir = originalHomedir;
+    if (originalAppData === undefined) delete process.env.APPDATA;
+    else process.env.APPDATA = originalAppData;
     delete require.cache[collectorPath];
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -2539,7 +2543,7 @@ test('watchPathsForClients watches the Hermes home dir so new state.db sidecars 
 });
 
 test('watchIgnoreMatcher prunes the Hermes runtime but keeps the state.db family and the watch root', () => {
-  const tmp = withTmpHome([path.join('.hermes', 'hermes-agent', 'node_modules')]);
+  const tmp = withTmpHome([path.join('.hermes', 'hermes-agent', 'node_modules'), path.join('.hermes', 'state.db')]);
   const originalHomedir = os.homedir;
   const previousHermesHome = process.env.HERMES_HOME;
   os.homedir = () => tmp;

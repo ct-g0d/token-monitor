@@ -151,7 +151,12 @@ test('symlinked packaged Widget artifacts never launch or create marker state', 
         : process.platform === 'win32'
           ? 'junction'
           : 'dir';
-      fs.symlinkSync(realTarget, target, linkType);
+      try {
+        fs.symlinkSync(realTarget, target, linkType);
+      } catch (error) {
+        if (process.platform === 'win32' && error?.code === 'EPERM') continue;
+        throw error;
+      }
       let launches = 0;
       const recover = createMacWidgetLaunchServicesRecovery({
         execFile: () => { launches += 1; }
