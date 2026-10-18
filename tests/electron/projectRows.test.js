@@ -138,6 +138,20 @@ test('projectRowsForPeriod labels unattributed tool usage', () => {
   ]);
 });
 
+test('projectRowsForPeriod excludes DSH sessions retained for inspection', () => {
+  const rows = projectRowsForPeriod({
+    totalTokens: 100,
+    clients: { codex: 100 },
+    sessions: {
+      'dsh:session': { client: 'dsh', projectLabel: 'DeepSeek work', totalTokens: 90, costUsd: 1 },
+      'codex:session': { client: 'codex', projectLabel: 'Project', totalTokens: 100, costUsd: 1 }
+    }
+  });
+
+  assert.equal(rows.reduce((sum, row) => sum + row.value, 0), 100);
+  assert.equal(rows.some((row) => row.name === 'DeepSeek work'), false);
+});
+
 
 test('project missing-price counts stay finite and bounded for rollups and session fallback', () => {
   for (const missing of [Infinity, NaN, 'bad', -10, 500, '50']) {

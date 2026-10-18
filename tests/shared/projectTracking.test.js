@@ -84,6 +84,16 @@ test('project rollups merge case and Unicode-equivalent folder labels safely', (
   assert.equal({}.polluted, undefined);
 });
 
+test('project rollups exclude DSH sessions from accounting totals', () => {
+  const projects = projectRollupFromSessions({
+    dsh: { client: 'dsh', projectLabel: 'DeepSeek work', totalTokens: 90, costUsd: 1 },
+    codex: { client: 'codex', projectLabel: 'Project', totalTokens: 100, costUsd: 1 }
+  });
+
+  assert.deepEqual(Object.keys(projects), ['project']);
+  assert.equal(projects.project.tokens, 100);
+});
+
 test('project normalization accepts reserved wire keys without prototype pollution', () => {
   const input = JSON.parse('{"projects":{"__proto__":{"label":"__proto__","tokens":5,"clients":{"constructor":5}},"constructor":{"label":"constructor","tokens":7,"clients":{"codex":7}},"prototype":{"label":"prototype","tokens":9,"clients":{"claude":9}}}}');
   const period = normalizePeriod(input);

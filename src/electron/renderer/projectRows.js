@@ -10,6 +10,12 @@
 })(typeof window !== 'undefined' ? window : null, function createProjectRowsApi(projectKeyApi) {
   const { canonicalProjectKey, deterministicProjectLabel } = projectKeyApi;
 
+  // DSH sessions stay in the session list for inspection, but their provider
+  // usage is excluded from accounting and must not inflate project totals.
+  function isAccountingExcludedClient(client) {
+    return String(client || '').trim().toLowerCase() === 'dsh';
+  }
+
   function unpricedTokensFor(value, total) {
     const missing = Number(value);
     const tokens = Number(total);
@@ -56,13 +62,17 @@
         if (!key || !name) continue;
         const clientTokens = Object.create(null);
         for (const [client, value] of Object.entries(entry.clients || {})) {
+          if (isAccountingExcludedClient(client)) continue;
           const tokens = Math.max(0, Number(value || 0));
           if (tokens > 0) clientTokens[client] = tokens;
         }
         if (!projects.has(key)) projects.set(key, { key, name, value: 0, cost: 0, clients: new Set(), clientTokens: Object.create(null) });
         const project = projects.get(key);
         project.name = deterministicProjectLabel(project.name, name);
-        project.value += Math.max(0, Number(entry.tokens || 0));
+        const excludedTokens = Object.entries(entry.clients || {})
+          .filter(([client]) => isAccountingExcludedClient(client))
+          .reduce((sum, [, value]) => sum + Math.max(0, Number(value || 0)), 0);
+        project.value += Math.max(0, Number(entry.tokens || 0) - excludedTokens);
         project.cost += Number(entry.costUsd || 0);
         const unpriced = unpricedTokensFor(entry.unpricedTokens, entry.tokens);
         if (unpriced > 0) project.unpricedTokens = (project.unpricedTokens || 0) + unpriced;
@@ -73,6 +83,7 @@
       }
     } else {
       for (const session of Object.values(period?.sessions || {})) {
+        if (isAccountingExcludedClient(session?.client)) continue;
         const label = String(session?.projectLabel || '').trim().normalize('NFC');
         const key = canonicalProjectKey(label);
         if (!key || !label) continue;
@@ -102,6 +113,7 @@
       // Reasonix native project telemetry is local reference data only. Its
       // reported session cost must never become generic project cost.
       for (const [client, value] of Object.entries(entry.clients || {})) {
+        if (isAccountingExcludedClient(client)) continue;
         const tokens = Math.max(0, Number(value || 0));
         if (tokens <= 0) continue;
         project.clients.add(client);
