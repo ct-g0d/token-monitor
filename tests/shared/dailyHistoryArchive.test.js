@@ -380,6 +380,34 @@ test('live rollover keeps graph components and classifies only the later delta a
   assert.equal(day.perModel.opus.unclassifiedTokens, 20);
 });
 
+test('low-quality live component summaries preserve exact archived components', () => {
+  const exactGraph = graph('2026-08-05', [{
+    client: 'claude',
+    modelId: 'opus',
+    tokens: { input: 20, output: 20, cacheRead: 60, cacheWrite: 0, reasoning: 0 },
+    cost: 1,
+    messages: 1
+  }]);
+  let archive = captureDailyHistoryArchive({}, exactGraph, { todayKey: '2026-08-05' });
+  archive = captureLiveDailyHistory(archive, {
+    ...livePeriod(120, 1.2),
+    capabilities: { tokenComponents: false },
+    cacheReadTokens: 60,
+    outputTokens: 20
+  }, { todayKey: '2026-08-05' });
+
+  const restored = historyFrom(graphFromDailyHistoryArchive([], archive, {
+    todayKey: '2026-08-05'
+  }), '2026-08-05');
+  const day = restored.daily[0];
+
+  assert.equal(day.tokens, 120);
+  assert.equal(day.cacheReadTokens, 60);
+  assert.equal(day.outputTokens, 20);
+  assert.equal(day.unclassifiedTokens, 20);
+  assert.equal(day.tokenComponentsAvailable, false);
+});
+
 test('live-only archive preserves native day, client, and model components', () => {
   const archive = captureLiveDailyHistory({}, {
     capabilities: { tokenComponents: true },

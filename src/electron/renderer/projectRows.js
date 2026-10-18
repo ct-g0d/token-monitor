@@ -131,6 +131,39 @@
         project.clientTokens.reasonix = (project.clientTokens.reasonix || 0) + tokens;
       }
     }
+
+    const totalTokens = Math.max(0, Number(period?.totalTokens || 0));
+    const projectTokens = Array.from(projects.values()).reduce((sum, project) => sum + Math.max(0, Number(project.value || 0)), 0);
+    const unassignedTokens = Math.max(0, totalTokens - projectTokens);
+    if (unassignedTokens > 0) {
+      const unassigned = {
+        key: '__unassigned__',
+        name: options.unassignedLabel || 'Unassigned',
+        value: unassignedTokens,
+        cost: Math.max(0, Number(period?.costUsd || 0) - Array.from(projects.values()).reduce((sum, project) => sum + Number(project.cost || 0), 0)),
+        clients: new Set(),
+        clientTokens: Object.create(null)
+      };
+      const attributedByClient = Object.create(null);
+      for (const project of projects.values()) {
+        for (const [client, value] of Object.entries(project.clientTokens || {})) {
+          attributedByClient[client] = (attributedByClient[client] || 0) + Number(value || 0);
+        }
+      }
+      for (const [client, value] of Object.entries(period?.clients || {})) {
+        const remainder = Math.max(0, Number(value || 0) - Number(attributedByClient[client] || 0));
+        if (remainder > 0) {
+          unassigned.clients.add(client);
+          unassigned.clientTokens[client] = remainder;
+        }
+      }
+      const attributedUnassigned = Object.values(unassigned.clientTokens).reduce((sum, value) => sum + value, 0);
+      if (attributedUnassigned < unassignedTokens) {
+        unassigned.clientTokens[''] = unassignedTokens - attributedUnassigned;
+      }
+      projects.set(unassigned.key, unassigned);
+    }
+
     return Array.from(projects.values()).map((project) => {
       const color = options.stableColor ? options.stableColor(project.key, options.fallbackColors || ['#73bdf5']) : '#73bdf5';
       const clientColor = (client) => {

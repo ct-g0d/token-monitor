@@ -4593,7 +4593,11 @@ function historyResolverOptions() {
   if (ledgerHistory) {
     const periods = tokenLedgerStore?.readPeriods?.({
       overlayHistory: ledgerHistory,
-      basePeriod: rawDevice?.periods?.allTime || rawDevice?.allTime
+      basePeriods: rawDevice?.periods || {
+        today: rawDevice?.today,
+        month: rawDevice?.month,
+        allTime: rawDevice?.allTime
+      }
     }) || null;
     if (rawDevice) {
       if (periods && rawDevice.periods) {
@@ -4697,16 +4701,17 @@ function localLedgerHistory(overlayHistory) {
 function withLocalLedgerHistory(stats, overlayHistory, options = {}) {
   const history = localLedgerHistory(overlayHistory || stats?.history);
   if (!history || !stats || typeof stats !== 'object') return stats;
-  const store = options?.tokenLedgerStore || (tokenLedgerStore ||= createTokenLedgerStore());
-  const periods = store.readPeriods({
-    overlayHistory: overlayHistory || stats.history,
-    basePeriod: stats.periods?.allTime
-  });
-  if (!periods) return { ...stats, history, historyPreview: historyPreview(history), historyRevision: historyRevision(history) };
   const targetDeviceId = String(options?.deviceId || settings?.deviceId || lastCollectedDevice?.deviceId || localDevice?.deviceId || '').trim();
   const targetDevice = Array.isArray(stats.devices)
     ? stats.devices.find((device, idx) => (targetDeviceId ? String(device?.deviceId || '').trim() === targetDeviceId : (idx === 0 || device?.local)))
     : null;
+  const store = options?.tokenLedgerStore || (tokenLedgerStore ||= createTokenLedgerStore());
+  const periods = store.readPeriods({
+    overlayHistory: overlayHistory || stats.history,
+    basePeriods: stats.periods || targetDevice?.periods,
+    basePeriod: stats.periods?.allTime || targetDevice?.periods?.allTime
+  });
+  if (!periods) return { ...stats, history, historyPreview: historyPreview(history), historyRevision: historyRevision(history) };
 
   for (const name of ['today', 'month', 'allTime']) {
     periods[name].sessions = stats.periods?.[name]?.sessions || targetDevice?.periods?.[name]?.sessions || targetDevice?.[name]?.sessions || {};

@@ -513,10 +513,12 @@ function withReconciledGraphCosts(day, graphDay, liveDay, reprice = false, prici
 
 function mergeLiveDayMetadata(liveDay, previousDay) {
   if (!previousDay) return liveDay;
+  const liveSummaryIsExact = liveDay.componentSummary?.tokenComponentsAvailable === true;
+  let preservedComponents = false;
   const observations = Object.fromEntries(Object.entries(liveDay.observations).map(([key, observation]) => {
     const previous = previousDay.observations[key];
     if (!previous) return [key, observation];
-    if (liveDay.componentSummary) {
+    if (liveSummaryIsExact) {
       return [key, {
         ...observation,
         messages: Math.max(observation.messages, previous.messages),
@@ -532,6 +534,9 @@ function mergeLiveDayMetadata(liveDay, previousDay) {
     const unclassifiedTokens = canRetainPreviousComponents
       ? previousUnclassified + (incomingTokens - previousTokens)
       : incomingTokens;
+    if (canRetainPreviousComponents && previousTokens - previousUnclassified > 0) {
+      preservedComponents = true;
+    }
     return [key, {
       ...observation,
       messages: Math.max(observation.messages, previous.messages),
@@ -547,11 +552,13 @@ function mergeLiveDayMetadata(liveDay, previousDay) {
         : {})
     }];
   }));
-  return {
+  const merged = {
     ...liveDay,
     activeTimeMs: Math.max(liveDay.activeTimeMs, previousDay.activeTimeMs),
     observations
   };
+  if (preservedComponents && !liveSummaryIsExact) delete merged.componentSummary;
+  return merged;
 }
 
 function captureLiveDailyHistory(existingArchive, period, options = {}) {

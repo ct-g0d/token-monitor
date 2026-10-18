@@ -412,6 +412,40 @@ test('readPeriods produces complete unpricedTokens and clientModels from histori
   fs.rmSync(fixture.dir, { recursive: true, force: true });
 });
 
+test('ledger folds reasoning into output when reconstructing token components', () => {
+  const fixture = tempLedger();
+  const db = new DatabaseSync(fixture.file);
+  db.exec(`
+    CREATE TABLE daily_usage (
+      date_bucket TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      model_codename TEXT NOT NULL,
+      turn_count INTEGER NOT NULL DEFAULT 0,
+      total_uncached_in INTEGER NOT NULL DEFAULT 0,
+      total_cached_in INTEGER NOT NULL DEFAULT 0,
+      total_cache_write INTEGER NOT NULL DEFAULT 0,
+      total_output INTEGER NOT NULL DEFAULT 0,
+      total_reasoning INTEGER NOT NULL DEFAULT 0,
+      total_processed INTEGER NOT NULL DEFAULT 0,
+      total_known_cost_usd REAL NOT NULL DEFAULT 0,
+      unknown_pricing_turn_count INTEGER NOT NULL DEFAULT 0,
+      cache_savings_pct REAL NOT NULL DEFAULT 0,
+      PRIMARY KEY (date_bucket, provider, model_codename)
+    );
+    INSERT INTO daily_usage VALUES ('2026-08-01', 'codex', 'gpt-6.1-sol', 1, 100, 700, 0, 50, 25, 875, 1, 0, 0);
+  `);
+  db.close();
+
+  const store = createTokenLedgerStore({ path: fixture.file, homeDir: fixture.dir });
+  const day = store.readHistory().daily[0];
+  assert.equal(day.tokens, 875);
+  assert.equal(day.cacheReadTokens, 700);
+  assert.equal(day.outputTokens, 75);
+  assert.equal(day.unclassifiedTokens, 0);
+  store.close();
+  fs.rmSync(fixture.dir, { recursive: true, force: true });
+});
+
 test('readPeriods folds Gemini 3.8 routing suffixes into one model without changing the total', () => {
   const fixture = tempLedger();
   const db = new DatabaseSync(fixture.file);
@@ -515,6 +549,34 @@ test('readPeriods preserves accurate active session archive cost and clientCosts
   assert.equal(periodsWithSingleBase.allTime.costUsd, 62.10);
   assert.equal(periodsWithSingleBase.allTime.clientCosts.codex, 62.10);
 
+  store.close();
+  fs.rmSync(fixture.dir, { recursive: true, force: true });
+});
+
+test('readPeriods preserves throughput counters from the live period', () => {
+  const fixture = tempLedger();
+  const store = createTokenLedgerStore({ path: fixture.file, homeDir: fixture.dir });
+  store.writeHistory({ daily: [] });
+  const periods = store.readPeriods({
+    basePeriods: {
+      today: {
+        capabilities: { throughput: true },
+        timedTokens: 1200,
+        timedOutputTokens: 240,
+        timedDurationMs: 6000,
+        modelThroughput: {
+          'gpt-6.1-sol': { timedTokens: 1200, timedOutputTokens: 240, timedDurationMs: 6000 }
+        }
+      }
+    }
+  });
+
+  assert.equal(periods.today.timedTokens, 1200);
+  assert.equal(periods.today.timedOutputTokens, 240);
+  assert.equal(periods.today.timedDurationMs, 6000);
+  assert.deepEqual(periods.today.modelThroughput['gpt-6.1-sol'], {
+    timedTokens: 1200, timedOutputTokens: 240, timedDurationMs: 6000
+  });
   store.close();
   fs.rmSync(fixture.dir, { recursive: true, force: true });
 });

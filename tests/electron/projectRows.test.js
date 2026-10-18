@@ -20,19 +20,21 @@ test('projectBreakdownIncomplete flags bounded synchronized periods', () => {
 });
 
 test('projectRowsForPeriod merges sessions by workspace and sorts by cost', () => {
-  const rows = projectRowsForPeriod({ sessions: {
+  const rows = projectRowsForPeriod({ totalTokens: 1649, sessions: {
     a: { client: 'codex', projectId: 'sha256:a', projectLabel: 'client-a', totalTokens: 100, costUsd: 2, models: { gpt: 100 } },
     b: { client: 'claude', projectId: 'sha256:a', projectLabel: 'client-a', totalTokens: 50, costUsd: 1, models: { claude: 50 } },
     c: { client: 'claude', projectId: 'sha256:b', projectLabel: 'client-b', totalTokens: 500, costUsd: 0.5 },
     d: { client: 'claude', totalTokens: 999, costUsd: 99 }
   } }, { clientLabels: { claude: 'Claude Code', codex: 'Codex' }, clientColors: { codex: '#00aabb', claude: '#cc7755' } });
-  assert.equal(rows.length, 2);
+  assert.equal(rows.length, 3);
   assert.deepEqual({ key: rows[0].key, name: rows[0].name, value: rows[0].value, cost: rows[0].cost, detail: rows[0].detail }, { key: 'client-a', name: 'client-a', value: 150, cost: 3, detail: '' });
   assert.deepEqual(rows[0].accordionRows, [
     { key: 'codex', name: 'Codex', value: 100, percent: 100 / 150 * 100, color: '#00aabb' },
     { key: 'claude', name: 'Claude Code', value: 50, percent: 50 / 150 * 100, color: '#cc7755' }
   ]);
   assert.equal(rows[1].name, 'client-b');
+  assert.equal(rows[2].name, 'Unassigned');
+  assert.equal(rows[2].value, 999);
   assert.match(rows[0].barBackground, /^linear-gradient\(90deg, /);
   assert.match(rows[0].barBackground, /#00aabb/);
   assert.match(rows[0].barBackground, /#cc7755/);

@@ -160,7 +160,10 @@ function addDayRow(days, row) {
   day.messages += messages;
   day.cacheReadTokens += component(row.cacheReadTokens ?? row.total_cached_in, tokens);
   day.cacheWriteTokens += component(row.cacheWriteTokens ?? row.total_cache_write, tokens);
-  day.outputTokens += component(row.outputTokens ?? row.total_output, tokens);
+  day.outputTokens += component(
+    row.outputTokens ?? (positive(row.total_output) + positive(row.total_reasoning)),
+    tokens
+  );
   day.unclassifiedTokens += component(row.unclassifiedTokens, tokens);
   if (unpriced > 0) day.unpricedTokens = (day.unpricedTokens || 0) + Math.min(tokens, unpriced);
   if (row.tokenComponentsAvailable === false) day.tokenComponentsAvailable = false;
@@ -330,7 +333,7 @@ function baseRows(database, coveredDates) {
   const covered = coveredDates instanceof Set ? coveredDates : new Set(coveredDates || []);
   const stmt = getStatement(database, 'baseRows', `
     SELECT date_bucket, provider, model_codename, turn_count,
-      total_uncached_in, total_cached_in, total_cache_write, total_output,
+      total_uncached_in, total_cached_in, total_cache_write, total_output, total_reasoning,
       total_processed, total_known_cost_usd, unknown_pricing_turn_count,
       cache_savings_pct
     FROM daily_usage
@@ -738,6 +741,25 @@ function createTokenLedgerStore(options = {}) {
               for (const [model, count] of Object.entries(models)) {
                 const canonical = canonicalModelKey(model);
                 period.clientModels[client][canonical] = Math.max(period.clientModels[client][canonical] || 0, positive(count));
+              }
+            }
+          }
+        }
+        if (basePeriod.capabilities?.throughput === true) {
+          period.capabilities.throughput = true;
+          for (const field of ['timedTokens', 'timedOutputTokens', 'timedDurationMs']) {
+            period[field] = Math.max(positive(period[field]), positive(basePeriod[field]));
+          }
+          if (basePeriod.modelThroughput && typeof basePeriod.modelThroughput === 'object') {
+            period.modelThroughput ||= {};
+            for (const [model, counters] of Object.entries(basePeriod.modelThroughput)) {
+              if (!counters || typeof counters !== 'object') continue;
+              period.modelThroughput[model] ||= { timedTokens: 0, timedOutputTokens: 0, timedDurationMs: 0 };
+              for (const field of ['timedTokens', 'timedOutputTokens', 'timedDurationMs']) {
+                period.modelThroughput[model][field] = Math.max(
+                  positive(period.modelThroughput[model][field]),
+                  positive(counters[field])
+                );
               }
             }
           }

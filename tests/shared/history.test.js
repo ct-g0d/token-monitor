@@ -196,6 +196,34 @@ test('parseGraphResult excludes DSH while retaining native rows for shared model
   assert.equal(day.perModel['gpt-6.1-sol'].tokens, 500);
 });
 
+test('parseGraphResult keeps native component details after excluding DSH from a shared summary', () => {
+  const day = parseGraphResult({ contributions: [{
+    date: '2026-08-26',
+    clients: [
+      { client: 'dsh', modelId: 'gpt-6.1-sol', tokens: { input: 100 }, cost: 1, messages: 1 },
+      { client: 'codex', modelId: 'gpt-6.1-sol', tokens: { input: 200 }, cost: 2, messages: 1 }
+    ],
+    tokenComponentSummary: {
+      tokenComponentsAvailable: true,
+      cacheReadTokens: 240,
+      outputTokens: 6,
+      perClient: {
+        dsh: { cacheReadTokens: 90, outputTokens: 2 },
+        codex: { cacheReadTokens: 150, outputTokens: 4 }
+      },
+      perModel: { 'gpt-6.1-sol': { cacheReadTokens: 240, outputTokens: 6 } }
+    }
+  }] }).contributions[0];
+
+  assert.equal(day.tokens, 200);
+  assert.equal(day.unclassifiedTokens, 0);
+  assert.equal(day.tokenComponentsAvailable, true);
+  assert.equal(day.cacheReadTokens, 150);
+  assert.equal(day.outputTokens, 4);
+  assert.equal(day.perClient.codex.unclassifiedTokens, 0);
+  assert.equal(day.perModel['gpt-6.1-sol'].cacheReadTokens, 150);
+});
+
 test('parseGraphResult folds Kilo extension and CLI rows into one history identity', () => {
   const { contributions } = parseGraphResult({
     contributions: [{

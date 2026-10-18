@@ -76,6 +76,88 @@ function normalizeTokscaleModelComponentSummary(summary, rows) {
   return { ...summary, perModel };
 }
 
+function filterComponentSummaryForClients(summary, allRows, accountingRows) {
+  if (!summary || typeof summary !== 'object' || !Array.isArray(allRows) || !Array.isArray(accountingRows)) return summary;
+  const excludedRows = allRows.filter((row) => isAccountingExcludedClient(row?.client));
+  if (excludedRows.length === 0) return summary;
+
+  const fields = ['cacheReadTokens', 'cacheWriteTokens', 'outputTokens', 'unclassifiedTokens'];
+  const excludedClients = new Set(excludedRows.map((row) => normalizeTokscaleClientName(row?.client)));
+  const excludedComponents = {};
+  for (const client of excludedClients) {
+    const source = summary.perClient?.[client];
+    excludedComponents[client] = Object.fromEntries(fields.map((field) => [field, num(source?.[field])]));
+  }
+  const sumExcluded = (field) => Object.values(excludedComponents)
+    .reduce((total, components) => total + num(components[field]), 0);
+
+  const modelRenames = new Map();
+  for (const row of allRows) {
+    const raw = String(row?.modelId || row?.model || row?.model_id || 'unknown');
+    modelRenames.set(raw, normalizeTokscaleModelNameForClient(raw, row?.client));
+  }
+  const sourceModels = {};
+  for (const [rawModel, components] of Object.entries(summary.perModel || {})) {
+    const model = modelRenames.get(rawModel) || rawModel;
+    sourceModels[model] ||= Object.fromEntries(fields.map((field) => [field, 0]));
+    for (const field of fields) sourceModels[model][field] += num(components?.[field]);
+  }
+
+  const excludedModelTokens = {};
+  for (const row of excludedRows) {
+    const client = normalizeTokscaleClientName(row?.client);
+    const model = normalizeTokscaleModelNameForClient(
+      row?.modelId || row?.model || row?.model_id || 'unknown', client
+    );
+    excludedModelTokens[client] ||= {};
+    excludedModelTokens[client][model] = (excludedModelTokens[client][model] || 0) + sumTokens(row?.tokens, client);
+  }
+  const modelRemoval = {};
+  for (const [client, models] of Object.entries(excludedModelTokens)) {
+    const total = Object.values(models).reduce((sum, value) => sum + value, 0);
+    if (!(total > 0)) continue;
+    for (const field of fields) {
+      let remaining = num(excludedComponents[client]?.[field]);
+      const entries = Object.entries(models);
+      entries.forEach(([model, tokens], index) => {
+        const amount = index === entries.length - 1
+          ? remaining
+          : Math.min(remaining, num(excludedComponents[client]?.[field]) * tokens / total);
+        modelRemoval[model] ||= Object.fromEntries(fields.map((name) => [name, 0]));
+        modelRemoval[model][field] += Math.max(0, amount);
+        remaining -= amount;
+      });
+    }
+  }
+
+  const perClient = {};
+  for (const row of accountingRows) {
+    const client = normalizeTokscaleClientName(row?.client);
+    if (client && summary.perClient?.[client]) perClient[client] = summary.perClient[client];
+  }
+  const perModel = {};
+  const accountingModels = new Set(accountingRows.map((row) => normalizeTokscaleModelNameForClient(
+    row?.modelId || row?.model || row?.model_id || 'unknown', row?.client
+  )));
+  for (const model of accountingModels) {
+    const source = sourceModels[model] || {};
+    const removed = modelRemoval[model] || {};
+    perModel[model] = Object.fromEntries(fields.map((field) => [
+      field, Math.max(0, num(source[field]) - num(removed[field]))
+    ]));
+  }
+
+  return {
+    ...summary,
+    cacheReadTokens: Math.max(0, num(summary.cacheReadTokens) - sumExcluded('cacheReadTokens')),
+    cacheWriteTokens: Math.max(0, num(summary.cacheWriteTokens) - sumExcluded('cacheWriteTokens')),
+    outputTokens: Math.max(0, num(summary.outputTokens) - sumExcluded('outputTokens')),
+    unclassifiedTokens: Math.max(0, num(summary.unclassifiedTokens) - sumExcluded('unclassifiedTokens')),
+    perClient,
+    perModel
+  };
+}
+
 function num(value) {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string' && value.trim() !== '') {
@@ -234,7 +316,10 @@ function parseGraphResult(raw) {
       pm.unclassifiedTokens += unclassified;
     }
     const componentSummary = applyComponentSummary(
-      normalizeTokscaleModelComponentSummary(row.tokenComponentSummary, accountingClientRows),
+      normalizeTokscaleModelComponentSummary(
+        filterComponentSummaryForClients(row.tokenComponentSummary, clientRows, accountingClientRows),
+        accountingClientRows
+      ),
       tokens,
       perClient,
       perModel

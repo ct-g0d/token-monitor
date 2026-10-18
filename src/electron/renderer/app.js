@@ -2944,6 +2944,7 @@ function projectRowsForPeriod(period) {
     stableColor,
     fallbackColors: fallbackModelColors,
     unknownClientLabel: t('projects.unknownTool'),
+    unassignedLabel: t('projects.unassigned'),
     nativeProjects: state.stats?.nativeProjects?.[state.period] || {},
     nativeSessions: state.stats?.nativeSessions?.[state.period] || {}
   });
