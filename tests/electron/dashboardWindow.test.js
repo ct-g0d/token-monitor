@@ -80,6 +80,15 @@ test('fixed ranges request existing per-device History without changing ingest',
   assert.match(historySource, /deviceHistories: parseDeviceHistories\(devices\)/);
 });
 
+test('historyResolverOptions equips localDevice with localLedgerHistory and provides cold-start synthetic fallback', () => {
+  const main = read('src', 'electron', 'main.js');
+  assert.match(main, /ledgerHistory\s*=\s*localLedgerHistory\(rawDevice\?\.history\)/);
+  assert.match(main, /history:\s*ledgerHistory/);
+  assert.match(main, /historyAvailable:\s*true/);
+  assert.match(main, /computePeriodWindows/);
+});
+
+
 test('dashboard history is gated by the historyEnabled setting', () => {
   const main = read('src', 'electron', 'main.js');
   assert.match(main, /historyEnabled:\s*true/);

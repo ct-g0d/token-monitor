@@ -90,6 +90,7 @@ const {
 const { seedSplitClients } = require('../shared/clientIdentitySplits');
 const {
   clientDiagnosticRoots,
+  computePeriodWindows,
   getTokscaleStatus,
   lookupModelPricing,
   pricingFingerprint,
@@ -282,6 +283,7 @@ const {
 const { createMimoAccountMetadataReader } = require('./providers/mimo/accountMetadata');
 const { deviceHistoryRevision, historyPreview, historyRevision } = require('../shared/history');
 const { completeHistorySource, resolveCompleteHistory, resolveCompleteHistoryWithDevices } = require('./historySource');
+const { createTokenLedgerStore } = require('../shared/usage/tokenLedger');
 const { fixedPeriodHistoryMeta } = require('./fixedPeriodHistory');
 const { readSessionDetailForPlatform } = require('../shared/sessionDetailResolver');
 const { startDiscordRpc, stopDiscordRpc, updateDiscordRpc } = require('./discordRpc');
@@ -2960,6 +2962,7 @@ let sseRetryTimer = null;
 let streamConnected = false;
 let streamFailure = null;
 let lastCollectedDevice = null;
+let tokenLedgerStore = null;
 let latestHubStats = null;
 let latestHubStatsReceivedAt = null;
 let latestHubStatsSource = 'none';
@@ -4578,6 +4581,34 @@ function macWidgetRuntimeSupported(
 
 function historyResolverOptions() {
   const { url: hubUrl, secret } = effectiveHubConfig();
+  const rawDevice = ownsUsageRuntime() ? (lastCollectedDevice || localDevice) : null;
+  const ledgerHistory = localLedgerHistory(rawDevice?.history);
+  let resolvedLocalDevice = rawDevice;
+  if (ledgerHistory) {
+    if (rawDevice) {
+      resolvedLocalDevice = {
+        ...rawDevice,
+        ...(rawDevice.periodWindows ? {} : { periodWindows: computePeriodWindows(new Date()) }),
+        history: ledgerHistory,
+        historyAvailable: true
+      };
+    } else {
+      const now = new Date();
+      const nowIso = now.toISOString();
+      const periods = tokenLedgerStore?.readPeriods?.({ overlayHistory: ledgerHistory }) || null;
+      resolvedLocalDevice = {
+        ...electronDeviceEnvelope(),
+        hostname: os.hostname(),
+        platform: `${process.platform}-${process.arch}`,
+        updatedAt: nowIso,
+        receivedAt: nowIso,
+        periodWindows: computePeriodWindows(now),
+        ...(periods ? { periods, today: periods.today, month: periods.month, allTime: periods.allTime } : {}),
+        history: ledgerHistory,
+        historyAvailable: true
+      };
+    }
+  }
   return {
     aggregateHistory,
     embeddedHub,
@@ -4588,14 +4619,44 @@ function historyResolverOptions() {
     // In sync/host mode the headless agent owns this machine's producer while its
     // PID is live. Do not let the widget's last pre-handoff snapshot compete with
     // the newer Hub record; local mode always owns its collector by contract.
-    localDevice: ownsUsageRuntime() ? (lastCollectedDevice || localDevice) : null,
+    localDevice: resolvedLocalDevice,
     mode,
     secret
   };
 }
 
 function getCompleteHistory() {
+  const ledgerHistory = localLedgerHistory(lastCollectedDevice?.history || localDevice?.history);
+  if (ledgerHistory) return Promise.resolve(ledgerHistory);
   return resolveCompleteHistory(historyResolverOptions());
+}
+
+function localLedgerHistory(overlayHistory) {
+  if (settings?.historyEnabled === false || mode !== 'local') return null;
+  tokenLedgerStore ||= createTokenLedgerStore();
+  return tokenLedgerStore.readHistory({ overlayHistory });
+}
+
+function withLocalLedgerHistory(stats, overlayHistory) {
+  const history = localLedgerHistory(overlayHistory || stats?.history);
+  if (!history || !stats || typeof stats !== 'object') return stats;
+  const periods = tokenLedgerStore.readPeriods({ overlayHistory: overlayHistory || stats.history });
+  if (!periods) return { ...stats, history, historyPreview: historyPreview(history), historyRevision: historyRevision(history) };
+  for (const name of ['today', 'month', 'allTime']) {
+    periods[name].sessions = stats.periods?.[name]?.sessions || {};
+    periods[name].projects = stats.periods?.[name]?.projects || {};
+  }
+  const devices = Array.isArray(stats.devices) && stats.devices.length > 0
+    ? stats.devices.map((device, idx) => (idx === 0 ? { ...device, periods } : device))
+    : stats.devices;
+  return {
+    ...stats,
+    periods,
+    history,
+    devices,
+    historyPreview: historyPreview(history),
+    historyRevision: historyRevision(history)
+  };
 }
 
 function macWidgetPresentation() {
@@ -5009,7 +5070,9 @@ function primeLocalStatsFromAnchor(usageOptions, widgetProducerOwner) {
     sessionUsageArchiveDate(deviceRecord)
   );
   localDevice = visible;
-  localStats = withHistoryPreview(aggregateDevices([visible], 0), [visible]);
+  localStats = typeof withLocalLedgerHistory === 'function'
+    ? withLocalLedgerHistory(withHistoryPreview(aggregateDevices([visible], 0), [visible]), visible?.history)
+    : withHistoryPreview(aggregateDevices([visible], 0), [visible]);
   // Through the normal publisher, not straight to the renderer: the tray reads
   // what sendPush sets, and in tray mode the window is hidden, so a seed that
   // only reached the renderer would leave the one visible surface on zero.
@@ -5049,7 +5112,9 @@ function startLocalCollector() {
       localStats = composeLocalOnlySummary(localDevice, (stats) => {
         withHistoryPreview(stats, [localDevice]);
         attachLocalNativeViews(stats, localDevice);
-        return stats;
+        return typeof withLocalLedgerHistory === 'function'
+          ? withLocalLedgerHistory(stats, localDevice.history)
+          : stats;
       });
       updateDiscordRpcDisplay(localStats);
       sendPush({ event: 'stats', data: { type: 'stats', reason, stats: localStats, at: new Date().toISOString() } }, { widgetProducerOwner });
@@ -6450,7 +6515,10 @@ async function fetchStats(options = {}) {
   }
   if (mode === 'local') {
     if (localStats) return localStats;
-    return withHistoryPreview(aggregateDevices(localDevice ? [localDevice] : [], 0), localDevice ? [localDevice] : []);
+    const fallbackStats = withHistoryPreview(aggregateDevices(localDevice ? [localDevice] : [], 0), localDevice ? [localDevice] : []);
+    return typeof withLocalLedgerHistory === 'function'
+      ? withLocalLedgerHistory(fallbackStats, localDevice?.history)
+      : fallbackStats;
   }
   if (settings.hubMode === 'host' && embeddedHub) {
     return injectLocalDeviceStatus(embeddedHub.hub.getStats());

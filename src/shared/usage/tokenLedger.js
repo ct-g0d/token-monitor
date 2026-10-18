@@ -1,0 +1,563 @@
+'use strict';
+
+const fs = require('node:fs');
+const path = require('node:path');
+const { DatabaseSync } = require('node:sqlite');
+const { sharedDataDir } = require('../config');
+const { computeIntensities, localDayKey, monthlyRollup } = require('../history');
+const { emptyPeriod } = require('../usage');
+
+const LEDGER_FILE = 'token_ledger.sqlite';
+const RUNTIME_HISTORY_TABLE = 'runtime_history';
+
+function repoLedgerPath() {
+  return path.resolve(__dirname, '..', '..', '..', 'data', LEDGER_FILE);
+}
+
+function resolveTokenLedgerPath(options = {}) {
+  if (options.path) return path.resolve(options.path);
+  const envPath = String(options.env?.TOKEN_MONITOR_LEDGER_PATH || process.env.TOKEN_MONITOR_LEDGER_PATH || '').trim();
+  if (envPath) return path.resolve(envPath);
+  const sharedPath = path.join(sharedDataDir(options), LEDGER_FILE);
+  if (fs.existsSync(sharedPath)) return sharedPath;
+  const seed = packagedSeedPath(options);
+  if (seed) return sharedPath;
+  const developmentPath = repoLedgerPath();
+  return fs.existsSync(developmentPath) ? developmentPath : sharedPath;
+}
+
+function ensureSchema(database) {
+  database.exec(`
+    PRAGMA journal_mode = WAL;
+    PRAGMA synchronous = NORMAL;
+    PRAGMA foreign_keys = ON;
+    CREATE TABLE IF NOT EXISTS runtime_history (
+      date_bucket TEXT PRIMARY KEY,
+      payload_json TEXT NOT NULL,
+      updated_at_ms INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_runtime_history_date ON runtime_history(date_bucket);
+  `);
+}
+
+function finite(value) {
+  return Number.isFinite(Number(value)) ? Number(value) : 0;
+}
+
+function positive(value) {
+  return Math.max(0, finite(value));
+}
+
+function component(value, tokens) {
+  return Math.min(positive(tokens), positive(value));
+}
+
+function normalizeBreakdown(value, tokens, cost = 0, messages = 0, unpricedTokens = 0) {
+  const total = positive(tokens);
+  return {
+    tokens: total,
+    cost: Math.max(0, finite(cost)),
+    messages: positive(messages),
+    cacheReadTokens: component(value?.cacheReadTokens, total),
+    cacheWriteTokens: component(value?.cacheWriteTokens, total),
+    outputTokens: component(value?.outputTokens, total),
+    unclassifiedTokens: component(value?.unclassifiedTokens, total),
+    ...(positive(unpricedTokens) > 0 ? { unpricedTokens: component(unpricedTokens, total) } : {})
+  };
+}
+
+function mergeBreakdown(target, source) {
+  target.tokens += positive(source?.tokens);
+  target.cost += finite(source?.cost);
+  target.messages += positive(source?.messages);
+  target.cacheReadTokens += positive(source?.cacheReadTokens);
+  target.cacheWriteTokens += positive(source?.cacheWriteTokens);
+  target.outputTokens += positive(source?.outputTokens);
+  target.unclassifiedTokens += positive(source?.unclassifiedTokens);
+  if (source?.unpricedTokens) target.unpricedTokens = (target.unpricedTokens || 0) + positive(source.unpricedTokens);
+  return target;
+}
+
+function emptyDay(date) {
+  return {
+    date,
+    tokens: 0,
+    cost: 0,
+    messages: 0,
+    activeTimeMs: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    outputTokens: 0,
+    unclassifiedTokens: 0,
+    tokenComponentsAvailable: true,
+    perClient: {},
+    perModel: {}
+  };
+}
+
+function addDayRow(days, row) {
+  const date = String(row?.date || row?.date_bucket || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+  const day = days.get(date) || emptyDay(date);
+  const tokens = positive(row.tokens ?? row.total_processed);
+  const cost = Math.max(0, finite(row.cost ?? row.total_known_cost_usd));
+  const messages = positive(row.messages ?? row.turn_count);
+  const unpriced = positive(row.unpricedTokens)
+    || (positive(row.unknown_pricing_turn_count) > 0 ? tokens : 0);
+  day.tokens += tokens;
+  day.cost += cost;
+  day.messages += messages;
+  day.cacheReadTokens += component(row.cacheReadTokens ?? row.total_cached_in, tokens);
+  day.cacheWriteTokens += component(row.cacheWriteTokens ?? row.total_cache_write, tokens);
+  day.outputTokens += component(row.outputTokens ?? row.total_output, tokens);
+  day.unclassifiedTokens += component(row.unclassifiedTokens, tokens);
+  if (unpriced > 0) day.unpricedTokens = (day.unpricedTokens || 0) + Math.min(tokens, unpriced);
+  if (row.tokenComponentsAvailable === false) day.tokenComponentsAvailable = false;
+
+  if (row.perClient || row.perModel) {
+    for (const [client, value] of Object.entries(row.perClient || {})) {
+      mergeBreakdown(day.perClient[client] ||= normalizeBreakdown(null, 0), normalizeBreakdown(value, value?.tokens, value?.cost, value?.messages, value?.unpricedTokens));
+    }
+    for (const [model, value] of Object.entries(row.perModel || {})) {
+      mergeBreakdown(day.perModel[model] ||= normalizeBreakdown(null, 0), normalizeBreakdown(value, value?.tokens, value?.cost, value?.messages, value?.unpricedTokens));
+    }
+    days.set(date, day);
+    return;
+  }
+
+  const client = String(row.client || row.provider || '').trim() || 'unknown';
+  const model = String(row.model || row.model_codename || '').trim() || 'unknown';
+  const clientValue = normalizeBreakdown(
+    row.perClient || row,
+    tokens,
+    cost,
+    messages,
+    unpriced
+  );
+  mergeBreakdown(day.perClient[client] ||= normalizeBreakdown(null, 0), clientValue);
+  const modelValue = normalizeBreakdown(
+    row.perModel || row,
+    tokens,
+    cost,
+    messages,
+    unpriced
+  );
+  mergeBreakdown(day.perModel[model] ||= normalizeBreakdown(null, 0), modelValue);
+  days.set(date, day);
+}
+
+function getStatement(database, key, sql) {
+  if (!database._stmts) database._stmts = new Map();
+  let stmt = database._stmts.get(key);
+  if (!stmt) {
+    stmt = database.prepare(sql);
+    database._stmts.set(key, stmt);
+  }
+  return stmt;
+}
+
+function parseRuntimeRows(database) {
+  const stmt = getStatement(database, 'runtimeRows', `SELECT date_bucket, payload_json FROM ${RUNTIME_HISTORY_TABLE} ORDER BY date_bucket`);
+  const rows = stmt.all();
+  if (rows.length === 0) return [];
+  return rows.map((row) => {
+    try { return JSON.parse(row.payload_json); } catch (_) { return null; }
+  }).filter(Boolean);
+}
+
+function baseRows(database, coveredDates) {
+  if (!database) return [];
+  const hasDaily = getStatement(database, 'hasDaily', "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'daily_usage'").get();
+  if (!hasDaily) return [];
+  const covered = coveredDates instanceof Set ? coveredDates : new Set(coveredDates || []);
+  const stmt = getStatement(database, 'baseRows', `
+    SELECT date_bucket, provider, model_codename, turn_count,
+      total_uncached_in, total_cached_in, total_cache_write, total_output,
+      total_processed, total_known_cost_usd, unknown_pricing_turn_count,
+      cache_savings_pct
+    FROM daily_usage
+    ORDER BY date_bucket, provider, model_codename
+  `);
+  const rows = stmt.all();
+  if (covered.size === 0) return rows;
+  return rows.filter((row) => !covered.has(String(row.date_bucket).slice(0, 10)));
+}
+
+const DAILY_USAGE_COLUMNS = Object.freeze([
+  { name: 'turn_count', type: 'INTEGER NOT NULL DEFAULT 0' },
+  { name: 'total_uncached_in', type: 'INTEGER NOT NULL DEFAULT 0' },
+  { name: 'total_cached_in', type: 'INTEGER NOT NULL DEFAULT 0' },
+  { name: 'total_cache_write', type: 'INTEGER NOT NULL DEFAULT 0' },
+  { name: 'total_output', type: 'INTEGER NOT NULL DEFAULT 0' },
+  { name: 'total_reasoning', type: 'INTEGER NOT NULL DEFAULT 0' },
+  { name: 'total_processed', type: 'INTEGER NOT NULL DEFAULT 0' },
+  { name: 'total_known_cost_usd', type: 'REAL NOT NULL DEFAULT 0.0' },
+  { name: 'unknown_pricing_turn_count', type: 'INTEGER NOT NULL DEFAULT 0' },
+  { name: 'cache_savings_pct', type: 'REAL NOT NULL DEFAULT 0.0' }
+]);
+
+function ensureDailyUsageTable(database) {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS daily_usage (
+      date_bucket TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      model_codename TEXT NOT NULL,
+      turn_count INTEGER NOT NULL DEFAULT 0,
+      total_uncached_in INTEGER NOT NULL DEFAULT 0,
+      total_cached_in INTEGER NOT NULL DEFAULT 0,
+      total_cache_write INTEGER NOT NULL DEFAULT 0,
+      total_output INTEGER NOT NULL DEFAULT 0,
+      total_reasoning INTEGER NOT NULL DEFAULT 0,
+      total_processed INTEGER NOT NULL DEFAULT 0,
+      total_known_cost_usd REAL NOT NULL DEFAULT 0.0,
+      unknown_pricing_turn_count INTEGER NOT NULL DEFAULT 0,
+      cache_savings_pct REAL NOT NULL DEFAULT 0.0,
+      PRIMARY KEY (date_bucket, provider, model_codename)
+    );
+  `);
+  const existingCols = new Set(database.prepare("PRAGMA table_info('daily_usage')").all().map((c) => c.name));
+  for (const col of DAILY_USAGE_COLUMNS) {
+    if (!existingCols.has(col.name)) {
+      database.exec(`ALTER TABLE daily_usage ADD COLUMN ${col.name} ${col.type};`);
+    }
+  }
+}
+
+function reconcileDailyUsage(database, seedPath) {
+  if (!seedPath || !fs.existsSync(seedPath)) return;
+  const escapedSeed = path.resolve(seedPath).replace(/'/g, "''");
+  try {
+    database.exec(`ATTACH DATABASE '${escapedSeed}' AS seed_ledger;`);
+  } catch (_) {
+    return;
+  }
+
+  try {
+    const seedHasDaily = database.prepare("SELECT 1 FROM seed_ledger.sqlite_master WHERE type = 'table' AND name = 'daily_usage'").get();
+    if (!seedHasDaily) return;
+
+    ensureDailyUsageTable(database);
+
+    const comparison = database.prepare(`
+      SELECT
+        (SELECT coalesce(sum(total_processed), 0) FROM daily_usage) AS user_tokens,
+        (SELECT coalesce(sum(total_processed), 0) FROM seed_ledger.daily_usage) AS seed_tokens,
+        EXISTS (
+          SELECT 1 FROM seed_ledger.daily_usage s
+          WHERE NOT EXISTS (
+            SELECT 1 FROM daily_usage u
+            WHERE u.date_bucket = s.date_bucket
+              AND u.provider = s.provider
+              AND u.model_codename = s.model_codename
+          )
+        ) AS missing_rows
+    `).get();
+
+    if (!comparison) return;
+
+    const needsMerge = comparison.user_tokens < comparison.seed_tokens || Boolean(comparison.missing_rows);
+    if (!needsMerge) return;
+
+    database.exec(`
+      INSERT INTO daily_usage (
+        date_bucket, provider, model_codename, turn_count,
+        total_uncached_in, total_cached_in, total_cache_write, total_output,
+        total_reasoning, total_processed, total_known_cost_usd,
+        unknown_pricing_turn_count, cache_savings_pct
+      )
+      SELECT
+        date_bucket, provider, model_codename, turn_count,
+        total_uncached_in, total_cached_in, total_cache_write, total_output,
+        total_reasoning, total_processed, total_known_cost_usd,
+        unknown_pricing_turn_count, cache_savings_pct
+      FROM seed_ledger.daily_usage
+      WHERE true
+      ON CONFLICT(date_bucket, provider, model_codename) DO UPDATE SET
+        turn_count = CASE
+          WHEN excluded.total_processed > daily_usage.total_processed
+            OR (excluded.total_processed = daily_usage.total_processed AND excluded.turn_count > daily_usage.turn_count)
+          THEN excluded.turn_count ELSE daily_usage.turn_count END,
+        total_uncached_in = CASE
+          WHEN excluded.total_processed > daily_usage.total_processed
+          THEN excluded.total_uncached_in ELSE daily_usage.total_uncached_in END,
+        total_cached_in = CASE
+          WHEN excluded.total_processed > daily_usage.total_processed
+          THEN excluded.total_cached_in ELSE daily_usage.total_cached_in END,
+        total_cache_write = CASE
+          WHEN excluded.total_processed > daily_usage.total_processed
+          THEN excluded.total_cache_write ELSE daily_usage.total_cache_write END,
+        total_output = CASE
+          WHEN excluded.total_processed > daily_usage.total_processed
+          THEN excluded.total_output ELSE daily_usage.total_output END,
+        total_reasoning = CASE
+          WHEN excluded.total_processed > daily_usage.total_processed
+          THEN excluded.total_reasoning ELSE daily_usage.total_reasoning END,
+        total_processed = CASE
+          WHEN excluded.total_processed > daily_usage.total_processed
+          THEN excluded.total_processed ELSE daily_usage.total_processed END,
+        total_known_cost_usd = CASE
+          WHEN excluded.total_processed > daily_usage.total_processed
+            OR (excluded.total_processed = daily_usage.total_processed AND excluded.total_known_cost_usd > daily_usage.total_known_cost_usd)
+          THEN excluded.total_known_cost_usd ELSE daily_usage.total_known_cost_usd END,
+        unknown_pricing_turn_count = CASE
+          WHEN excluded.total_processed > daily_usage.total_processed
+          THEN excluded.unknown_pricing_turn_count ELSE daily_usage.unknown_pricing_turn_count END,
+        cache_savings_pct = CASE
+          WHEN excluded.total_processed > daily_usage.total_processed
+          THEN excluded.cache_savings_pct ELSE daily_usage.cache_savings_pct END;
+    `);
+  } catch (_) {
+    // Non-fatal if merge fails
+  } finally {
+    try {
+      database.exec('DETACH DATABASE seed_ledger;');
+    } catch (_) {}
+  }
+}
+
+function packagedSeedPath(options = {}) {
+  const explicit = String(options.seedPath || options.env?.TOKEN_MONITOR_LEDGER_SEED_PATH
+    || process.env.TOKEN_MONITOR_LEDGER_SEED_PATH || '').trim();
+  if (explicit) return path.resolve(explicit);
+  if (process.resourcesPath) {
+    const candidate = path.join(process.resourcesPath, 'token_ledger.seed.sqlite');
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+function historyFromDays(days) {
+  const daily = [...days.values()].sort((a, b) => a.date.localeCompare(b.date));
+  daily.forEach((day) => {
+    day.tokens = Math.round(day.tokens);
+    day.cost = Number(day.cost.toFixed(6));
+    day.messages = Math.round(day.messages);
+    day.cacheReadTokens = Math.round(day.cacheReadTokens);
+    day.cacheWriteTokens = Math.round(day.cacheWriteTokens);
+    day.outputTokens = Math.round(day.outputTokens);
+    day.unclassifiedTokens = Math.round(day.unclassifiedTokens);
+    for (const value of Object.values(day.perClient)) {
+      value.tokens = Math.round(value.tokens);
+      value.cost = Number(value.cost.toFixed(6));
+    }
+    for (const value of Object.values(day.perModel)) {
+      value.tokens = Math.round(value.tokens);
+      value.cost = Number(value.cost.toFixed(6));
+    }
+  });
+  computeIntensities(daily);
+  const monthly = monthlyRollup(daily);
+  let totalTokens = 0;
+  let totalCost = 0;
+  let activeDays = 0;
+  let peakDayTokens = 0;
+  let messages = 0;
+  let unpricedTokens = 0;
+  const modelTotals = {};
+
+  for (let i = 0; i < daily.length; i++) {
+    const day = daily[i];
+    totalTokens += day.tokens;
+    totalCost += day.cost;
+    if (day.tokens > 0) activeDays += 1;
+    if (day.tokens > peakDayTokens) peakDayTokens = day.tokens;
+    messages += day.messages;
+    if (day.unpricedTokens > 0) unpricedTokens += positive(day.unpricedTokens);
+    for (const [model, value] of Object.entries(day.perModel)) {
+      modelTotals[model] = (modelTotals[model] || 0) + value.tokens;
+    }
+  }
+
+  const sortedModels = Object.entries(modelTotals).sort((a, b) => b[1] - a[1]);
+  const favoriteModel = sortedModels[0]?.[0] || '';
+  const summary = {
+    totalTokens,
+    totalCost: Number(totalCost.toFixed(6)),
+    activeDays,
+    peakDayTokens,
+    favoriteModel,
+    messages,
+    ...(unpricedTokens > 0 ? { unpricedTokens } : {})
+  };
+  return { daily, monthly, summary };
+}
+
+function periodFromDays(days) {
+  const period = emptyPeriod();
+  for (const day of days) {
+    period.totalTokens += positive(day.tokens);
+    period.costUsd += Math.max(0, finite(day.cost));
+    period.cacheReadTokens += positive(day.cacheReadTokens);
+    period.cacheWriteTokens += positive(day.cacheWriteTokens);
+    period.outputTokens += positive(day.outputTokens);
+    period.unclassifiedTokens += positive(day.unclassifiedTokens);
+    for (const [client, value] of Object.entries(day.perClient || {})) {
+      period.clients[client] = (period.clients[client] || 0) + positive(value.tokens);
+      period.clientCosts[client] = (period.clientCosts[client] || 0) + Math.max(0, finite(value.cost));
+      period.clientCacheReads[client] = (period.clientCacheReads[client] || 0) + positive(value.cacheReadTokens);
+      period.clientCacheWrites[client] = (period.clientCacheWrites[client] || 0) + positive(value.cacheWriteTokens);
+      period.clientOutputs[client] = (period.clientOutputs[client] || 0) + positive(value.outputTokens);
+      period.clientUnclassifiedTokens[client] = (period.clientUnclassifiedTokens[client] || 0) + positive(value.unclassifiedTokens);
+    }
+    for (const [model, value] of Object.entries(day.perModel || {})) {
+      period.models[model] = (period.models[model] || 0) + positive(value.tokens);
+      period.modelCosts[model] = (period.modelCosts[model] || 0) + Math.max(0, finite(value.cost));
+      period.modelCacheReads[model] = (period.modelCacheReads[model] || 0) + positive(value.cacheReadTokens);
+      period.modelCacheWrites[model] = (period.modelCacheWrites[model] || 0) + positive(value.cacheWriteTokens);
+      period.modelOutputs[model] = (period.modelOutputs[model] || 0) + positive(value.outputTokens);
+      period.modelUnclassifiedTokens[model] = (period.modelUnclassifiedTokens[model] || 0) + positive(value.unclassifiedTokens);
+    }
+  }
+  period.costUsd = Number(period.costUsd.toFixed(6));
+  return period;
+}
+
+function createTokenLedgerStore(options = {}) {
+  const databasePath = resolveTokenLedgerPath(options);
+  const explicitSeed = packagedSeedPath(options);
+  const fallbackSeed = !options.path && path.resolve(repoLedgerPath()) !== path.resolve(databasePath) && fs.existsSync(repoLedgerPath())
+    ? repoLedgerPath()
+    : null;
+  const seedPath = explicitSeed || fallbackSeed;
+  let database = null;
+  let available = false;
+
+  function cleanStaleWal() {
+    try { fs.rmSync(`${databasePath}-wal`, { force: true }); } catch (_) {}
+    try { fs.rmSync(`${databasePath}-shm`, { force: true }); } catch (_) {}
+  }
+
+  function isCorrupt(db) {
+    try {
+      const check = db.prepare('PRAGMA quick_check').get();
+      return !check || check.quick_check !== 'ok';
+    } catch (_) {
+      return true;
+    }
+  }
+
+  function open() {
+    if (database) return database;
+    try {
+      fs.mkdirSync(path.dirname(databasePath), { recursive: true });
+
+      const dbExists = fs.existsSync(databasePath);
+      let needsCopy = !dbExists;
+      if (dbExists) {
+        try {
+          const stat = fs.statSync(databasePath);
+          if (stat.size === 0) needsCopy = true;
+        } catch (_) {
+          needsCopy = true;
+        }
+      }
+
+      if (needsCopy && seedPath && fs.existsSync(seedPath)) {
+        cleanStaleWal();
+        fs.copyFileSync(seedPath, databasePath);
+      }
+
+      try {
+        database = new DatabaseSync(databasePath);
+        if (isCorrupt(database)) throw new Error('Database integrity check failed');
+      } catch (openError) {
+        if (seedPath && fs.existsSync(seedPath)) {
+          try { database?.close(); } catch (_) {}
+          database = null;
+          cleanStaleWal();
+          fs.copyFileSync(seedPath, databasePath);
+          database = new DatabaseSync(databasePath);
+        } else {
+          throw openError;
+        }
+      }
+
+      ensureSchema(database);
+      if (seedPath && fs.existsSync(seedPath) && path.resolve(seedPath) !== path.resolve(databasePath)) {
+        reconcileDailyUsage(database, seedPath);
+      }
+      available = true;
+    } catch (_) {
+      try { database?.close(); } catch (_) {}
+      database = null;
+      available = false;
+    }
+    return database;
+  }
+
+  function readHistory(options = {}) {
+    if (!fs.existsSync(databasePath) && !(seedPath && fs.existsSync(seedPath))) return null;
+    const db = open();
+    if (!db) return null;
+    const runtime = parseRuntimeRows(db);
+    const overlay = Array.isArray(options.overlayHistory?.daily) ? options.overlayHistory.daily : [];
+    const coveredDates = new Set(runtime.map((row) => String(row.date || '').slice(0, 10)));
+    const days = new Map();
+    for (const row of baseRows(db, coveredDates)) addDayRow(days, row);
+    for (const row of runtime) addDayRow(days, row);
+    for (const row of overlay) {
+      const date = String(row?.date || '').slice(0, 10);
+      days.delete(date);
+      addDayRow(days, row);
+    }
+    return historyFromDays(days);
+  }
+
+  function readPeriods(options = {}) {
+    const history = readHistory(options);
+    if (!history) return null;
+    const today = localDayKey();
+    const month = today.slice(0, 7);
+    return {
+      today: periodFromDays(history.daily.filter((day) => day.date === today)),
+      month: periodFromDays(history.daily.filter((day) => day.date.slice(0, 7) === month)),
+      allTime: periodFromDays(history.daily)
+    };
+  }
+
+  function writeHistory(history) {
+    const db = open();
+    if (!db || !history || !Array.isArray(history.daily)) return false;
+    const now = Date.now();
+    const insert = db.prepare(`
+      INSERT INTO ${RUNTIME_HISTORY_TABLE} (date_bucket, payload_json, updated_at_ms)
+      VALUES (?, ?, ?)
+      ON CONFLICT(date_bucket) DO UPDATE SET payload_json = excluded.payload_json, updated_at_ms = excluded.updated_at_ms
+    `);
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      db.exec(`DELETE FROM ${RUNTIME_HISTORY_TABLE}`);
+      for (const row of history.daily) {
+        const date = String(row?.date || '').slice(0, 10);
+        if (/^\d{4}-\d{2}-\d{2}$/.test(date)) insert.run(date, JSON.stringify(row), now);
+      }
+      db.exec('COMMIT');
+      return true;
+    } catch (error) {
+      try { db.exec('ROLLBACK'); } catch (_) {}
+      throw error;
+    }
+  }
+
+  function close() {
+    try { database?.close(); } catch (_) {}
+    database = null;
+    available = false;
+  }
+
+  return {
+    available: () => available || Boolean(open()),
+    databasePath,
+    readHistory,
+    readPeriods,
+    writeHistory,
+    close
+  };
+}
+
+module.exports = {
+  baseRows,
+  createTokenLedgerStore,
+  packagedSeedPath,
+  resolveTokenLedgerPath
+};

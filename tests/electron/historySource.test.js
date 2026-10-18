@@ -296,3 +296,28 @@ test('resolves embedded device histories without a loopback request', async () =
   assert.equal(result.history.summary.totalTokens, 12);
   assert.equal(result.deviceHistories[0].deviceId, 'host');
 });
+
+test('resolveCompleteHistoryWithDevices resolves local ledger history and marks historyAvailable for synthetic or raw local devices', async () => {
+  const { aggregateHistory: realAggregate } = require('../../src/shared/usage');
+  const ledgerHistory = {
+    daily: [{ date: '2026-10-17', tokens: 11_300_000_000 }],
+    monthly: [{ month: '2026-10', tokens: 11_300_000_000 }],
+    summary: { totalTokens: 11_300_000_000 }
+  };
+  const synthetic = {
+    deviceId: 'cold-start-device',
+    historyAvailable: true,
+    history: ledgerHistory
+  };
+  const result = await resolveCompleteHistoryWithDevices({
+    mode: 'local',
+    localDevice: synthetic,
+    aggregateHistory: realAggregate
+  });
+  assert.equal(result.history.summary.totalTokens, 11_300_000_000);
+  assert.equal(result.deviceHistories.length, 1);
+  assert.equal(result.deviceHistories[0].deviceId, 'cold-start-device');
+  assert.equal(result.deviceHistories[0].historyAvailable, true);
+  assert.equal(result.deviceHistories[0].history.summary.totalTokens, 11_300_000_000);
+});
+
