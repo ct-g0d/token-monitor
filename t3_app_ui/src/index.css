@@ -1,0 +1,4 @@
+@import "tailwindcss";
+@source "../../t3codeexp/apps/web/src";
+@source "../../t3codeexp/packages";
+@import "../../t3codeexp/apps/web/src/index.css";
