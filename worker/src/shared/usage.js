@@ -449,7 +449,7 @@ function normalizeProjects(value) {
 function projectRollupFromSessions(sessions) {
   const projects = Object.create(null);
   for (const session of Object.values(sessions || {})) {
-    if (isReasonixSyntheticSession(session)) continue;
+    if (isReasonixSyntheticSession(session) || isAccountingExcludedClient(session?.client)) continue;
     const label = String(session?.projectLabel || '').trim().normalize('NFC');
     const key = canonicalProjectKey(label);
     if (!key) continue;
