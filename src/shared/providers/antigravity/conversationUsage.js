@@ -49,19 +49,42 @@ function buildAntigravityUsageView(records, options = {}) {
     }
   }
 
+  const readerSessionIds = new Set();
+  for (const record of records) {
+    if (record.sessionId) readerSessionIds.add(String(record.sessionId).toLowerCase());
+  }
+
   const entries = [];
   const days = new Map();
   const sessionKeys = new Set();
 
-  for (const record of records) {
-    const sessionId = String(record.sessionId || '').toLowerCase();
-    if (sessionId && reportedSessionIds.has(sessionId)) {
-      continue;
+  function addClientTokensToDay(date, modelId, tokens, cost = 0, messages = 1) {
+    if (!days.has(date)) days.set(date, { date, clients: [] });
+    const day = days.get(date);
+    let model = day.clients.find((item) => item.modelId === modelId);
+    if (!model) {
+      model = {
+        client: 'antigravity',
+        modelId,
+        tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0 },
+        cost: 0,
+        messages: 0
+      };
+      day.clients.push(model);
     }
+    model.tokens.input += (tokens.input || 0);
+    model.tokens.output += (tokens.output || 0);
+    model.tokens.cacheRead += (tokens.cacheRead || 0);
+    model.tokens.cacheWrite += (tokens.cacheWrite || 0);
+    model.tokens.reasoning += (tokens.reasoning || 0);
+    model.cost += cost;
+    model.messages += messages;
+  }
+
+  for (const record of records) {
     const at = record.timestampMs;
     if (!Number.isFinite(at) || at > now.getTime()) continue;
 
-    const iso = new Date(at).toISOString();
     const uncachedIn = record.totals?.uncachedInputTokens || 0;
     const cachedIn = record.totals?.cachedInputTokens || 0;
     const cacheWrite = record.totals?.cacheCreationTokens || 0;
@@ -69,6 +92,21 @@ function buildAntigravityUsageView(records, options = {}) {
     const reasoning = record.totals?.reasoningTokens || 0;
     const disjointOut = Math.max(0, totalOut - reasoning);
 
+    const date = localDayKey(new Date(at));
+    addClientTokensToDay(date, record.model || 'antigravity-unknown', {
+      input: uncachedIn,
+      output: disjointOut,
+      cacheRead: cachedIn,
+      cacheWrite,
+      reasoning
+    });
+
+    const sessionId = String(record.sessionId || '').toLowerCase();
+    if (sessionId && reportedSessionIds.has(sessionId)) {
+      continue;
+    }
+
+    const iso = new Date(at).toISOString();
     const entry = {
       client: 'antigravity',
       provider: 'google',
@@ -86,27 +124,32 @@ function buildAntigravityUsageView(records, options = {}) {
     };
     entries.push(entry);
     sessionKeys.add(`antigravity:${record.sessionId}`);
+  }
+
+  // Include native tokscale sessions that are NOT on disk so disjoint live sessions are counted
+  for (const session of Object.values(nativeSessions)) {
+    const client = session.client;
+    if (client !== 'antigravity' && client !== 'antigravity-cli' && client !== 'antigravity-extension') continue;
+    const sid = String(session.sessionId || '').toLowerCase();
+    if (sid && readerSessionIds.has(sid)) continue;
+
+    const dateStr = session.lastUsedAt || session.startedAt;
+    const at = Date.parse(dateStr || '');
+    if (!Number.isFinite(at) || at > now.getTime()) continue;
 
     const date = localDayKey(new Date(at));
-    if (!days.has(date)) days.set(date, { date, clients: [] });
-    const day = days.get(date);
-    let model = day.clients.find((item) => item.modelId === entry.model);
-    if (!model) {
-      model = {
-        client: 'antigravity',
-        modelId: entry.model,
-        tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0 },
-        cost: 0,
-        messages: 0
-      };
-      day.clients.push(model);
-    }
-    model.tokens.input += entry.input;
-    model.tokens.output += entry.output;
-    model.tokens.cacheRead += entry.cacheRead;
-    model.tokens.cacheWrite += entry.cacheWrite;
-    model.tokens.reasoning += entry.reasoning;
-    model.messages += 1;
+    const model = session.model || Object.keys(session.models || {})[0] || 'antigravity-unknown';
+    const totalOut = session.outputTokens || 0;
+    const reasoning = session.reasoningTokens || 0;
+    const disjointOut = Math.max(0, totalOut - reasoning);
+
+    addClientTokensToDay(date, model, {
+      input: session.inputTokens || 0,
+      output: disjointOut,
+      cacheRead: session.cacheReadTokens || 0,
+      cacheWrite: session.cacheWriteTokens || 0,
+      reasoning
+    }, session.costUsd || 0, session.messageCount || 1);
   }
 
   function periodForWindow(start) {

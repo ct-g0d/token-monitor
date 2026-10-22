@@ -15,8 +15,11 @@ const {
 
 const {
   buildAntigravityUsageView,
-  mergeAntigravityGraph
+  mergeAntigravityGraph,
+  readAntigravityUsageView
 } = require('../../src/shared/providers/antigravity/conversationUsage');
+
+const { localDayKey } = require('../../src/shared/history');
 
 function encodeVarint(num) {
   const bytes = [];
@@ -242,7 +245,7 @@ test('buildAntigravityUsageView dedupes against Tokscale reported sessions and e
     allTimeSince: '2026-07-25'
   });
 
-  // Only newSession should be included
+  // Only newSession should be included in sessionKeys
   assert.equal(view.sessionKeys.length, 1);
   assert.equal(view.sessionKeys[0], `antigravity:${newSession}`);
 
@@ -304,4 +307,185 @@ test('mergeAntigravityGraph keeps the larger antigravity reading per day and nev
   assert.equal(day('2026-10-04').activeTimeMs, 0);
   assert.equal(merged.contributions.length, 3);
   assert.equal(mergeAntigravityGraph(retained, { contributions: [] }), retained);
+});
+
+test('disjoint same-day sessions on disk and in tokscale are summed in the graph contribution', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ag-disjoint-test-'));
+  try {
+    const sessionDisk = 'sess-disk-001';
+    const dbPath = path.join(tmpDir, `${sessionDisk}.db`);
+    // Use mid-day local timestamps so both sessions share the exact same local calendar day
+    const diskTime = new Date('2026-10-20T02:00:00Z');
+    const tokscaleTime = new Date('2026-10-20T04:00:00Z');
+    const dayKey = localDayKey(diskTime);
+
+    // Disk session: 1000 input, 200 output = 1200 tokens
+    const row = buildMockGenPayload({
+      model: 'gemini-1.5-pro',
+      timestampSeconds: Math.floor(diskTime.getTime() / 1000),
+      uncachedInput: 1000,
+      cachedInput: 0,
+      output: 200,
+      reasoning: 0,
+      responseId: 'resp-disk-1'
+    });
+    createMockConversationDb(dbPath, [row]);
+
+    // Tokscale native session on same day: 500 input, 100 output = 600 tokens
+    const nativePeriod = {
+      sessions: {
+        'antigravity:sess-tokscale-002': {
+          client: 'antigravity',
+          sessionId: 'sess-tokscale-002',
+          startedAt: tokscaleTime.toISOString(),
+          lastUsedAt: tokscaleTime.toISOString(),
+          inputTokens: 500,
+          outputTokens: 100,
+          reasoningTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          totalTokens: 600,
+          models: { 'gemini-1.5-pro': 600 }
+        }
+      }
+    };
+
+    const view = await readAntigravityUsageView({
+      roots: [tmpDir],
+      nativePeriod,
+      now: Date.parse('2026-10-22T00:00:00Z'),
+      allTimeSince: '2026-07-25'
+    });
+
+    assert.equal(view.graph.contributions.length, 1);
+    const day = view.graph.contributions[0];
+    assert.equal(day.date, dayKey);
+    const dayTokens = day.clients
+      .filter((c) => c.client === 'antigravity')
+      .reduce((sum, c) => sum + Object.values(c.tokens).reduce((a, b) => a + b, 0), 0);
+    // 1200 from disk + 600 from tokscale = 1800 tokens summed
+    assert.equal(dayTokens, 1800);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('overlapping same-day sessions are counted once with authoritative disk tokens', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ag-overlap-test-'));
+  try {
+    const sessionOverlap = 'sess-overlap-001';
+    const dbPath = path.join(tmpDir, `${sessionOverlap}.db`);
+    const diskTime = new Date('2026-10-20T02:00:00Z');
+    const dayKey = localDayKey(diskTime);
+
+    // Disk session: 1000 input, 500 output = 1500 tokens
+    const row = buildMockGenPayload({
+      model: 'gemini-1.5-pro',
+      timestampSeconds: Math.floor(diskTime.getTime() / 1000),
+      uncachedInput: 1000,
+      cachedInput: 0,
+      output: 500,
+      reasoning: 0,
+      responseId: 'resp-overlap-1'
+    });
+    createMockConversationDb(dbPath, [row]);
+
+    // Tokscale native session for the SAME session with undercounted tokens (400 input, 200 output = 600 tokens)
+    const nativePeriod = {
+      sessions: {
+        [`antigravity:${sessionOverlap}`]: {
+          client: 'antigravity',
+          sessionId: sessionOverlap,
+          startedAt: diskTime.toISOString(),
+          lastUsedAt: diskTime.toISOString(),
+          inputTokens: 400,
+          outputTokens: 200,
+          reasoningTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          totalTokens: 600,
+          models: { 'gemini-1.5-pro': 600 }
+        }
+      }
+    };
+
+    const view = await readAntigravityUsageView({
+      roots: [tmpDir],
+      nativePeriod,
+      now: Date.parse('2026-10-22T00:00:00Z'),
+      allTimeSince: '2026-07-25'
+    });
+
+    assert.equal(view.graph.contributions.length, 1);
+    const day = view.graph.contributions[0];
+    assert.equal(day.date, dayKey);
+    const dayTokens = day.clients
+      .filter((c) => c.client === 'antigravity')
+      .reduce((sum, c) => sum + Object.values(c.tokens).reduce((a, b) => a + b, 0), 0);
+    // Counted once: authoritatively 1500 tokens from disk, NOT 1500 + 600 = 2100
+    assert.equal(dayTokens, 1500);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('deleted-from-disk history is preserved when merging against retained graph', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ag-deleted-test-'));
+  try {
+    const sessionActive = 'sess-active-001';
+    const dbPath = path.join(tmpDir, `${sessionActive}.db`);
+    const activeTime = new Date('2026-10-20T02:00:00Z');
+    const dayKey = localDayKey(activeTime);
+
+    // Disk currently only has session on dayKey: 500 tokens
+    const row = buildMockGenPayload({
+      model: 'gemini-1.5-pro',
+      timestampSeconds: Math.floor(activeTime.getTime() / 1000),
+      uncachedInput: 400,
+      cachedInput: 0,
+      output: 100,
+      reasoning: 0,
+      responseId: 'resp-active-1'
+    });
+    createMockConversationDb(dbPath, [row]);
+
+    const view = await readAntigravityUsageView({
+      roots: [tmpDir],
+      now: Date.parse('2026-10-22T00:00:00Z'),
+      allTimeSince: '2026-07-25'
+    });
+
+    // Retained graph holds an older day (2026-10-01) whose conversation was deleted from disk
+    const retained = {
+      contributions: [
+        {
+          date: '2026-10-01',
+          clients: [
+            { client: 'antigravity', modelId: 'gemini-1.5-pro', tokens: { input: 700, output: 100, cacheRead: 0, cacheWrite: 0, reasoning: 0 } }
+          ]
+        }
+      ]
+    };
+
+    const merged = mergeAntigravityGraph(retained, view.graph);
+    const day1001 = merged.contributions.find((c) => c.date === '2026-10-01');
+    const dayActive = merged.contributions.find((c) => c.date === dayKey);
+
+    assert.ok(day1001, 'Expected 2026-10-01 to be preserved from retained history');
+    assert.ok(dayActive, `Expected ${dayKey} to be present from live reader`);
+
+    const tokens1001 = day1001.clients
+      .filter((c) => c.client === 'antigravity')
+      .reduce((sum, c) => sum + Object.values(c.tokens).reduce((a, b) => a + b, 0), 0);
+    const tokensActive = dayActive.clients
+      .filter((c) => c.client === 'antigravity')
+      .reduce((sum, c) => sum + Object.values(c.tokens).reduce((a, b) => a + b, 0), 0);
+
+    // 2026-10-01 preserved its 800 tokens from archive
+    assert.equal(tokens1001, 800);
+    // Active day has its 500 tokens from current disk
+    assert.equal(tokensActive, 500);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 });
