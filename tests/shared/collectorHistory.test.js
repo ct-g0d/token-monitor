@@ -147,6 +147,32 @@ test('Dots history still merges after a successful empty native scan or a graph 
   assert.equal(fallback.daily[0].perClient.codex.tokens, 10);
 });
 
+test('collectHistoryOnce counts an antigravity day once when tokscale and the reader both report it', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-antigravity-history-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const tokscaleGraph = { contributions: [{ date: '2026-06-07', clients: [
+    { client: 'antigravity-cli', modelId: 'gemini', tokens: { input: 600 }, cost: 0, messages: 2 }
+  ] }] };
+  const options = {
+    clients: 'antigravity', todayKey: '2026-06-08',
+    antigravityLocalGraph: { contributions: [{ date: '2026-06-07', clients: [
+      { client: 'antigravity', modelId: 'gemini', tokens: { input: 500 }, cost: 0, messages: 1 }
+    ] }] },
+    dailyHistoryArchiveEnabled: true,
+    dailyHistoryArchiveOptions: { path: path.join(dir, 'history.json') },
+    runGraph: async () => tokscaleGraph
+  };
+  // Repeated ticks retain the same day, so the reader's reading must not accumulate.
+  for (let tick = 0; tick < 2; tick += 1) {
+    const history = await collectHistoryOnce(options);
+    assert.equal(history.daily[0].perClient.antigravity.tokens, 600);
+    assert.equal(history.summary.totalTokens, 600);
+  }
+  // With no tokscale days at all, the reader is the whole antigravity history.
+  const readerOnly = await collectHistoryOnce({ ...options, dailyHistoryArchiveEnabled: false, runGraph: async () => ({ contributions: [] }) });
+  assert.equal(readerOnly.daily[0].perClient.antigravity.tokens, 500);
+});
+
 test('collector preserves the last successful history timestamp after a failed refresh', async () => {
   let graphCalls = 0;
   const updates = [];

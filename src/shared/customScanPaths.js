@@ -6,6 +6,7 @@ const path = require('node:path');
 const { CLIENT_IDS, FORK_ONLY_CLIENT_IDS } = require('./clientCatalog');
 const { LEGACY_CLIENT_ID_ALIASES } = require('./clientTracking');
 const { tokscaleCustomScanClientIds } = require('./tokscaleClientMapping');
+const { discoverAntigravityAcpRoots } = require('./providers/antigravity/paths');
 
 const MAX_CUSTOM_SCAN_PATHS = 64;
 const MAX_CUSTOM_SCAN_PATHS_PER_CLIENT = 16;
@@ -127,11 +128,28 @@ function customScanPathsFingerprint(value, options = {}) {
 }
 
 function tokscaleExtraDirsEnv(value, inherited = '', options = {}) {
-  const additions = customScanPathEntries(value, options).flatMap(({ client, dir }) => (
+  const configuredEntries = customScanPathEntries(value, options);
+  const seenAntigravity = new Set(
+    configuredEntries
+      .filter((e) => e.client === 'antigravity')
+      .map((e) => canonicalDir(e.dir, options))
+  );
+
+  const additions = configuredEntries.flatMap(({ client, dir }) => (
     suppressedCustomScanIds(client, dir, options)
       .map((scanId) => `${scanId}:${dir}`)
   ));
-  return [String(inherited || '').trim(), ...additions].filter(Boolean).join(',');
+
+  const autoRoots = options.discoverAcp
+    ? discoverAntigravityAcpRoots(options).filter((dir) => !seenAntigravity.has(canonicalDir(dir, options)))
+    : [];
+
+  const autoAdditions = autoRoots.flatMap((dir) => (
+    suppressedCustomScanIds('antigravity', dir, options)
+      .map((scanId) => `${scanId}:${dir}`)
+  ));
+
+  return [String(inherited || '').trim(), ...additions, ...autoAdditions].filter(Boolean).join(',');
 }
 
 function platformPath(platform) {

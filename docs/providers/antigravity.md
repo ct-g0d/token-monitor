@@ -39,6 +39,10 @@ The parse-local CLI source lives under `${GEMINI_CLI_HOME || ~/.gemini}/antigrav
 
 Normal scans include both database identities. A custom Antigravity root is passed only to `antigravity` and `antigravity-cli`: the CLI and extension use the same `*.db` parser, so passing one custom directory to both would count rows without response IDs twice. When a persisted custom root is inside the built-in extension directory — the pre-upgrade workaround for reading it — the `antigravity-cli` leg is dropped for that root so its files are not parsed a second time. A custom root that contains the extension directory keeps the leg because it may hold databases outside it; the shared subtree can still count rows without response IDs twice until Tokscale dedupes on canonical file paths.
 
+### Conversation reader and history
+
+`src/shared/providers/antigravity/conversationReader.js` reads the conversation databases directly. Its per-day graph is reconciled into the history with `mergeAntigravityGraph()` before normalization, never summed: tokscale's retained days, the live tokscale graph and the ledger describe overlapping conversations, so each day keeps the larger antigravity reading, the same per-client, per-day rule the ledger overlay applies. Period totals (today, month, all-time) instead dedupe the reader against the sessions tokscale reports in the same tick, because they still have session ids; retained days do not.
+
 ### Watch behavior
 
 The native roots are watched so that a change there triggers an Antigravity-targeted refresh. Reading them is not quite write-free: the extension keeps one SQLite database per conversation in WAL mode, and each read-only scan rewrites every conversation's `*.db-shm` wal-index. The collector therefore drops `-shm` events for Antigravity (`SELF_WATCHED_SQLITE_SIDECAR_CLIENTS`); otherwise every scan would schedule the next one, about every 2 s, with nothing new to collect. Real activity still arrives through the `*.db` and `*.db-wal` files.

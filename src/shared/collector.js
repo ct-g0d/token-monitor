@@ -21,6 +21,9 @@ const {
 const { tokscalePackageNameForPlatform } = require('./tokscalePlatform');
 const { createTokscaleCapabilityResolver, filterSupportedClients, parseSupportedClients } = require('./tokscaleCapabilities');
 const { normalizeCustomScanPaths, customScanPathsFingerprint, tokscaleExtraDirsEnv } = require('./customScanPaths');
+const { discoverAntigravityAcpRoots } = require('./providers/antigravity/paths');
+const { discoverAntigravityRoots } = require('./providers/antigravity/conversationReader');
+const { mergeAntigravityGraph, readAntigravityUsageView, makeAntigravityUsageCache } = require('./providers/antigravity/conversationUsage');
 const { TOKSCALE_CLIENT_ALIASES, tokscaleScanClientIds } = require('./tokscaleClientMapping');
 const {
   applyPeriodDelta,
@@ -212,7 +215,7 @@ function tokscaleCommand(options = {}) {
   const customExtraDirs = tokscaleExtraDirsEnv(
     options.customScanPaths,
     process.env.TOKSCALE_EXTRA_DIRS,
-    { platform: options.platform || process.platform, home: options.homeDir }
+    { platform: options.platform || process.platform, home: options.homeDir, discoverAcp: options.discoverAcp !== undefined ? options.discoverAcp : true }
   );
   const extraDirsEnv = customExtraDirs
     ? { ...process.env, TOKSCALE_EXTRA_DIRS: customExtraDirs }
@@ -806,6 +809,9 @@ async function collectHistoryOnce(options) {
   const runGraph = options.runGraph || runTokscaleGraph;
   const capDays = Number.isFinite(options.capDays) ? options.capDays : HISTORY_CAP_DAYS;
   const todayKey = options.todayKey || localTodayKey();
+  // Reconciled at graph level so the retained and live days carry the same
+  // antigravity reading; adding it after normalization would count it twice.
+  const withAntigravity = (graph) => mergeAntigravityGraph(graph, options.antigravityLocalGraph);
   if (clients) {
     try {
       const graphJson = await runGraph({
@@ -815,7 +821,7 @@ async function collectHistoryOnce(options) {
       });
       throwIfAborted(options.signal);
       rawGraphs.push(graphJson);
-      liveHistory = normalizeHistory(parseGraphResult(graphJson), { capDays, todayKey });
+      liveHistory = normalizeHistory(parseGraphResult(withAntigravity(graphJson)), { capDays, todayKey });
     } catch (error) {
       if (options.signal?.aborted) throw abortReason(options.signal);
       failureCode = 'history-graph-failed';
@@ -828,9 +834,16 @@ async function collectHistoryOnce(options) {
     // A failed native scan without retained history is no update, not a new
     // Dots-only replacement for the device's last successful full history.
     if (!history && failureCode === 'history-graph-failed') return null;
-    return options.codexLocalGraph
-      ? mergeHistories([history, normalizeHistory(parseGraphResult(options.codexLocalGraph), { capDays, todayKey })].filter(Boolean), { capDays, todayKey })
-      : history;
+    // With no tokscale days retained, the antigravity reader is the whole history.
+    const base = history || (options.antigravityLocalGraph
+      ? normalizeHistory(parseGraphResult(withAntigravity({ contributions: [] })), { capDays, todayKey })
+      : null);
+    const additional = [
+      options.codexLocalGraph && normalizeHistory(parseGraphResult(options.codexLocalGraph), { capDays, todayKey })
+    ].filter(Boolean);
+    return additional.length
+      ? mergeHistories([base, ...additional].filter(Boolean), { capDays, todayKey })
+      : base;
   };
   if (options.dailyHistoryArchiveEnabled) {
     try {
@@ -843,7 +856,7 @@ async function collectHistoryOnce(options) {
         capDays,
         writeEnabled: options.dailyHistoryArchiveWriteEnabled
       });
-      const retained = normalizeHistory(parseGraphResult(retainedGraph), { capDays, todayKey });
+      const retained = normalizeHistory(parseGraphResult(withAntigravity(retainedGraph)), { capDays, todayKey });
       const result = retained.daily.length || retained.monthly.length ? retained : null;
       reportStatus(failureCode === null);
       return withLocalHistory(result);
@@ -1241,6 +1254,33 @@ async function collectUsageOnce(options) {
     }
   }
 
+  let antigravityLocalView = null;
+  if (trackedClientSet.has('antigravity') && options.antigravityConversationReaderEnabled !== false) {
+    try {
+      antigravityLocalView = await readAntigravityUsageView({
+        ...options,
+        cache: options.antigravityUsageCache,
+        now: collectedAt,
+        nativePeriod: allTime,
+        allTimeSince
+      });
+      throwIfAborted(options.signal);
+      if (antigravityLocalView.sessionKeys.length) {
+        today = mergePeriods(today, antigravityLocalView.today);
+        month = mergePeriods(month, antigravityLocalView.month);
+        allTime = mergePeriods(allTime, antigravityLocalView.allTime);
+      }
+      options.onAntigravityLocalUsageComputed?.(antigravityLocalView);
+    } catch (_error) {
+      if (options.signal?.aborted) throw abortReason(options.signal);
+      try {
+        options.onDiagnosticEvent?.({ subsystem: 'collector', code: 'antigravity-local-usage-read-failed' });
+      } catch (_) {
+        // Diagnostic observers must not turn a recoverable read error into a failed tick.
+      }
+    }
+  }
+
   // One filesystem probe per tick, shared by the legacy status and the health
   // record below. Probing twice cost a second pass over every client's roots —
   // including the per-workspace walk Copilot needs — and let one snapshot report
@@ -1275,6 +1315,7 @@ async function collectUsageOnce(options) {
   // The request ledger is this source's archive. A second per-session archive
   // would resurrect its contribution after a native rollout takes precedence.
   if (codexLocalView) summary.codexLocalSessionKeys = codexLocalView.sessionKeys;
+  if (antigravityLocalView) summary.antigravityLocalSessionKeys = antigravityLocalView.sessionKeys;
   if (options.reasonixNativeSessionsEnabled === true && trackedClientSet.has('reasonix')) {
     try {
       const nativeCache = options.reasonixNativeSessionCache || createReasonixNativeSessionCache({
@@ -1333,6 +1374,7 @@ async function collectUsageOnce(options) {
     const history = await collectHistoryOnce({
       clients: normalizedClients,
       codexLocalGraph: codexLocalView?.graph || null,
+      antigravityLocalGraph: antigravityLocalView?.graph || null,
       historyEnabled: options.historyEnabled,
       commandTimeoutMs: options.historyTimeoutMs,
       capDays: options.historyCapDays,
@@ -1479,6 +1521,12 @@ function watchClientRootsForClients(clientsCsv, options = {}) {
     rootsByClient.antigravity = [...new Set([...(rootsByClient.antigravity || []), antigravityCliDir])];
   }
   if (enabled.has('antigravity')) {
+    const agRoots = discoverAntigravityRoots(options).filter(dirExists);
+    if (agRoots.length > 0) {
+      rootsByClient.antigravity = [...new Set([...(rootsByClient.antigravity || []), ...agRoots])];
+    }
+  }
+  if (enabled.has('antigravity')) {
     // Watch the parent so a summary DB or WAL created after startup is seen.
     // Its policy below admits only those exact files, never the surrounding tree.
     const summaryDirs = antigravitySummaryWatchSources(options).map(({ dir }) => dir).filter(dirExists);
@@ -1532,6 +1580,7 @@ function watchAttributionRootsForClients(clientsCsv, watchRoots = null, options 
     const canonicalRoot = (dir) => path.resolve(canonicalWatchPath(dir));
     const usageRoots = new Set([
       ...antigravityDataRoots(options.homeDir || os.homedir()), antigravityCliDataDir(options),
+      ...discoverAntigravityAcpRoots(options),
       ...(normalizeCustomScanPaths(options.customScanPaths, options).antigravity || [])
     ].map(canonicalRoot));
     const summaries = antigravitySummaryWatchSources(options);
@@ -1894,6 +1943,9 @@ function watchPolicyEntries(clientsCsv, options = {}) {
         .map((dir) => ({ root: canonicalRoot(dir), custom: isCustomOnly(client, canonicalRoot(dir)) }))),
     ...(antigravityEnabled && dirExists(antigravityCliDataDir(options))
       ? [{ root: canonicalRoot(antigravityCliDataDir(options)), custom: false }]
+      : []),
+    ...(antigravityEnabled
+      ? discoverAntigravityAcpRoots(options).filter(dirExists).map((dir) => ({ root: canonicalRoot(dir), custom: false }))
       : [])
   ];
   // A directory that is a built-in root for any client keeps everything, even
@@ -2550,6 +2602,9 @@ function startCollector(options) {
   let codexLocalView = null;
   let codexLocalViewDay = null;
   let codexLocalSource = null;
+  let antigravityLocalView = null;
+  let antigravityLocalViewDay = null;
+  const antigravityUsageCache = options.antigravityUsageCache || makeAntigravityUsageCache();
   let codexDotsVisible = options.codexDotsVisible !== false;
   let codexVisibilityRevision = 0;
   let publishedCodexVisibilityRevision = 0;
@@ -2852,6 +2907,11 @@ function startCollector(options) {
           codexLocalViewDay = todayKey;
           tickLocalView = view;
         },
+        antigravityUsageCache,
+        onAntigravityLocalUsageComputed: (view) => {
+          antigravityLocalView = view;
+          antigravityLocalViewDay = todayKey;
+        },
         // Both selections name clients whose pending source event this tick has
         // already consumed — the queue's drain for one, its acknowledgement for
         // the other — so either is a legitimate restore.
@@ -2918,6 +2978,12 @@ function startCollector(options) {
                   if (preview[name]) preview[name] = mergePeriods(preview[name], codexLocalView[name]);
                 }
                 preview.codexLocalSessionKeys = codexLocalView.sessionKeys;
+              }
+              if (antigravityLocalView && antigravityLocalViewDay === todayKey) {
+                for (const name of ['today', 'month', 'allTime']) {
+                  if (preview[name]) preview[name] = mergePeriods(preview[name], antigravityLocalView[name]);
+                }
+                preview.antigravityLocalSessionKeys = antigravityLocalView.sessionKeys;
               }
               onPreview(preview);
             }
@@ -3703,6 +3769,7 @@ function startCollector(options) {
       codexDotsVisible = next;
       codexVisibilityRevision += 1;
       codexLocalView = null;
+      antigravityLocalView = null;
       return runTick('dots-visibility', { todayOnly: true, targetClients: ['codex'], forceHistory: true });
     },
     stop,
