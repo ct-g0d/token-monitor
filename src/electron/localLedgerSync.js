@@ -7,6 +7,10 @@ let defaultStoreInstance = null;
 
 function resolveLedgerStore(options = {}) {
   if (options.tokenLedgerStore) return options.tokenLedgerStore;
+  if (options.path) {
+    const { createTokenLedgerStore } = require('../shared/usage/tokenLedger');
+    return createTokenLedgerStore(options);
+  }
   if (!defaultStoreInstance) {
     const { createTokenLedgerStore } = require('../shared/usage/tokenLedger');
     defaultStoreInstance = createTokenLedgerStore(options);
@@ -37,6 +41,21 @@ function withLocalLedgerHistory(stats, overlayHistory, options = {}) {
   const targetDevice = targetIndex >= 0 ? stats.devices[targetIndex] : null;
 
   const store = resolveLedgerStore(options);
+  const isWatchTick = options.isWatchTick === true
+    || options.reason === 'watch'
+    || options.reason === 'watch-delta'
+    || options.reason === 'activity'
+    || (typeof options.reason === 'string' && options.reason.startsWith('watch'));
+
+  const shouldWriteHistory = !isWatchTick && options.writeHistory === true;
+
+  if (shouldWriteHistory && typeof store?.writeHistory === 'function' && Array.isArray(history.daily) && history.daily.length > 0) {
+    try {
+      store.writeHistory(history);
+    } catch (error) {
+      console.warn('Could not persist runtime history to token ledger:', error?.message || error);
+    }
+  }
   const basePeriods = stats.periods || targetDevice?.periods;
   const periods = store?.readPeriods?.({
     overlayHistory: overlayHistory || stats.history,

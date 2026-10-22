@@ -1,7 +1,14 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const test = require('node:test');
+
+const testSharedDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-shared-sync-'));
+process.env.TOKEN_MONITOR_SHARED_DIR = testSharedDir;
+
 const { withLocalLedgerHistory } = require('../../src/electron/localLedgerSync');
 const { createTokenLedgerStore } = require('../../src/shared/usage/tokenLedger');
 const { emptyPeriod } = require('../../src/shared/usage');
@@ -227,7 +234,13 @@ test('device matching matches by deviceId properly when target device is not at 
 });
 
 test('integration with real tokenLedgerStore confirms totalTokens >= 13B with live overlay', () => {
-  const store = createTokenLedgerStore();
+  const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-sync-fixture-'));
+  const fixtureFile = path.join(fixtureDir, 'token_ledger.sqlite');
+  const repoPath = path.join(__dirname, '..', '..', 'data', 'token_ledger.sqlite');
+  if (fs.existsSync(repoPath)) {
+    fs.copyFileSync(repoPath, fixtureFile);
+  }
+  const store = createTokenLedgerStore({ path: fixtureFile });
   if (!store.available()) return;
 
   const overlayHistory = {
@@ -267,4 +280,23 @@ test('integration with real tokenLedgerStore confirms totalTokens >= 13B with li
   assert.equal(synced.devices[0].periods.allTime.totalTokens, synced.periods.allTime.totalTokens);
   assert.equal(synced.devices[0].allTime.totalTokens, synced.periods.allTime.totalTokens);
   assert.ok(synced.periods.allTime.costUsd >= synced.devices[0].allTime.costUsd);
+});
+
+test('withLocalLedgerHistory does not invoke store.writeHistory without explicit writeHistory: true', () => {
+  let writeCalled = false;
+  const mockStore = {
+    readHistory: () => ({ daily: [{ date: '2026-10-21', tokens: 100 }], monthly: [], summary: { totalTokens: 100 } }),
+    readPeriods: () => samplePeriods({ allTime: { ...emptyPeriod(), totalTokens: 100 } }),
+    writeHistory: () => { writeCalled = true; }
+  };
+  const stats = {
+    mode: 'local',
+    periods: samplePeriods(),
+    devices: [{ deviceId: 'dev-1', periods: samplePeriods(), allTime: emptyPeriod() }]
+  };
+  withLocalLedgerHistory(stats, null, { tokenLedgerStore: mockStore, deviceId: 'dev-1' });
+  assert.equal(writeCalled, false, 'writeHistory should not be called by default');
+
+  withLocalLedgerHistory(stats, null, { tokenLedgerStore: mockStore, deviceId: 'dev-1', writeHistory: true });
+  assert.equal(writeCalled, true, 'writeHistory should be called when writeHistory: true');
 });
