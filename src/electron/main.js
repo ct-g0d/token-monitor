@@ -474,8 +474,8 @@ function appWindowIcon() {
   return app.isPackaged ? {} : { icon: WINDOWS_APP_ICON_PATH };
 }
 
-const DEFAULT_WINDOW = { width: 340, height: 650 };
-const WINDOW_LIMITS = { minWidth: 240, minHeight: 140, maxWidth: 1200, maxHeight: 1400 };
+const DEFAULT_WINDOW = { width: 1024, height: 650 };
+const WINDOW_LIMITS = { minWidth: 640, minHeight: 450, maxWidth: 3840, maxHeight: 2160 };
 const ZOOM_LIMITS = { min: 0.7, max: 1.6, step: 0.1 };
 const CSP_HEADER = [
   "default-src 'self'",
@@ -2074,8 +2074,10 @@ function isBoundsOnScreen(bounds) {
 function restoredBounds() {
   const saved = settings?.windowBounds;
   if (!saved || typeof saved.width !== 'number' || typeof saved.height !== 'number') return null;
-  const width = Math.min(WINDOW_LIMITS.maxWidth, Math.max(WINDOW_LIMITS.minWidth, saved.width));
-  const height = Math.min(WINDOW_LIMITS.maxHeight, Math.max(WINDOW_LIMITS.minHeight, saved.height));
+  const targetWidth = saved.width < WINDOW_LIMITS.minWidth ? DEFAULT_WINDOW.width : saved.width;
+  const targetHeight = saved.height < WINDOW_LIMITS.minHeight ? DEFAULT_WINDOW.height : saved.height;
+  const width = Math.min(WINDOW_LIMITS.maxWidth, Math.max(WINDOW_LIMITS.minWidth, targetWidth));
+  const height = Math.min(WINDOW_LIMITS.maxHeight, Math.max(WINDOW_LIMITS.minHeight, targetHeight));
   if (!isBoundsOnScreen({ ...saved, width, height })) return { width, height };
   return { x: saved.x, y: saved.y, width, height };
 }
@@ -2930,7 +2932,6 @@ function nativeMaterialOptions(source = settings, dashboard = false) {
 
 function applyNativeMaterial(source = settings) {
   syncNativeMaterialVisibility(mainWindow, nativeMaterialOptions(source));
-  syncNativeMaterialVisibility(dashboardWindow, nativeMaterialOptions(source, true));
   // Windows' material is still construction-time; its existing rebuild path
   // handles setting changes. The macOS manager avoids recreating stable views.
 }
@@ -4687,7 +4688,9 @@ function historyResolverOptions() {
 }
 
 function getCompleteHistory() {
-  const ledgerHistory = localLedgerHistory(lastCollectedDevice?.history || localDevice?.history);
+  const currentLastCollected = typeof lastCollectedDevice !== 'undefined' ? lastCollectedDevice : null;
+  const currentLocalDevice = typeof localDevice !== 'undefined' ? localDevice : null;
+  const ledgerHistory = typeof localLedgerHistory === 'function' ? localLedgerHistory(currentLastCollected?.history || currentLocalDevice?.history) : null;
   if (ledgerHistory) return Promise.resolve(ledgerHistory);
   return resolveCompleteHistory(historyResolverOptions());
 }
@@ -4706,6 +4709,21 @@ function withLocalLedgerHistory(stats, overlayHistory, options = {}) {
     ? stats.devices.find((device, idx) => (targetDeviceId ? String(device?.deviceId || '').trim() === targetDeviceId : (idx === 0 || device?.local)))
     : null;
   const store = options?.tokenLedgerStore || (tokenLedgerStore ||= createTokenLedgerStore());
+  const isWatchTick = options?.isWatchTick === true
+    || options?.reason === 'watch'
+    || options?.reason === 'watch-delta'
+    || options?.reason === 'activity'
+    || (typeof options?.reason === 'string' && options.reason.startsWith('watch'));
+
+  const shouldWriteHistory = !isWatchTick && options?.writeHistory === true;
+
+  if (shouldWriteHistory && typeof store?.writeHistory === 'function' && Array.isArray(history.daily) && history.daily.length > 0) {
+    try {
+      store.writeHistory(history);
+    } catch (error) {
+      console.warn('Could not persist runtime history to token ledger:', error?.message || error);
+    }
+  }
   const periods = store.readPeriods({
     overlayHistory: overlayHistory || stats.history,
     basePeriods: stats.periods || targetDevice?.periods,
@@ -5035,8 +5053,13 @@ function sendPush(payload, options = {}) {
   }
   if (payload?.data?.stats) {
     const nextHistoryRevision = statsHistoryRevision(payload.data.stats);
-    if (nextHistoryRevision !== previousHistoryRevision && dashboardWindow && !dashboardWindow.isDestroyed()) {
-      try { dashboardWindow.webContents.send('dashboard:historyChanged'); } catch (_) {}
+    if (nextHistoryRevision !== previousHistoryRevision) {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        try { mainWindow.webContents.send('dashboard:historyChanged'); } catch (_) {}
+      }
+      if (dashboardWindow && !dashboardWindow.isDestroyed()) {
+        try { dashboardWindow.webContents.send('dashboard:historyChanged'); } catch (_) {}
+      }
     }
     maybeAdoptSharedSubscriptionRevision(payload.data.stats);
   }
@@ -5262,15 +5285,21 @@ function startLocalCollector() {
       seedInitialLimitProviders(summary);
       const reason = meta.reason;
       const visibleSummary = summary;
+      const existingHistory = visibleSummary.history || lastCollectedDevice?.history || localDevice?.history;
       localDevice = { ...visibleSummary, receivedAt: new Date().toISOString() };
+      if (existingHistory) localDevice.history = existingHistory;
       lastCollectedDevice = localDevice;
       localStats = composeLocalOnlySummary(localDevice, (stats) => {
         withHistoryPreview(stats, [localDevice]);
         attachLocalNativeViews(stats, localDevice);
         return typeof withLocalLedgerHistory === 'function'
-          ? withLocalLedgerHistory(stats, localDevice.history)
+          ? withLocalLedgerHistory(stats, localDevice.history, { reason })
           : stats;
       });
+      if (localStats?.history) {
+        localDevice.history = localStats.history;
+        lastCollectedDevice.history = localStats.history;
+      }
       const recordDeviceId = String(settings?.deviceId || lastCollectedDevice?.deviceId || localDevice?.deviceId || '').trim();
       const recordSynced = Array.isArray(localStats?.devices) && (
         localStats.devices.find((d) => recordDeviceId && String(d?.deviceId || '').trim() === recordDeviceId)
@@ -7207,14 +7236,13 @@ function loadWindowFile(target, options = {}) {
   const cleanup = () => {
     clearTimeout(fallbackTimer);
     ipcMain.removeListener('window:contentReady', onContentReady);
+    ipcMain.removeListener('dashboard:ready', onContentReady);
   };
   target.once('show', cleanup);
   target.once('closed', cleanup);
+  ipcMain.on('window:contentReady', onContentReady);
+  ipcMain.on('dashboard:ready', onContentReady);
   if (waitForContent) {
-    // A recreated window paints its static "0" defaults before the renderer's
-    // async stats fetch resolves; revealing on load would flash empty content.
-    // Wait until the renderer reports it has rendered real data instead.
-    ipcMain.on('window:contentReady', onContentReady);
     target.webContents.once('did-finish-load', () => applyZoomFactor(target));
   } else {
     target.once('ready-to-show', reveal);
@@ -7227,7 +7255,7 @@ function loadWindowFile(target, options = {}) {
     console.log(`[window] renderer load failed: ${code} ${description}`);
     reveal();
   });
-  const filePath = path.join(__dirname, 'renderer', 'index.html');
+  const filePath = path.join(__dirname, 'renderer-t3', 'index.html');
   const load = options.query ? target.loadFile(filePath, { query: options.query }) : target.loadFile(filePath);
   load.catch((error) => {
     console.log(`[window] renderer load failed: ${error.message}`);
@@ -7262,7 +7290,7 @@ function createWindow(boundsOverride, options = {}) {
     skipTaskbar: collapsedFloatingBubble || skipTaskbarForSettings(settings),
     ...(collapsedFloatingBubble ? { fullscreenable: false, maximizable: false, minimizable: false } : {}),
     // Keeps a popover unmaximizable across rebuilds, which never re-run enterTrayMode().
-    ...(settings?.trayMode ? { maximizable: false } : {}),
+    // ...(settings?.trayMode ? { maximizable: false } : {}),
     ...floatingBubbleWindowChrome(process.platform, collapsedFloatingBubble),
     // Seed the legacy fallback's construction-only active state. The material
     // manager immediately replaces HUD with Liquid Glass when supported.
@@ -7288,10 +7316,8 @@ function createWindow(boundsOverride, options = {}) {
     try { win.setBackgroundMaterial('acrylic'); } catch (_) {}
   }
   win.on('maximize', () => {
+    try { win.webContents.send('window:maximizeState', true); } catch (_) {}
     if (!shouldTrackWindowMaximized(settings, floatingBubbleState)) {
-      // A tray popover is sized from getBounds() on every open, so a maximized
-      // one would open full-screen. setMaximizable() covers Windows and macOS;
-      // it is a no-op on Linux, which is why this bounce still has to exist.
       if (settings?.trayMode) suspendWindowMaximized(win);
       return;
     }
@@ -7302,6 +7328,7 @@ function createWindow(boundsOverride, options = {}) {
     if (!shouldTrackWindowMaximized(settings, floatingBubbleState)) return;
     persistWindowState(settings, saveSettings, normalWindowBounds(win), false);
     persistBoundsSoon();
+    try { win.webContents.send('window:maximizeState', false); } catch (_) {}
   });
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (isAllowedExternalUrl(url)) shell.openExternal(url);
@@ -7414,76 +7441,18 @@ function replaceMainWindow(bounds, options = {}) {
   });
 }
 
-function discardFailedDashboardWindow(win, reason) {
-  if (!win || win !== dashboardWindow || win.isDestroyed()) return;
-  console.log(`[dashboard] ${reason}`);
-  win.destroy();
-}
-
 function createDashboardWindow() {
-  if (dashboardWindow && !dashboardWindow.isDestroyed()) {
-    // Reload so a reopened window always picks up the latest renderer + fresh history,
-    // instead of showing whatever was loaded when it first opened.
-    dashboardWindow.hide();
-    dashboardWindow.webContents.reload();
-    return dashboardWindow;
-  }
-  const glass = nativeBlurEnabled();
-  const win = new BrowserWindow({
-    width: 920,
-    height: 620,
-    minWidth: 560,
-    minHeight: 420,
-    frame: false,
-    transparent: !(process.platform === 'win32' && glass),
-    show: false,
-    backgroundColor: '#00000000',
-    ...appWindowIcon(),
-    skipTaskbar: false,
-    ...(process.platform === 'darwin' ? { vibrancy: 'hud', visualEffectState: 'active' } : {}),
-    ...(process.platform === 'win32' && glass ? { backgroundMaterial: 'acrylic' } : {}),
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false
-    }
-  });
-  dashboardWindow = win;
-  applyWindowsChrome(win, { round: true });
-  attachNativeMaterialVisibility(win, () => nativeMaterialOptions(settings, true));
-  syncNativeMaterialVisibility(win, nativeMaterialOptions(settings, true));
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    if (isAllowedExternalUrl(url)) shell.openExternal(url);
-    return { action: 'deny' };
-  });
-  win.webContents.on('will-navigate', (event, url) => {
-    event.preventDefault();
-    if (isAllowedExternalUrl(url)) shell.openExternal(url);
-  });
-  // Only dashboard:ready may reveal a healthy window. Slow hub history must not
-  // race a wall-clock fallback and expose the unprepared heatmap. Actual load or
-  // renderer failures discard the hidden window so the next open starts cleanly.
-  win.webContents.on('did-fail-load', (_event, errorCode, errorDescription, _url, isMainFrame) => {
-    if (!isMainFrame || errorCode === -3) return; // ERR_ABORTED is expected during reloads.
-    discardFailedDashboardWindow(win, `load failed: ${errorDescription}`);
-  });
-  win.webContents.on('render-process-gone', (_event, details) => {
-    discardFailedDashboardWindow(win, `renderer stopped: ${details.reason}`);
-  });
-  win.on('unresponsive', () => {
-    if (!win.isVisible()) discardFailedDashboardWindow(win, 'renderer became unresponsive while opening');
-  });
-  win.on('closed', () => {
-    dashboardWindow = null;
-  });
-  win.loadFile(path.join(__dirname, 'renderer', 'dashboard.html'))
-    .catch((error) => discardFailedDashboardWindow(win, `load failed: ${error.message}`));
-  return win;
+  focusExistingWindow();
+  return mainWindow;
 }
 
 async function getDashboardHistory(options = {}) {
   const includeDevices = options?.includeDevices === true;
-  const ledgerHistory = localLedgerHistory(lastCollectedDevice?.history || localDevice?.history);
+  const currentLastCollected = typeof lastCollectedDevice !== 'undefined' ? lastCollectedDevice : null;
+  const currentLocalDevice = typeof localDevice !== 'undefined' ? localDevice : null;
+  const ledgerHistory = typeof localLedgerHistory === 'function'
+    ? localLedgerHistory(currentLastCollected?.history || currentLocalDevice?.history)
+    : null;
   let resolved;
   if (includeDevices) {
     resolved = await resolveCompleteHistoryWithDevices(historyResolverOptions());
@@ -7491,7 +7460,7 @@ async function getDashboardHistory(options = {}) {
       resolved.history = ledgerHistory;
       if (Array.isArray(resolved.deviceHistories)) {
         resolved.deviceHistories = resolved.deviceHistories.map((d) => (
-          (d?.local || String(d?.deviceId || '').trim() === String(localDevice?.deviceId || '').trim())
+          (d?.local || (currentLocalDevice && String(d?.deviceId || '').trim() === String(currentLocalDevice?.deviceId || '').trim()))
             ? { ...d, history: ledgerHistory, historyAvailable: true }
             : d
         ));
@@ -8104,6 +8073,9 @@ app.whenReady().then(() => {
       // including when the hub is offline. Revision decoration invalidates the
       // main renderer's full-history caches; the dashboard has its own event.
       refreshLimitStatsPresentation();
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        try { mainWindow.webContents.send('dashboard:historyChanged'); } catch (_) {}
+      }
       if (dashboardWindow && !dashboardWindow.isDestroyed()) {
         try { dashboardWindow.webContents.send('dashboard:historyChanged'); } catch (_) {}
       }
@@ -9336,6 +9308,26 @@ app.whenReady().then(() => {
     }
     actionWindowForEvent(BrowserWindow, event, mainWindow)?.close();
   });
+  ipcMain.on('window:maximize', (event) => {
+    const win = actionWindowForEvent(BrowserWindow, event, mainWindow);
+    if (!win) return;
+    if (typeof win.isMaximizable === 'function' && !win.isMaximizable()) {
+      win.setMaximizable(true);
+    }
+    if (win.isMaximized()) win.unmaximize(); else win.maximize();
+  });
+  ipcMain.on('window:toggleMaximize', (event) => {
+    const win = actionWindowForEvent(BrowserWindow, event, mainWindow);
+    if (!win) return;
+    if (typeof win.isMaximizable === 'function' && !win.isMaximizable()) {
+      win.setMaximizable(true);
+    }
+    if (win.isMaximized()) win.unmaximize(); else win.maximize();
+  });
+  ipcMain.handle('window:isMaximized', (event) => {
+    const win = actionWindowForEvent(BrowserWindow, event, mainWindow);
+    return Boolean(win?.isMaximized());
+  });
   ipcMain.handle('dashboard:open', () => { createDashboardWindow(); return true; });
   ipcMain.handle('dashboard:getHistory', (_event, options) => getDashboardHistory(options));
   ipcMain.on('dashboard:ready', (event) => {
@@ -9347,6 +9339,26 @@ app.whenReady().then(() => {
   });
   ipcMain.on('dashboard:minimize', (event) => { BrowserWindow.fromWebContents(event.sender)?.minimize(); });
   ipcMain.on('dashboard:close', (event) => { BrowserWindow.fromWebContents(event.sender)?.close(); });
+  ipcMain.on('dashboard:maximize', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win) return;
+    if (typeof win.isMaximizable === 'function' && !win.isMaximizable()) {
+      win.setMaximizable(true);
+    }
+    if (win.isMaximized()) win.unmaximize(); else win.maximize();
+  });
+  ipcMain.on('dashboard:toggleMaximize', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win) return;
+    if (typeof win.isMaximizable === 'function' && !win.isMaximizable()) {
+      win.setMaximizable(true);
+    }
+    if (win.isMaximized()) win.unmaximize(); else win.maximize();
+  });
+  ipcMain.handle('dashboard:isMaximized', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    return Boolean(win?.isMaximized());
+  });
   app.on('activate', () => {
     const action = activateWindowAction({
       mainWindow,

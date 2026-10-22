@@ -2,15 +2,16 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import path from 'path';
-
-const t3Root = path.resolve(__dirname, '../t3codeexp');
-const webSrc = path.resolve(t3Root, 'apps/web/src');
-const contractsSrc = path.resolve(t3Root, 'packages/contracts/src');
-const sharedSrc = path.resolve(t3Root, 'packages/shared/src');
-const clientRuntimeSrc = path.resolve(t3Root, 'packages/client-runtime/src');
-const providerCoreSrc = path.resolve(t3Root, 'packages/provider-core/src');
-
 import fs from 'fs';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const rendererOutDir = path.resolve(__dirname, '../src/electron/renderer-t3');
+const t3Root = path.resolve(__dirname, 'vendor/t3');
+const t3WebSrc = path.resolve(t3Root, 'apps/web/src');
+const lucideEsm = path.resolve(__dirname, 'node_modules/lucide/dist/esm/lucide.mjs');
 
 function getAllWorkspacePackageAliases(packagesDir: string) {
   const aliases: Array<{ find: string | RegExp; replacement: string }> = [];
@@ -24,7 +25,10 @@ function getAllWorkspacePackageAliases(packagesDir: string) {
       const pkgName = pkgJson.name;
       if (pkgJson.exports) {
         for (const [subpath, target] of Object.entries(pkgJson.exports)) {
-          const targetPath = typeof target === 'string' ? target : ((target as any).default || (target as any).import || (target as any).types);
+          const targetPath =
+            typeof target === 'string'
+              ? target
+              : ((target as any).default || (target as any).import || (target as any).types);
           if (targetPath) {
             const fullTarget = path.resolve(pkgDir, targetPath);
             if (subpath === '.') {
@@ -39,7 +43,12 @@ function getAllWorkspacePackageAliases(packagesDir: string) {
       const srcDir = path.resolve(pkgDir, 'src');
       if (fs.existsSync(srcDir)) {
         aliases.push({ find: new RegExp(`^${pkgName}/(.*)$`), replacement: `${srcDir}/$1` });
-        aliases.push({ find: new RegExp(`^${pkgName}$`), replacement: fs.existsSync(path.resolve(srcDir, 'index.ts')) ? path.resolve(srcDir, 'index.ts') : srcDir });
+        aliases.push({
+          find: new RegExp(`^${pkgName}$`),
+          replacement: fs.existsSync(path.resolve(srcDir, 'index.ts'))
+            ? path.resolve(srcDir, 'index.ts')
+            : srcDir,
+        });
       }
     } catch {}
   }
@@ -47,28 +56,113 @@ function getAllWorkspacePackageAliases(packagesDir: string) {
 }
 
 export default defineConfig({
+  logLevel: 'warn',
+  base: './',
+  build: {
+    outDir: rendererOutDir,
+    emptyOutDir: true,
+  },
+  worker: {
+    format: 'es',
+  },
   plugins: [
     tailwindcss(),
     react(),
+    {
+      name: 'alias-web-connection-catalog',
+      resolveId(source, importer) {
+        if (!importer) return null;
+        if (
+          (importer.includes('/apps/web/') || importer.includes('\\apps\\web\\')) &&
+          (source === '~/connection/catalog' || source === '../connection/catalog' || source === '../../connection/catalog')
+        ) {
+          return path.resolve(__dirname, 'src/adapters/catalogState.ts');
+        }
+        if (
+          source === '~/environments/primary/target' ||
+          source === '../environments/primary/target' ||
+          source === '../../environments/primary/target' ||
+          source.endsWith('environments/primary/target') ||
+          source.endsWith('environments/primary/target.ts')
+        ) {
+          return path.resolve(__dirname, 'src/adapters/primaryTarget.ts');
+        }
+        if (
+          source === '~/localEnvironment' ||
+          source === '../localEnvironment' ||
+          source === '../../localEnvironment' ||
+          source.endsWith('/localEnvironment')
+        ) {
+          return path.resolve(__dirname, 'src/adapters/localEnvironment.ts');
+        }
+        if (
+          (source === './usagePagePreferences' || source === '~/components/usage/usagePagePreferences') &&
+          (importer.includes('/components/usage/') || importer.includes('\\components\\usage\\'))
+        ) {
+          return path.resolve(__dirname, 'src/components/usage/usagePagePreferences.ts');
+        }
+        return null;
+      },
+    },
   ],
   resolve: {
     dedupe: ['react', 'react-dom', '@tanstack/react-router', '@effect/atom-react', 'effect', 'lucide-react'],
     alias: [
-      ...getAllWorkspacePackageAliases(path.resolve(t3Root, 'packages')),
+      // App.tsx bridge: point hand-written path to genuine T3 UsagePage
+      {
+        find: /^(?:\.\/components\/usage\/UsagePage|~\/components\/usage\/UsagePage)$/,
+        replacement: path.resolve(t3WebSrc, 'components/usage/UsagePage.tsx'),
+      },
 
-      // Stubs for backend / server connections
+      // Provider presentation override: token monitor custom provider registry
+      {
+        find: /^(?:\.\/usageProviders|~\/components\/usage\/usageProviders)$/,
+        replacement: path.resolve(__dirname, 'src/components/usage/usageProviders.ts'),
+      },
+
+      // Usage page preferences override: starts on "tokens"
+      {
+        find: /^(?:\.\/usagePagePreferences|~\/components\/usage\/usagePagePreferences)$/,
+        replacement: path.resolve(__dirname, 'src/components/usage/usagePagePreferences.ts'),
+      },
+
+      // The genuine page still imports the abandoned Token Monitor section.
+      {
+        find: /^(?:\.\/TokexUsageSection|~\/components\/usage\/TokexUsageSection)$/,
+        replacement: path.resolve(__dirname, 'src/components/usage/TokexUsageSection.tsx'),
+      },
+
+      // Primary environment target & local environment stubs
+      {
+        find: /^(?:~\/environments\/primary\/target|\.\.\/environments\/primary\/target)$/,
+        replacement: path.resolve(__dirname, 'src/adapters/primaryTarget.ts'),
+      },
+      {
+        find: /^(?:~\/localEnvironment|\.\.\/localEnvironment)$/,
+        replacement: path.resolve(__dirname, 'src/adapters/localEnvironment.ts'),
+      },
+
+      // Backend adapter stubs
       { find: '~/rpc/atomRegistry', replacement: path.resolve(__dirname, 'src/adapters/atomRegistry.ts') },
       { find: '../../state/usage', replacement: path.resolve(__dirname, 'src/adapters/usageState.ts') },
       { find: '~/state/usage', replacement: path.resolve(__dirname, 'src/adapters/usageState.ts') },
       { find: '../../state/server', replacement: path.resolve(__dirname, 'src/adapters/serverState.ts') },
       { find: '~/state/server', replacement: path.resolve(__dirname, 'src/adapters/serverState.ts') },
+      { find: '../../state/presentation', replacement: path.resolve(__dirname, 'src/adapters/presentationState.ts') },
+      { find: '~/state/presentation', replacement: path.resolve(__dirname, 'src/adapters/presentationState.ts') },
+      { find: '../../state/session', replacement: path.resolve(__dirname, 'src/adapters/sessionState.ts') },
+      { find: '~/state/session', replacement: path.resolve(__dirname, 'src/adapters/sessionState.ts') },
       { find: '../../state/use-atom-command', replacement: path.resolve(__dirname, 'src/adapters/useAtomCommand.ts') },
       { find: '~/state/use-atom-command', replacement: path.resolve(__dirname, 'src/adapters/useAtomCommand.ts') },
 
-      // Genuine lucide icons
-      { find: /^lucide$/, replacement: path.resolve(__dirname, 'node_modules/lucide') },
-      { find: /^~\/(.*)$/, replacement: `${webSrc}/$1` },
-      { find: '~', replacement: webSrc },
+      // Workspace packages
+      ...getAllWorkspacePackageAliases(path.resolve(t3Root, 'packages')),
+
+      // Icons and root paths
+      { find: /^lucide$/, replacement: lucideEsm },
+      { find: /^~\/(.*)$/, replacement: `${t3WebSrc}/$1` },
+      { find: '~', replacement: t3WebSrc },
+      { find: 't3-code', replacement: t3WebSrc },
       { find: '@', replacement: path.resolve(__dirname, 'src') },
 
       // Pierre diffs subpaths
@@ -84,12 +178,8 @@ export default defineConfig({
       { find: /^morphicons$/, replacement: path.resolve(__dirname, 'node_modules/morphicons/dist/index.js') },
     ],
   },
-  worker: {
-    format: 'es',
-  },
   server: {
     port: 5173,
     host: '127.0.0.1',
-    open: false,
   },
 });

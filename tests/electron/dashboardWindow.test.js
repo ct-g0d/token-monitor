@@ -44,11 +44,11 @@ test('dashboard readiness waits for data and recovers only from actual failures'
   const main = read('src', 'electron', 'main.js');
   const historySource = read('src', 'electron', 'historySource.js');
   assert.doesNotMatch(main, /dashboardShowFallback|armDashboardShowFallback/);
-  assert.match(main, /webContents\.on\('did-fail-load'/);
-  assert.match(main, /errorCode === -3/);
-  assert.match(main, /webContents\.on\('render-process-gone'/);
-  assert.match(main, /win\.on\('unresponsive'/);
-  assert.match(main, /function discardFailedDashboardWindow\(win, reason\)[\s\S]*?win\.destroy\(\)/);
+  // In the single-window architecture, the main window loads renderer-t3 and
+  // protects readiness with content-ready listeners and did-fail-load recovery.
+  assert.match(main, /ipcMain\.on\('(?:window:contentReady|dashboard:ready)', onContentReady\)/);
+  assert.match(main, /webContents\.once\('did-fail-load'/);
+  assert.match(main, /\[window\] renderer load failed/);
   assert.match(historySource, /const controller = new AbortController\(\);[\s\S]*?signal: controller\.signal[\s\S]*?clearTimeout\(timeout\)/);
 });
 

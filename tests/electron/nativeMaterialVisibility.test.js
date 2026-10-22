@@ -216,21 +216,17 @@ test('main and Dashboard windows use the visibility-aware material lifecycle', (
     main.indexOf('function createWindow('),
     main.indexOf('function handleZoomShortcut(')
   );
-  const dashboardWindowConstructor = main.slice(
-    main.indexOf('function createDashboardWindow('),
-    main.indexOf('async function getDashboardHistory(')
-  );
-  assert.equal([...main.matchAll(/attachNativeMaterialVisibility\(win,/g)].length, 2);
+  // In the single-window design, the separate dashboard window is removed and the
+  // main window preserves the visibility-aware material lifecycle.
+  assert.equal([...main.matchAll(/attachNativeMaterialVisibility\(win,/g)].length, 1);
   // Electron has no setVisualEffectState, so 'active' can only be set at
-  // construction. Both windows must retain that construction-time capability
+  // construction. The window must retain that construction-time capability
   // even when system glass starts disabled and is enabled later at runtime.
-  for (const constructor of [mainWindowConstructor, dashboardWindowConstructor]) {
-    assert.match(
-      constructor,
-      /process\.platform === 'darwin' \? \{ vibrancy: 'hud', visualEffectState: 'active' \} : \{\}/
-    );
-  }
+  assert.match(
+    mainWindowConstructor,
+    /process\.platform === 'darwin' \? \{ vibrancy: 'hud', visualEffectState: 'active' \} : \{\}/
+  );
   assert.match(mainWindowConstructor, /attachNativeMaterialVisibility\(win, \(\) => nativeMaterialOptions\(\)\)/);
   assert.doesNotMatch(main, /\.setVisualEffectState\(/);
-  assert.equal([...main.matchAll(/syncNativeMaterialVisibility\((?:mainWindow|dashboardWindow),/g)].length, 2);
+  assert.equal([...main.matchAll(/syncNativeMaterialVisibility\(mainWindow,/g)].length, 1);
 });

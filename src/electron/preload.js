@@ -41,6 +41,9 @@ contextBridge.exposeInMainWorld('tokenMonitor', {
   dashboard: {
     ready: () => ipcRenderer.send('dashboard:ready'),
     minimize: () => ipcRenderer.send('dashboard:minimize'),
+    maximize: () => ipcRenderer.send('dashboard:maximize'),
+    toggleMaximize: () => ipcRenderer.send('dashboard:toggleMaximize'),
+    isMaximized: () => ipcRenderer.invoke('dashboard:isMaximized'),
     close: () => ipcRenderer.send('dashboard:close')
   },
   getSyncContentStatus: (refresh = true) => ipcRenderer.invoke('syncContent:status', refresh),
@@ -219,5 +222,13 @@ contextBridge.exposeInMainWorld('tokenMonitor', {
     }
   },
   minimize: () => ipcRenderer.send('window:minimize'),
-  close: () => ipcRenderer.send('window:close')
+  maximize: () => ipcRenderer.send('window:maximize'),
+  toggleMaximize: () => ipcRenderer.send('window:toggleMaximize'),
+  isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
+  close: () => ipcRenderer.send('window:close'),
+  onMaximizeChange: (callback) => {
+    const handler = (_event, isMax) => { try { callback(isMax); } catch (_) {} };
+    ipcRenderer.on('window:maximizeState', handler);
+    return () => ipcRenderer.removeListener('window:maximizeState', handler);
+  }
 });

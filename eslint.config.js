@@ -10,7 +10,8 @@ module.exports = [
   includeIgnoreFile(path.resolve(__dirname, '.gitignore')),
   // site/ is a standalone GitHub Pages property with its own browser conventions
   // worker/src/shared/ is generated (vendored CommonJS); linted at its src/shared/ source
-  { ignores: ['site/**', 'worker/src/shared/**'] },
+  // t3codeexp/ and t3_app_ui/ are separate projects/submodules with independent configs
+  { ignores: ['site/**', 'worker/src/shared/**', 't3codeexp/**', 't3_app_ui/**', 'scripts/*.mjs'] },
 
   js.configs.recommended,
 

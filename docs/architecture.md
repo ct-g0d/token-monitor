@@ -189,3 +189,43 @@ The headless agent owns a separate `agent-sync-credentials.json` in `sharedDataD
 CLI/env consent is a fresh deployment declaration on every launch, unlike desktop selections that reset after a destination change. Keep the agent shared-data directory across restarts and connection changes, and use a separate `TOKEN_MONITOR_SHARED_DIR` for each independent agent. `--dry-run` performs no title negotiation or journal access. Before deleting or relocating an existing journal, disable title sync using the old configuration and let cleanup finish, or delete the old device on its Hub. Upgrading an agent that predates this journal cannot discover historical destinations: clean those devices on their old Hubs manually. Revocation removes active stored titles, not previously exported copies or backups.
 
 Node commits the revision/policy check and synchronous file write without an await; failed shared-setting/policy persistence rolls back its in-memory candidate. Worker mutations share a promise lane plus the Durable Object input gate, and compound title cleanup/deletion uses storage transactions. Expected validation and CAS errors are returned through the gate and thrown outside it, because an exception escaping its callback resets the Durable Object and drops stream clients. This prevents interleaved ingest, disable and settings writes from bypassing a generation or CAS check. Policies and shared groups live outside device records (Worker `title-policy:` and `sync-settings:` prefixes), so aggregation never treats them as devices.
+
+## Local Control API
+
+The TokeX Electron main process hosts an ephemeral loopback HTTP RPC server on `127.0.0.1:0` to allow local orchestrators and tools (such as T3 Code running as a local sibling process) to invoke local-only functionality that the remote Hub HTTP API cannot serve.
+
+- **Port & Discovery:** Binds strictly to `127.0.0.1` on an OS-assigned ephemeral port. Writes discovery state (`port`, `token`, `pid`, `version`) to `<userData>/local-control.json` atomically with restrictive file permissions (`0o600` on POSIX). The state file is unlinked on clean or forced application exit (`before-quit` and `performQuit`).
+- **Authentication:** Every incoming request must include an `Authorization: Bearer <token>` header containing a 32-byte cryptographically secure random token generated at server startup. Validation uses constant-time comparison (`crypto.timingSafeEqual`) to prevent timing side-channels.
+- **CSRF & DNS Rebinding Defenses:**
+  - Any request presenting an `Origin` header is rejected immediately with HTTP 403 Forbidden, protecting against browser-based drive-by attacks and cross-origin fetch attempts.
+  - The `Host` header must strictly match `127.0.0.1:<port>` or `localhost:<port>`, defending against DNS rebinding attacks.
+- **Resource Protection & Connection Handling:** Payloads are bounded to a maximum of 1 MiB (`MAX_BODY_BYTES = 1024 * 1024`). Requests exceeding this bound receive HTTP 413 Payload Too Large with connection closure. Server sockets are unreferenced (`server.unref()`) so background listening does not prevent process termination or hang test runs, and responses send `Connection: close` with socket teardown.
+- **Strict Method Allowlist:** Incoming JSON RPC calls to `POST /rpc` with `{ method, params }` are dispatched only against an explicit allowlist table supporting canonical dot-notation and IPC colon-notation aliases:
+  - **Session details:** `session.getDetail` / `session:getDetail`
+  - **Client sources & scanning:** `clientSources.list` / `usage:clientSources`, `clientSources.setTracked`, `clientSources.setOrder`, `clientSources.setCustomScanPath`, `clientSources.setWslScanning`, `clientSources.rescan` / `usage:rescanClient`, `clientSources.repairSyncLock` / `usage:repairClientSyncLock`
+  - **Collection cadence:** `collectionCadence.get`, `collectionCadence.set` (routed through `handleSettingsUpdate`)
+  - **Session archive:** `sessionArchive.getRetain`, `sessionArchive.setRetain`, `sessionArchive.clear` / `sessionUsageArchive:clear`
+  - **Diagnostics:** `diagnostics.generate` / `diagnostics:generate`
+  - **Tokscale status:** `tokscale.getStatus` / `tokscale:getStatus` (status and probe inspection only; never triggers binary download)
+  - **Limits and credentials:** `limits.listAccountForms` (display/action metadata DTOs only; never exposes secret keys or local storage paths), `limits.saveCredential` / `limits:saveCredential`, `limits.clearCredential` / `limits:clearCredential`, `limits.refresh` (triggers queue-based invalidation; never bypasses cooldowns)
+  - **Managed provider authentication flows:**
+    - `limits.antigravitySignInStart` / `antigravity:addAccount`, `limits.antigravityCancelSignIn` / `antigravity:cancelLogin`
+    - `copilot.signInStart` / `limits.copilotSignInStart` / `copilot:signIn`, `copilot.cancelSignIn` / `limits.copilotCancelSignIn` / `copilot:cancelSignIn`
+    - `codex.signInStart` / `limits.codexSignInStart` / `codex:addAccount`, `codex.cancelSignIn` / `limits.codexCancelSignIn` / `codex:cancelLogin`
+    - `signIn.status` / `signIn:status` (flow status polling for device verification codes, URLs, and workspace options)
+    - `codex.selectWorkspace` / `codex:selectWorkspace` (resolves pending workspace selection in multi-workspace accounts)
+  - **Codex local account profiles & switching:** `codex.listAccounts` / `codex:accounts`, `codex.switchAccount` / `codex:switchSystemAccount`
+  - **Currency settings:** `currency.get`, `currency.set`
+- **Sign-In Flow Lifecycle & Remote UI Support:**
+  - Starting a sign-in flow (`copilot.signInStart` or `codex.signInStart`) returns `{ ok: true, flowId }` immediately without blocking the RPC request.
+  - The caller polls `signIn.status` (params: `{ flowId }`) to retrieve the sanitized flow state:
+    - GitHub Copilot returns the `userCode` and `verificationUrl` for user authorization, along with flow phase (`requesting`, `authorize`, `polling`, `success`, `error`, `cancelled`).
+    - Codex returns streamed authentication steps and, if multiple workspaces are available, `phase: 'workspaceSelection'` along with the list of available `workspaces`.
+    - Once Codex reaches workspace selection, the caller invokes `codex.selectWorkspace` with `{ flowId, workspaceId }` to complete account binding.
+    - All access tokens and credentials are deleted before recording flow status; secrets never appear in `signIn.status` responses.
+- **Settings Normalization & Side Effects:** All settings modifications (`setTrackedClients`, `setClientDisplayOrder`, `setCustomScanPath`, `setWslScanning`, `setCollectionCadence`, `setSessionArchiveRetain`, `setCurrency`) call the shared `handleSettingsUpdate(patch)` pipeline used by renderer IPC `settings:update`. This guarantees that settings validation, sync content runtime patch publication (`contentRuntime.publishPatch`), persistence to disk, push to active renderer windows (`pushSettingsToRenderer()`), and synchronization with usage transform and visibility projections occur identically.
+- **Response Sanitization:** Every response is recursively sanitized before serialization. Filesystem home paths matching `os.homedir()` are replaced with `~`, and sensitive credential keys (such as `apiKey`, `accessToken`, `cookie`, `secret`, `password`, `copilotApiToken`, etc.) and `Bearer` token strings are masked with `[REDACTED]`.
+
+### Remote Hub API vs. Local Control RPC
+
+The remote Hub API is designed for cross-device telemetry aggregation, cloud synchronization, and widget metrics; see [docs/API.md](API.md) for its endpoints and wire contracts, which remain distinct from the node-local control RPC designed exclusively for local orchestrators.

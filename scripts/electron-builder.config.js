@@ -9,9 +9,21 @@ const { resolveElectronVersionOverride } = require('./electron-builder-version')
 // and Windows continue to use the package.json Electron version.
 const electronVersion = resolveElectronVersionOverride();
 
-module.exports = createBuilderConfig({
-  baseConfig: {
-    ...packageJson.build,
-    ...(electronVersion ? { electronVersion } : {})
+const baseConfig = {
+  ...packageJson.build,
+  ...(electronVersion ? { electronVersion } : {})
+};
+
+// When building Windows targets in an environment without a code signing certificate,
+// omit signtoolOptions and verifyUpdateCodeSignature to allow local/packaging builds to succeed.
+if (process.platform === 'win32' && !process.env.SIGNPATH_API_TOKEN && !process.env.CSC_LINK && !process.env.WIN_CSC_LINK) {
+  if (baseConfig.win) {
+    baseConfig.win = { ...baseConfig.win };
+    delete baseConfig.win.signtoolOptions;
+    delete baseConfig.win.verifyUpdateCodeSignature;
   }
+}
+
+module.exports = createBuilderConfig({
+  baseConfig
 });
