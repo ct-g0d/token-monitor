@@ -11,7 +11,7 @@ read_when:
 
 ## Identity and ids
 
-`notion` is a limits-only provider, not a tracked token client. The integration targets the per-user AI usage allowance of Business/Enterprise workspaces. Only fixtures have been validated; no real response sample is available, and live authentication remains pending explicit approval.
+`notion` is a limits-only provider, not a tracked token client. The integration targets the per-user AI usage allowance of Business/Enterprise workspaces. Validation is fixture-only: the parser and account form are tested against recorded fixtures, but no real response sample has been validated and no live authentication has been attempted.
 
 The workspace must be selected explicitly with `notionWorkspaceId`, a workspace UUID (`spaceId` in the allowance request), not a page ID. Dashed and undashed UUIDs normalize to the same identity. `getSpaces` must corroborate both the signed-in user ID and that exact workspace ID; it must not silently select a different workspace. The account key is a stable hash of user plus workspace, so the same user's separate workspaces remain distinct during cross-device aggregation. Email and workspace names are not displayed or used as identity signals.
 

@@ -1,8 +1,8 @@
 ---
-summary: MiniMax Token Plan region selection and endpoint fallbacks
+summary: MiniMax Token Plan or pay-as-you-go balance billing, region selection and endpoint fallbacks
 ids: [minimax]
 read_when:
-  - Changing MiniMax region selection, credentials, or quota endpoint fallbacks
+  - Changing MiniMax billing mode, region selection, credentials, or quota endpoint fallbacks
 ---
 
 ## Source precedence
@@ -11,9 +11,15 @@ An explicit `minimaxApiRegion` choice wins over the legacy probe option `minimax
 
 Within each region, the Token Plan endpoint falls back to the legacy Coding Plan endpoint on the existing migration/error signals. A transport failure skips the remaining endpoint on the unreachable host. Runtime cancellation stops the probe without retrying another region; a per-request timeout remains eligible for fallback. HTTP failures such as 5xx or 429 and JSON parse failures do not trigger a cross-region retry.
 
+## Billing modes
+
+`minimaxBillingMode` selects the quota contract: `token-plan` (the default) reads the 5-hour and weekly Token Plan windows above, while `api` reads the account's spendable pay-as-you-go balance. Both modes use the same stored key; the form's mode select saves independently and does not resubmit the credential.
+
+The `api` lane requests `/account/query_balance` on the selected region's host and maps `available_amount` to one Balance credits window, CNY on `cn` and USD on `en`, under the `Pay-as-you-go` account label. It has one endpoint per region, so there is no token-plan-to-legacy endpoint fallback in this mode. A missing or malformed `available_amount` is unavailable, never a zero balance, and an answered response without a balance does not trigger a cross-region retry. Region memory, pinning and the authentication/transport fallback rules still apply.
+
 ## Credentials and transport
 
-The API key stays in the main-process credential store. Region changes retain the key, clear the old quota, and immediately refresh only MiniMax through the normal settings invalidation path. Calls use the injected transport and fixed MiniMax API URLs.
+The API key stays in the main-process credential store. Region changes retain the key, clear the old quota, and immediately refresh only MiniMax through the normal settings invalidation path. Calls use the injected transport and fixed MiniMax API URLs. The environment fallback remains `MINIMAX_CODING_API_KEY` in both billing modes.
 
 If the fallback region rejects the key after a transport failure, report `unavailable` so the runtime retains the last known quota instead of prompting for a replacement key. When every attempted region rejects the key without a transport failure, report `unauthorized`.
 

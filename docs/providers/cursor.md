@@ -1,10 +1,10 @@
 ---
-summary: "Cursor provider notes: managed accounts, tokscale self-sync, cache-backed session repair and dashboard limits."
+summary: "Cursor provider notes: managed accounts, tokscale self-sync, cache-backed session repair, unified-plan and dashboard limits."
 ids: [cursor]
 read_when:
   - Changing Cursor account discovery, login/logout/sync or local credential storage
   - Changing Cursor tokscale self-sync, cache events or legacy-session replacement
-  - Changing Cursor usage-summary, Grok Bot, team pool or on-demand limits mapping
+  - Changing Cursor plan-type detection, Included usage, prepaid balance, Grok Bot, team pool or on-demand limits mapping
 ---
 
 # Cursor
@@ -40,6 +40,14 @@ For known usage conversations, the same read joins `cursorDiskKV`'s `composerDat
 Every enabled saved account is probed independently. Stable identity prefers the canonical API subject; opaque local fallback ids remain distinct rather than merging unrelated accounts. API email is presentation metadata, not the only identity key.
 
 The dashboard mapping preserves separate official model pools, legacy request plans, enterprise/team pooled usage, optional Grok Bot allowance and on-demand spend. Never synthesize an overall total by summing model pools. Grok Bot is best effort and must not fail the main account row. A zero uncapped spend is hidden; positive uncapped spend remains visible.
+
+### Plan shape
+
+`planInfo.isMerged` is authoritative when the plan-info dashboard RPC answers; the sand status's `isUnified` is only the fallback. If both responses are absent the plan is `unknown` rather than guessed. The X Subscription (Plus, Premium, Super, unified Ultra) replaces the separate model pools with one included pool shared with Grok and Grok Bot, so a unified row suppresses the separate Grok Bot allowance and never adds an on-demand window. Team-pooled usage and a unified prepaid balance can still appear alongside it. Legacy plans retain their Requests or model-pool windows, optional Grok Bot allowance and on-demand spend.
+
+For a unified plan the Included usage percentage prefers `GetCurrentPeriodUsage`, including an explicit zero, then the unified sand percentage, then the usage-summary plan percentage only when the plan explicitly declares a monthly included period. Weekly is the default; only an explicit monthly period uses the billing reset. A missing weekly reset stays unknown. Both the current-period RPC and plan info are best effort: the RPC needs a usable session JWT access token, is bounded to five seconds, and must not fail the row.
+
+Prepaid balance is a unified-plan-only `credits` window from `/api/dashboard/get-user-prepaid-billing`; it is hidden at zero and a failure leaves the quota row intact. When the plan is unknown, the row carries `invalidateCachedWindowLabels` for `Requests`, `Cursor Models`, `Other Models` and `Overall`. The limits runtime consumes that list to drop those cached windows for the account while retaining other windows, and the field never enters the published wire shape.
 
 Account-scoped enable/disable affects limits collection only. The active tokscale account and self-synced history are managed by the explicit Cursor lifecycle operations.
 
