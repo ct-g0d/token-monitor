@@ -94,8 +94,11 @@ function backfillUsageEventCosts(database, pricingEngine = defaultPricingEngine)
   }
 }
 
-function ensureFactSchema(database) {
-  backfillUsageEventCosts(database);
+function ensureFactSchema(database, options = {}) {
+  const maintenance = options?.maintenance !== false;
+  if (maintenance) {
+    backfillUsageEventCosts(database);
+  }
   database.exec(`
     CREATE TABLE IF NOT EXISTS ingestion_runs (
       run_id INTEGER PRIMARY KEY
@@ -312,7 +315,8 @@ function resolveTokenLedgerPath(options = {}) {
   return fs.existsSync(developmentPath) ? developmentPath : sharedPath;
 }
 
-function ensureSchema(database) {
+function ensureSchema(database, options = {}) {
+  const maintenance = options?.maintenance !== false;
   database.exec(`
     PRAGMA journal_mode = WAL;
     PRAGMA synchronous = NORMAL;
@@ -320,7 +324,7 @@ function ensureSchema(database) {
     CREATE TABLE IF NOT EXISTS runtime_history (\n      date_bucket TEXT PRIMARY KEY,\n      payload_json TEXT NOT NULL,\n      updated_at_ms INTEGER NOT NULL\n    );
     CREATE INDEX IF NOT EXISTS idx_runtime_history_date ON runtime_history(date_bucket);
   `);
-  ensureFactSchema(database);
+  ensureFactSchema(database, { maintenance });
   const version = Number(database.prepare('PRAGMA user_version').get().user_version || 0);
   if (version < TOKEN_LEDGER_SCHEMA_VERSION) {
     backfillLegacyFacts(database);
@@ -1600,6 +1604,7 @@ function computeSessionsByWindow(database, options = {}) {
 }
 
 function createTokenLedgerStore(storeOptions = {}) {
+  const maintenance = storeOptions.maintenance !== false;
   const options = storeOptions;
   const databasePath = resolveTokenLedgerPath(options);
   const explicitSeed = packagedSeedPath(options);
@@ -1646,7 +1651,7 @@ function createTokenLedgerStore(storeOptions = {}) {
       }
 
       database = new DatabaseSync(databasePath);
-      if (isCorrupt(database)) {
+      if (maintenance && isCorrupt(database)) {
         try { database.close(); } catch (_) {}
         database = null;
         if (seedPath && fs.existsSync(seedPath)) {
@@ -1656,7 +1661,7 @@ function createTokenLedgerStore(storeOptions = {}) {
         }
       }
 
-      ensureSchema(database);
+      ensureSchema(database, { maintenance });
       if (seedPath && fs.existsSync(seedPath) && path.resolve(seedPath) !== path.resolve(databasePath)) {
         reconcileDailyUsage(database, seedPath);
       }
@@ -1982,6 +1987,7 @@ function createTokenLedgerStore(storeOptions = {}) {
     writeHistory,
     status,
     database: () => open(),
+    open: () => open(),
     upsertUsageEvent: (event, options) => upsertUsageEvent(open(), event, options),
     upsertFact: (event, options) => upsertUsageEvent(open(), event, options),
     readSourceWatermark: (sourceKind, sourceId) => readSourceWatermark(open(), sourceKind, sourceId),

@@ -797,7 +797,7 @@ function syncUploadIntervalMs() {
 }
 
 function electronUsageConfig(errorPrefix) {
-  tokenLedgerStore ||= createTokenLedgerStore();
+  tokenLedgerStore ||= createTokenLedgerStore({ maintenance: false });
   return usageConfigFromSettings(settings, {
     agentVersion: appVersion(),
     tokenLedgerStore,
@@ -4772,7 +4772,7 @@ function getCompleteHistory() {
 
 function localLedgerHistory(overlayHistory, options = {}) {
   if (settings?.historyEnabled === false || mode !== 'local') return null;
-  tokenLedgerStore ||= createTokenLedgerStore();
+  tokenLedgerStore ||= createTokenLedgerStore({ maintenance: false });
   return localLedgerHistorySync(overlayHistory, {
     ...options,
     tokenLedgerStore,
@@ -4781,7 +4781,7 @@ function localLedgerHistory(overlayHistory, options = {}) {
 }
 
 function withLocalLedgerHistory(stats, overlayHistory, options = {}) {
-  tokenLedgerStore ||= createTokenLedgerStore();
+  tokenLedgerStore ||= createTokenLedgerStore({ maintenance: false });
   const synced = withLocalLedgerHistorySync(stats, overlayHistory, {
     ...options,
     tokenLedgerStore,
@@ -7453,7 +7453,7 @@ function createDashboardWindow() {
 
 function getSessionsByWindow(options = {}) {
   try {
-    tokenLedgerStore ||= createTokenLedgerStore();
+    tokenLedgerStore ||= createTokenLedgerStore({ maintenance: false });
     return tokenLedgerStore?.sessionsByWindow?.(options) || null;
   } catch (_) {
     return null;
