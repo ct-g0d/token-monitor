@@ -85,11 +85,14 @@ export interface TokenMonitorSettingsState {
   edgeDockWarnColors?: boolean;
   edgeDockRunningIndicatorEnabled?: boolean;
   edgeDockHaptic?: boolean;
+  edgeDockItems?: any;
+
 
   // Presence - Floating Bubble
   floatingBubbleEnabled?: boolean;
   floatingBubbleTrigger?: 'click' | 'hover';
   floatingBubbleContent?: string;
+  floatingBubbleCustomLayout?: any;
 
   // Presence - Tray
   trayMode?: boolean;
@@ -97,8 +100,12 @@ export interface TokenMonitorSettingsState {
   showTrayProviderBadge?: boolean;
   hideAppIcon?: boolean;
   showTrayIcon?: boolean;
+  trayCustomLayout?: any;
 
   // Appearance
+  systemGlass?: boolean;
+  windowsBackdrop?: 'acrylic' | 'accent';
+  macBackdrop?: 'vibrancy' | 'liquid-glass';
   glassOpacity?: number;
   glassBlur?: number;
   zoomFactor?: number;
@@ -109,15 +116,24 @@ export interface TokenMonitorSettingsState {
   themeColors?: Record<string, any>;
   vendorColors?: Record<string, string>;
   tokenRateMode?: 'speed' | 'burn';
-  reduceMotion?: boolean;
+  reduceMotion?: boolean | 'system' | 'on' | 'off';
+  showLiveDot?: boolean;
+  showToolIcons?: boolean;
+  titleIconOnly?: boolean;
+  showCompactTotalTokens?: boolean;
+  showLiveTokenRate?: boolean;
+  liveTokenRateScope?: 'all' | 'device';
+  compactTokenUnits?: 'western' | 'localized';
 
   // Collection
   clients?: string;
   hiddenClients?: string;
   pinnedClients?: string;
   clientDisplayOrder?: string[] | string;
+  collectionMode?: 'live' | 'smart' | 'interval';
+  collectionIntervalMs?: number;
   modelAliases?: Record<string, string>;
-  modelAliasGrouping?: boolean;
+  modelAliasGrouping?: boolean | 'off' | 'duplicates' | 'prefix';
   customModelPricing?: CustomPricingEntry[];
   wslScanEnabled?: boolean;
   sessionUsageArchiveEnabled?: boolean;
@@ -134,6 +150,8 @@ export interface TokenMonitorSettingsState {
   limitProviderOrder?: string[] | string;
   limitProviderHiddenItems?: Record<string, any> | string;
   limitsEnabled?: boolean;
+  limitsRefreshMode?: 'adaptive' | 'fixed';
+  limitsRefreshMs?: number;
   copilotApiToken?: string;
   limitProviders?: string[] | string;
 
@@ -188,7 +206,7 @@ export interface TokenMonitorSettingsState {
   subscriptionsShared?: boolean;
   subscriptionsHub?: string;
   subscriptionsUpdatedAt?: string;
-  subscriptionsOrphaned?: SubscriptionRecord[];
+  subscriptionsOrphaned?: SubscriptionRecord[] | { hubUrl: string; records: SubscriptionRecord[] };
 
   [key: string]: any;
 }

@@ -121,11 +121,18 @@ export function GeneralSettings({ settings, updateSettings }: GeneralSettingsPro
         <SettingRow
           title="Language"
           control={
-            <select value={settings.language || 'auto'} onChange={(e) => updateSettings({ language: e.target.value })} className={selectClass}>
-              <option value="auto">System</option>
+            <select
+              value={settings.language || 'auto'}
+              onChange={(e) => updateSettings({ language: e.target.value })}
+              className={selectClass}
+            >
+              <option value="auto">Auto (system)</option>
               <option value="en">English</option>
-              <option value="zh-CN">简体中文</option>
               <option value="zh-TW">繁體中文</option>
+              <option value="zh-CN">简体中文</option>
+              <option value="ko">한국어</option>
+              <option value="ja">日本語</option>
+              <option value="pt-BR">Português (Brasil)</option>
             </select>
           }
         />
@@ -195,6 +202,68 @@ export function GeneralSettings({ settings, updateSettings }: GeneralSettingsPro
                   {c.code} ({c.symbol}) - {c.name}
                 </option>
               ))}
+            </select>
+          }
+        />
+
+        <SettingRow
+          title="Month & Interval Framing"
+          description="Time window framing for periodic monthly statistics."
+          control={
+            <select
+              value={settings.periodMonthMode || 'month'}
+              onChange={(e) => updateSettings({ periodMonthMode: e.target.value as any })}
+              className={selectClass}
+            >
+              <option value="month">Calendar Month</option>
+              <option value="week">Calendar Week</option>
+              <option value="last7">Rolling Last 7 Days</option>
+              <option value="last30">Rolling Last 30 Days</option>
+            </select>
+          }
+        />
+
+        <SettingRow
+          title="Model Ranking Metric"
+          description="Attribute used to sort models in ranking lists."
+          control={
+            <select
+              value={settings.modelRankingMetric || 'tokens'}
+              onChange={(e) => updateSettings({ modelRankingMetric: e.target.value as any })}
+              className={selectClass}
+            >
+              <option value="tokens">Total Tokens</option>
+              <option value="cost">Estimated Cost</option>
+            </select>
+          }
+        />
+
+        <SettingRow
+          title="Heatmap Activity Metric"
+          description="Metric rendered across daily activity heatmaps."
+          control={
+            <select
+              value={settings.heatmapMetric || 'cost'}
+              onChange={(e) => updateSettings({ heatmapMetric: e.target.value as any })}
+              className={selectClass}
+            >
+              <option value="cost">Cost ($)</option>
+              <option value="tokens">Tokens</option>
+            </select>
+          }
+        />
+
+        <SettingRow
+          title="Active Days Window"
+          description="Date range window for activity heatmap cells."
+          control={
+            <select
+              value={settings.homeActiveDaysWindow || 'all'}
+              onChange={(e) => updateSettings({ homeActiveDaysWindow: e.target.value as any })}
+              className={selectClass}
+            >
+              <option value="all">All Available History</option>
+              <option value="year">Past 365 Days</option>
             </select>
           }
         />
@@ -273,6 +342,25 @@ export function GeneralSettings({ settings, updateSettings }: GeneralSettingsPro
           }
         />
 
+        <SettingRow
+          title="Service Status Refresh Interval"
+          description="Frequency for polling third-party provider status pages."
+          control={
+            <select
+              value={String(settings.serviceStatusRefreshMs || 60000)}
+              onChange={(e) => updateSettings({ serviceStatusRefreshMs: Number(e.target.value) })}
+              className={selectClass}
+            >
+              <option value="0">Manual</option>
+              <option value="60000">1 minute</option>
+              <option value="120000">2 minutes</option>
+              <option value="300000">5 minutes</option>
+              <option value="900000">15 minutes</option>
+              <option value="1800000">30 minutes</option>
+            </select>
+          }
+        />
+
         <div className="p-3.5 space-y-3 bg-muted/20 rounded-lg border border-border/50">
           <h4 className="tm-label !text-foreground">
             Custom Exchange Rates (Relative to 1 USD)
@@ -298,6 +386,185 @@ export function GeneralSettings({ settings, updateSettings }: GeneralSettingsPro
             </Button>
           </div>
         </div>
+      </SettingSection>
+
+      <SettingSection title="Home Dashboard & Views Layout" description="Custom module arrangements and view display order.">
+        <SettingRow
+          title="Limits Display Style"
+          description="Presentation format for quota bars and limits on the home dashboard."
+          control={
+            <select
+              value={settings.homeLimitDisplayMode || 'text'}
+              onChange={(e) => updateSettings({ homeLimitDisplayMode: e.target.value })}
+              className={selectClass}
+            >
+              <option value="text">Text and labels</option>
+              <option value="bars">Progress bars</option>
+            </select>
+          }
+        />
+
+        <SettingRow
+          title="Show Home Limit Bars"
+          description="Display visual limit bars alongside primary metrics on the home panel."
+          control={
+            <Switch
+              checked={Boolean(settings.showHomeLimitBars)}
+              onCheckedChange={(checked) => updateSettings({ showHomeLimitBars: checked })}
+            />
+          }
+        />
+
+        <SettingRow
+          title="Show Provider Names on Bars"
+          description="Print provider brand text on compact quota bars."
+          control={
+            <Switch
+              checked={Boolean(settings.showHomeLimitProviderNames)}
+              onCheckedChange={(checked) => updateSettings({ showHomeLimitProviderNames: checked })}
+            />
+          }
+        />
+
+        <SettingRow
+          title="Max Home Limit Accounts"
+          description="Number of limit accounts surfaced on the home panel."
+          control={
+            <Input
+              type="number"
+              min="1"
+              max="20"
+              value={settings.homeLimitAccountCount ?? 4}
+              onChange={(e) => updateSettings({ homeLimitAccountCount: Number(e.target.value) || 4 })}
+              className="h-8 w-20 text-xs"
+            />
+          }
+        />
+
+        {(settings.homeModuleOrder || settings.hiddenHomeModules || settings.homeLimitProviderOrder || settings.hiddenHomeLimitProviders) && (
+          <SettingRow
+            title="Home Module Customization"
+            description="Custom arrangements for dashboard card ordering."
+            control={
+              <Button
+                variant="outline"
+                size="xs"
+                onClick={() => updateSettings({
+                  homeModuleOrder: '',
+                  hiddenHomeModules: '',
+                  homeLimitProviderOrder: '',
+                  hiddenHomeLimitProviders: ''
+                })}
+              >
+                Reset layout
+              </Button>
+            }
+          />
+        )}
+
+        {(settings.viewDisplayOrder || settings.hiddenViews) && (
+          <SettingRow
+            title="Views Order & Visibility"
+            description="Custom tabs order for navigation views."
+            control={
+              <Button
+                variant="outline"
+                size="xs"
+                onClick={() => updateSettings({ viewDisplayOrder: '', hiddenViews: '' })}
+              >
+                Reset view order
+              </Button>
+            }
+          />
+        )}
+
+        {(settings.serviceProviderDisplayOrder || settings.hiddenServiceProviders) && (
+          <SettingRow
+            title="Service Providers Order"
+            description="Custom sorting for status service providers."
+            control={
+              <Button
+                variant="outline"
+                size="xs"
+                onClick={() => updateSettings({ serviceProviderDisplayOrder: '', hiddenServiceProviders: '' })}
+              >
+                Reset service providers
+              </Button>
+            }
+          />
+        )}
+      </SettingSection>
+
+      <SettingSection title="Limits Cadence & Preferences" description="Global polling intervals and provider enablement.">
+        <SettingRow
+          title="Limits Tracking"
+          description="Enable real-time quota and subscription rate limit checks."
+          control={
+            <Switch
+              checked={settings.limitsEnabled !== false}
+              onCheckedChange={(checked) => updateSettings({ limitsEnabled: checked })}
+            />
+          }
+        />
+
+        <SettingRow
+          title="Limits Refresh Cadence"
+          description="Interval between background limit balance updates."
+          control={
+            <select
+              value={settings.limitsRefreshMode === 'adaptive' ? 'adaptive' : String(settings.limitsRefreshMs || 300000)}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val === 'adaptive') {
+                  updateSettings({ limitsRefreshMode: 'adaptive' });
+                } else {
+                  updateSettings({ limitsRefreshMode: 'fixed', limitsRefreshMs: Number(val) });
+                }
+              }}
+              className={selectClass}
+            >
+              <option value="adaptive">Adaptive</option>
+              <option value="60000">1 minute</option>
+              <option value="120000">2 minutes</option>
+              <option value="300000">5 minutes</option>
+              <option value="900000">15 minutes</option>
+              <option value="1800000">30 minutes</option>
+            </select>
+          }
+        />
+
+        {settings.limitProviders && (
+          <SettingRow
+            title="Active Limit Providers"
+            description="Configured provider list filter."
+            control={
+              <Button
+                variant="outline"
+                size="xs"
+                onClick={() => updateSettings({ limitProviders: '' })}
+              >
+                Reset providers
+              </Button>
+            }
+          />
+        )}
+
+        {settings.copilotApiToken && (
+          <SettingRow
+            title="GitHub Copilot API Token"
+            description="Stored token override for Copilot quota checks."
+            control={
+              <Button
+                variant="ghost"
+                size="xs"
+                className="text-destructive hover:bg-destructive/10"
+                onClick={() => updateSettings({ copilotApiToken: '' })}
+              >
+                Clear token
+              </Button>
+            }
+          />
+        )}
       </SettingSection>
 
       <SettingSection title="Diagnostics & System" description="Troubleshooting details and configuration directories.">
