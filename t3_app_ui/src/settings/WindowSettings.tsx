@@ -202,7 +202,6 @@ export function WindowSettings({ settings, updateSettings }: WindowSettingsProps
                   <option value="inherit">Same as widget</option>
                   <option value="vibrancy">Frosted Glass</option>
                   <option value="liquid-glass">Liquid Glass (Regular)</option>
-                  <option value="liquid-glass-clear">Liquid Glass (Clear)</option>
                 </select>
               }
             />

@@ -99,9 +99,7 @@ export function AppearanceSettings({ settings, updateSettings }: AppearanceSetti
               className={selectClass}
             >
               <option value="acrylic">Acrylic</option>
-              <option value="mica">Mica</option>
-              <option value="tabbed">Tabbed</option>
-              <option value="transparent">Transparent</option>
+              <option value="accent">Accent Blur (experimental)</option>
             </select>
           }
         />
@@ -117,9 +115,6 @@ export function AppearanceSettings({ settings, updateSettings }: AppearanceSetti
             >
               <option value="vibrancy">Frosted Glass (Vibrancy)</option>
               <option value="liquid-glass">Liquid Glass (Regular)</option>
-              <option value="liquid-glass-clear">Liquid Glass (Clear)</option>
-              <option value="frosted-solid">Solid Frosted</option>
-              <option value="transparent">Transparent</option>
             </select>
           }
         />

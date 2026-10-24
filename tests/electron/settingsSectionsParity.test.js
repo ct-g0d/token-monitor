@@ -203,3 +203,58 @@ test('settings sections parity: none of the 22 upstream-only keys appear in Reac
 
   assert.equal(UPSTREAM_ONLY_KEYS.length, 22);
 });
+
+/**
+ * Select options backed by normalizers in src/. A key can be present and still
+ * be useless when the value it writes is normalized away, so matching keys is
+ * not enough: each select must offer exactly the values the backend keeps.
+ */
+const SELECT_OPTION_PARITY = {
+  windowsBackdrop: ['acrylic', 'accent'],
+  macBackdrop: ['vibrancy', 'liquid-glass'],
+  edgeDockMacBackdrop: ['inherit', 'vibrancy', 'liquid-glass'],
+  // Collection mode writes 'interval' plus one of COLLECTION_INTERVAL_OPTIONS.
+  collectionMode: ['live', 'smart', '300000', '900000', '1800000'],
+  historyIntervalMs: ['300000', '600000', '900000', '1800000', '3600000'],
+  serviceStatusRefreshMs: ['0', '60000', '120000', '300000', '900000', '1800000'],
+  homeLimitDisplayMode: ['text', 'bars'],
+  limitsRefreshMode: ['adaptive', '60000', '120000', '300000', '900000', '1800000']
+};
+
+test('settings sections parity: restored selects only offer backend-supported values', () => {
+  const settingsDir = path.join(__dirname, '..', '..', 't3_app_ui', 'src', 'settings');
+  const files = fs.readdirSync(settingsDir).filter(f => f.endsWith('.tsx'));
+
+  const mismatches = [];
+  const seen = new Set();
+
+  for (const file of files) {
+    const content = fs.readFileSync(path.join(settingsDir, file), 'utf8');
+    const blocks = content.match(/<select[\s\S]*?<\/select>/g) || [];
+
+    for (const block of blocks) {
+      const keyMatch = block.match(/updateSettings\(\{\s*([A-Za-z0-9_]+)/);
+      if (!keyMatch) continue;
+      const key = keyMatch[1];
+      if (!(key in SELECT_OPTION_PARITY)) continue;
+
+      seen.add(key);
+      const values = [...block.matchAll(/<option value="([^"]*)"/g)].map(m => m[1]);
+      const expected = SELECT_OPTION_PARITY[key];
+      if (JSON.stringify(values) !== JSON.stringify(expected)) {
+        mismatches.push({ file, key, values, expected });
+      }
+    }
+  }
+
+  assert.deepEqual(
+    [...seen].sort(),
+    Object.keys(SELECT_OPTION_PARITY).sort(),
+    'Not every backend-backed select was found in the React settings UI.'
+  );
+  assert.deepEqual(
+    mismatches,
+    [],
+    `Selects offer values the backend normalizes away: ${JSON.stringify(mismatches)}`
+  );
+});

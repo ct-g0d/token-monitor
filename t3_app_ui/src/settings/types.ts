@@ -81,7 +81,7 @@ export interface TokenMonitorSettingsState {
   edgeDockSide?: 'left' | 'right';
   edgeDockSize?: 'small' | 'medium' | 'large' | 'custom';
   edgeDockCustomScale?: number;
-  edgeDockMacBackdrop?: 'inherit' | 'vibrancy' | 'liquid-glass' | 'liquid-glass-clear';
+  edgeDockMacBackdrop?: 'inherit' | 'vibrancy' | 'liquid-glass';
   edgeDockWarnColors?: boolean;
   edgeDockRunningIndicatorEnabled?: boolean;
   edgeDockHaptic?: boolean;
@@ -104,8 +104,8 @@ export interface TokenMonitorSettingsState {
 
   // Appearance
   systemGlass?: boolean;
-  windowsBackdrop?: 'acrylic' | 'mica' | 'tabbed' | 'transparent';
-  macBackdrop?: 'vibrancy' | 'liquid-glass' | 'liquid-glass-clear' | 'frosted-solid' | 'transparent';
+  windowsBackdrop?: 'acrylic' | 'accent';
+  macBackdrop?: 'vibrancy' | 'liquid-glass';
   glassOpacity?: number;
   glassBlur?: number;
   zoomFactor?: number;

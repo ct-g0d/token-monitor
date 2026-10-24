@@ -351,10 +351,12 @@ export function GeneralSettings({ settings, updateSettings }: GeneralSettingsPro
               onChange={(e) => updateSettings({ serviceStatusRefreshMs: Number(e.target.value) })}
               className={selectClass}
             >
-              <option value="30000">30 seconds</option>
+              <option value="0">Manual</option>
               <option value="60000">1 minute</option>
+              <option value="120000">2 minutes</option>
               <option value="300000">5 minutes</option>
-              <option value="600000">10 minutes</option>
+              <option value="900000">15 minutes</option>
+              <option value="1800000">30 minutes</option>
             </select>
           }
         />
@@ -397,7 +399,6 @@ export function GeneralSettings({ settings, updateSettings }: GeneralSettingsPro
               className={selectClass}
             >
               <option value="text">Text and labels</option>
-              <option value="compact">Compact gauges</option>
               <option value="bars">Progress bars</option>
             </select>
           }
@@ -524,10 +525,10 @@ export function GeneralSettings({ settings, updateSettings }: GeneralSettingsPro
             >
               <option value="adaptive">Adaptive</option>
               <option value="60000">1 minute</option>
+              <option value="120000">2 minutes</option>
               <option value="300000">5 minutes</option>
               <option value="900000">15 minutes</option>
               <option value="1800000">30 minutes</option>
-              <option value="3600000">1 hour</option>
             </select>
           }
         />

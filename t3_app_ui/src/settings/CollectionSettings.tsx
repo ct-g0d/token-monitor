@@ -225,7 +225,6 @@ export function CollectionSettings({ settings, updateSettings }: CollectionSetti
             >
               <option value="live">Live (Adaptive)</option>
               <option value="smart">Smart (10 min idle)</option>
-              <option value="60000">1 minute</option>
               <option value="300000">5 minutes</option>
               <option value="900000">15 minutes</option>
               <option value="1800000">30 minutes</option>
@@ -290,15 +289,15 @@ export function CollectionSettings({ settings, updateSettings }: CollectionSetti
             description="Interval between background history snapshots."
             control={
               <select
-                value={String(settings.historyIntervalMs || 60000)}
+                value={String(settings.historyIntervalMs || 900000)}
                 onChange={(e) => updateSettings({ historyIntervalMs: parseInt(e.target.value, 10) })}
                 className="h-8 rounded-md border border-input bg-background px-2.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               >
-                <option value="10000">10 seconds</option>
-                <option value="30000">30 seconds</option>
-                <option value="60000">1 minute</option>
                 <option value="300000">5 minutes</option>
                 <option value="600000">10 minutes</option>
+                <option value="900000">15 minutes</option>
+                <option value="1800000">30 minutes</option>
+                <option value="3600000">1 hour</option>
               </select>
             }
           />
