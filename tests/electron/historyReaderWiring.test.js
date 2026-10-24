@@ -19,6 +19,7 @@ function createSamplePeriods(overrides = {}) {
 
 test('history reader wiring: full tick invokes sweepUsage once; watch tick applies exact today delta and skips sweep', async () => {
   const operations = [];
+  const now = new Date(2026, 9, 18, 12, 0, 0);
 
   const mockRunTokscale = async ({ flags }) => {
     operations.push(`tokscale:${flags[0]}`);
@@ -41,7 +42,8 @@ test('history reader wiring: full tick invokes sweepUsage once; watch tick appli
     projectsEnabled: false,
     wslScanEnabled: false,
     runTokscale: mockRunTokscale,
-    sweepUsage: mockSweep
+    sweepUsage: mockSweep,
+    now
   });
 
   assert.equal(fullResult.today.totalTokens, 100);
@@ -54,7 +56,6 @@ test('history reader wiring: full tick invokes sweepUsage once; watch tick appli
 
   // 2. Watch collection tick
   operations.length = 0;
-  const now = new Date();
   const anchor = {
     dateKey: localTodayKey(now),
     sessionIdentityVersion: 1,
@@ -73,7 +74,8 @@ test('history reader wiring: full tick invokes sweepUsage once; watch tick appli
     wslScanEnabled: false,
     todayOnlyAnchor: anchor,
     runTokscale: mockRunTokscale,
-    sweepUsage: mockSweep
+    sweepUsage: mockSweep,
+    now
   });
 
   assert.deepEqual(operations, ['tokscale:--today']);

@@ -794,6 +794,7 @@ test('a failed Dots ledger and throwing diagnostic observer do not discard nativ
 test('full tick invokes serial tokscale scans then sweepUsage; watch tick scans today only and skips sweep', async () => {
   const callOrder = [];
   let sweepCalls = 0;
+  const now = new Date(2026, 9, 18, 12, 0, 0);
 
   const mockRunTokscale = async ({ flags }) => {
     callOrder.push('tokscale:' + flags[0]);
@@ -815,7 +816,8 @@ test('full tick invokes serial tokscale scans then sweepUsage; watch tick scans 
     projectsEnabled: false,
     wslScanEnabled: false,
     runTokscale: mockRunTokscale,
-    sweepUsage: mockSweepUsage
+    sweepUsage: mockSweepUsage,
+    now
   });
 
   assert.equal(fullSummary.today.totalTokens, 10);
@@ -824,7 +826,6 @@ test('full tick invokes serial tokscale scans then sweepUsage; watch tick scans 
 
   // Watch scan tick with valid anchor
   callOrder.length = 0;
-  const now = new Date();
   const anchor = {
     dateKey: localTodayKey(now),
     sessionIdentityVersion: 1,
@@ -843,7 +844,8 @@ test('full tick invokes serial tokscale scans then sweepUsage; watch tick scans 
     wslScanEnabled: false,
     todayOnlyAnchor: anchor,
     runTokscale: mockRunTokscale,
-    sweepUsage: mockSweepUsage
+    sweepUsage: mockSweepUsage,
+    now
   });
 
   assert.deepEqual(callOrder, ['tokscale:--today'], 'watch tick scans only --today and skips sweep');

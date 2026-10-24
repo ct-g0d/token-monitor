@@ -5,12 +5,14 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const { DatabaseSync } = require('node:sqlite');
 
 const testSharedDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-shared-sync-'));
 process.env.TOKEN_MONITOR_SHARED_DIR = testSharedDir;
 
 const { withLocalLedgerHistory } = require('../../src/electron/localLedgerSync');
 const { createTokenLedgerStore } = require('../../src/shared/usage/tokenLedger');
+const { rebuildUsageRollups } = require('../../src/shared/usage/tokenLedgerSweep');
 const { emptyPeriod } = require('../../src/shared/usage');
 
 function samplePeriods(overrides = {}) {
@@ -233,53 +235,65 @@ test('device matching matches by deviceId properly when target device is not at 
   assert.equal(synced.devices[1].allTime.totalTokens, 13_000_000_000);
 });
 
-test('integration with real tokenLedgerStore confirms totalTokens >= 13B with live overlay', () => {
+test('integration with real tokenLedgerStore merges a checked-in legacy ledger fixture with the live overlay', () => {
   const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-sync-fixture-'));
   const fixtureFile = path.join(fixtureDir, 'token_ledger.sqlite');
-  const repoPath = path.join(__dirname, '..', '..', 'data', 'token_ledger.sqlite');
-  if (fs.existsSync(repoPath)) {
-    fs.copyFileSync(repoPath, fixtureFile);
-  }
+  const legacy = new DatabaseSync(fixtureFile);
+  legacy.exec(fs.readFileSync(path.join(__dirname, '..', 'fixtures', 'token-ledger', 'legacy.sql'), 'utf8'));
+  legacy.close();
+
   const store = createTokenLedgerStore({ path: fixtureFile });
-  if (!store.available()) return;
+  try {
+    assert.equal(store.available(), true);
+    rebuildUsageRollups(store.database());
 
-  const overlayHistory = {
-    daily: [
-      {
-        date: '2026-10-18',
-        tokens: 1_700_000_000,
-        cost: 10.0,
-        messages: 50,
-        perClient: { codex: { tokens: 1_700_000_000, cost: 10.0, messages: 50 } },
-        perModel: { 'gpt-4o': { tokens: 1_700_000_000, cost: 10.0, messages: 50 } }
-      }
-    ]
-  };
+    const overlayHistory = {
+      daily: [
+        {
+          date: '2026-10-18',
+          tokens: 1700,
+          cost: 0.25,
+          messages: 5,
+          perClient: { codex: { tokens: 1700, cost: 0.25, messages: 5 } },
+          perModel: { 'gpt-4o': { tokens: 1700, cost: 0.25 } }
+        }
+      ]
+    };
 
-  const localDevice = {
-    deviceId: 'real-local-device',
-    periods: samplePeriods({ allTime: { ...emptyPeriod(), totalTokens: 4_000_000_000, costUsd: 422.50 } }),
-    today: emptyPeriod(),
-    month: emptyPeriod(),
-    allTime: { ...emptyPeriod(), totalTokens: 4_000_000_000, costUsd: 422.50 }
-  };
+    const localDevice = {
+      deviceId: 'real-local-device',
+      periods: samplePeriods({ allTime: { ...emptyPeriod(), totalTokens: 400, costUsd: 0.02 } }),
+      today: emptyPeriod(),
+      month: emptyPeriod(),
+      allTime: { ...emptyPeriod(), totalTokens: 400, costUsd: 0.02 }
+    };
 
-  const inputStats = {
-    mode: 'local',
-    periods: samplePeriods({ allTime: { ...emptyPeriod(), totalTokens: 4_000_000_000, costUsd: 422.50 } }),
-    devices: [localDevice]
-  };
+    const inputStats = {
+      mode: 'local',
+      periods: samplePeriods({ allTime: { ...emptyPeriod(), totalTokens: 400, costUsd: 0.02 } }),
+      devices: [localDevice]
+    };
 
-  const synced = withLocalLedgerHistory(inputStats, overlayHistory, {
-    tokenLedgerStore: store,
-    deviceId: 'real-local-device'
-  });
+    const synced = withLocalLedgerHistory(inputStats, overlayHistory, {
+      tokenLedgerStore: store,
+      deviceId: 'real-local-device',
+      today: '2026-10-18'
+    });
 
-  // Verify baseline (reconciled 11.14B-11.66B) + overlay >= 11,000,000,000
-  assert.ok(synced.periods.allTime.totalTokens >= 11_000_000_000);
-  assert.equal(synced.devices[0].periods.allTime.totalTokens, synced.periods.allTime.totalTokens);
-  assert.equal(synced.devices[0].allTime.totalTokens, synced.periods.allTime.totalTokens);
-  assert.ok(synced.periods.allTime.costUsd >= synced.devices[0].allTime.costUsd);
+    // The fixture's one unpriced 42-token turn on 2026-06-01 plus the 1700-token
+    // overlay day. Nothing here depends on the developer's repo ledger.
+    assert.equal(synced.periods.allTime.totalTokens, 1742);
+    assert.equal(synced.periods.allTime.costUsd, 0.25);
+    assert.equal(synced.periods.allTime.unpricedTokens, 42);
+    assert.equal(synced.periods.today.totalTokens, 1700);
+    assert.equal(synced.periods.month.totalTokens, 1700);
+    assert.equal(synced.history.summary.totalTokens, 1742);
+    assert.equal(synced.devices[0].periods.allTime.totalTokens, synced.periods.allTime.totalTokens);
+    assert.equal(synced.devices[0].allTime.totalTokens, synced.periods.allTime.totalTokens);
+  } finally {
+    store.close();
+    fs.rmSync(fixtureDir, { recursive: true, force: true });
+  }
 });
 
 test('withLocalLedgerHistory does not invoke store.writeHistory without explicit writeHistory: true', () => {
