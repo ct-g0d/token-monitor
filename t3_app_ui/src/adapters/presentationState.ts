@@ -168,6 +168,31 @@ export function transformStatsToProviders(
       } as any];
     });
 
+    // Some providers expose a prepaid balance without a quota window. Keep
+    // that current balance visible as a credits window instead of dropping the
+    // provider before the limits page can render it.
+    if (mappedWindows.length === 0) {
+      const balanceAmount = typeof item?.balance?.amount === "number"
+        ? item.balance.amount
+        : typeof item?.balanceUsd === "number"
+          ? item.balanceUsd
+          : null;
+      if (balanceAmount !== null) {
+        mappedWindows.push({
+          id: `${rawDriver}-credits`,
+          kind: "other",
+          label: "Balance",
+          metric: "credits",
+          showMeter: false,
+          usedPercent: 0,
+          remaining: balanceAmount,
+          ...(item?.balance?.currency || typeof item?.balanceUsd === "number"
+            ? { currency: item?.balance?.currency || "USD" }
+            : {}),
+        } as any);
+      }
+    }
+
     const rawCheckedAt = item.updatedAt || item.checkedAt || (stats.limits as any)?.updatedAt;
     const checkedAt =
       typeof rawCheckedAt === "string" && Number.isFinite(Date.parse(rawCheckedAt))
