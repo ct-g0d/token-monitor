@@ -801,6 +801,7 @@ function electronUsageConfig(errorPrefix) {
   return usageConfigFromSettings(settings, {
     agentVersion: appVersion(),
     tokenLedgerStore,
+    tokenLedgerPath: tokenLedgerStore.databasePath,
     agentRuntime: 'electron-widget',
     commandTimeoutMs: 120 * 1000,
     defaultDeviceId: defaultDeviceId(),

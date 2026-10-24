@@ -1087,7 +1087,7 @@ async function collectUsageOnce(options) {
       throwIfAborted(options.signal);
       allTime = extractUsageFromTokscale(allTimeJson);
     }
-    if (!anchorUsed && options.sweepEnabled !== false && (options.tokenLedgerStore || options.tokenLedgerDatabase || typeof options.sweepUsage === 'function')) {
+    if (!anchorUsed && options.sweepEnabled !== false && (options.tokenLedgerStore || options.tokenLedgerDatabase || options.tokenLedgerPath || typeof options.sweepUsage === 'function')) {
       let sweepFn = typeof options.sweepUsage === 'function' ? options.sweepUsage : null;
       if (!sweepFn) {
         try {
@@ -1112,23 +1112,31 @@ async function collectUsageOnce(options) {
           }
           let store = options.tokenLedgerStore || null;
           let db = options.tokenLedgerDatabase || (typeof store?.database === 'function' ? store.database() : null);
+          let createdStore = false;
           if (!store && !db) {
             try {
               const { createTokenLedgerStore } = require('./usage/tokenLedger');
-              store = createTokenLedgerStore(options);
+              store = createTokenLedgerStore(options.tokenLedgerPath ? { ...options, path: options.tokenLedgerPath } : options);
+              createdStore = true;
             } catch (_) {}
           }
-          const sweepResult = sweepFn({
-            store,
-            db,
-            roots: options.sweepRoots || options.customScanPaths,
-            adapters,
-            discoverNativeSources: true,
-            now: collectedAt.getTime(),
-            mode: 'full'
-          });
-          if (typeof options.onSweepCompleted === 'function') {
-            options.onSweepCompleted(sweepResult);
+          try {
+            const sweepResult = sweepFn({
+              store,
+              db,
+              roots: options.sweepRoots || options.customScanPaths,
+              adapters,
+              discoverNativeSources: true,
+              now: collectedAt.getTime(),
+              mode: 'full'
+            });
+            if (typeof options.onSweepCompleted === 'function') {
+              options.onSweepCompleted(sweepResult);
+            }
+          } finally {
+            if (createdStore) {
+              try { store?.close(); } catch (_) {}
+            }
           }
         } catch (error) {
           if (typeof options.logger === 'function') {
@@ -2662,6 +2670,19 @@ function startCollector(options) {
   let antigravityLocalView = null;
   let antigravityLocalViewDay = null;
   const antigravityUsageCache = options.antigravityUsageCache || makeAntigravityUsageCache();
+  let ownedTokenLedgerStore = null;
+  function resolveTokenLedgerStore() {
+    if (options.tokenLedgerStore) return options.tokenLedgerStore;
+    if (!options.tokenLedgerPath) return null;
+    if (!ownedTokenLedgerStore) {
+      const { createTokenLedgerStore } = require('./usage/tokenLedger');
+      ownedTokenLedgerStore = createTokenLedgerStore({
+        ...options,
+        path: options.tokenLedgerPath
+      });
+    }
+    return ownedTokenLedgerStore;
+  }
   let codexDotsVisible = options.codexDotsVisible !== false;
   let codexVisibilityRevision = 0;
   let publishedCodexVisibilityRevision = 0;
@@ -2925,8 +2946,12 @@ function startCollector(options) {
       let captured = null;
       let tickLocalView = null;
       let catpawSourceChangeObserved = false;
+      const tokenLedgerStore = !anchored && options.sweepEnabled !== false
+        ? (resolveTokenLedgerStore() || options.tokenLedgerStore || null)
+        : (options.tokenLedgerStore || null);
       const summary = await collectUsageOnce({
         ...options,
+        tokenLedgerStore,
         codexDotsVisible,
         signal: runtimeSignal,
         clients,
@@ -3718,6 +3743,10 @@ function startCollector(options) {
     sourceSyncQueue.stop();
     closeWatchers({ skipClose: options.skipCloseWatchers === true });
     watchedDirectoryKey = null;
+    if (ownedTokenLedgerStore) {
+      try { ownedTokenLedgerStore.close(); } catch (_) {}
+      ownedTokenLedgerStore = null;
+    }
   }
 
   function whenIdle() {

@@ -46,7 +46,8 @@ const CALLER_OPTION_KEYS = Object.freeze([
   'onDiagnosticEvent',
   'logger',
   'dailyHistoryArchiveWriteEnabled',
-  'startBarrier'
+  'startBarrier',
+  'tokenLedgerStore'
 ]);
 
 function usageWorkerRequested(env = process.env) {

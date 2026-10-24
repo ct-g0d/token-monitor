@@ -646,3 +646,27 @@ test('a real worker sends a bounded activity patch without transforming or captu
     assert.ok(JSON.stringify(patches[0]).length < 250);
   } finally { host.stop(); await host.whenIdle(); }
 });
+
+test('workerData strips tokenLedgerStore and structuredClone does not throw', async () => {
+  FakeWorker.reset();
+  const coordinator = createUsageHostCoordinator({ Worker: FakeWorker });
+  const mockStore = {
+    available: () => true,
+    database: () => ({}),
+    close: () => {}
+  };
+  const tokenLedgerPath = 'C:\\fake\\token_ledger.sqlite';
+  coordinator.create({
+    clients: 'codex',
+    tokenLedgerStore: mockStore,
+    tokenLedgerPath
+  });
+  await flush();
+
+  const workerData = FakeWorker.last().workerData;
+  assert.equal(workerData.options.tokenLedgerStore, undefined);
+  assert.equal(workerData.options.tokenLedgerPath, tokenLedgerPath);
+  assert.doesNotThrow(() => {
+    structuredClone(workerData);
+  });
+});
