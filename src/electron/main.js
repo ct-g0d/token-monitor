@@ -483,7 +483,8 @@ const ZOOM_LIMITS = { min: 0.7, max: 1.6, step: 0.1 };
 const CSP_HEADER = [
   "default-src 'self'",
   "script-src 'self'",
-  "style-src 'self'",
+  // Inline style attributes are required by the React UI; scripts stay locked to 'self'.
+  "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self'",
   "connect-src 'self'",
