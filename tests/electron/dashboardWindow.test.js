@@ -398,3 +398,19 @@ test('renderer removes Trends from available views when history is disabled', ()
   assert.match(app, /state\.settings\?\.historyEnabled === false/);
   assert.match(app, /order\.filter\(\(id\) => id !== 'trends'\)/);
 });
+
+test('the renderer CSP allows inline style attributes but keeps scripts locked down', () => {
+  const main = read('src', 'electron', 'main.js');
+  const declared = /const CSP_HEADER = \[([\s\S]*?)\]\.join\('; '\);/.exec(main);
+  assert.ok(declared, 'CSP_HEADER should be declared as an array of directives');
+  const directives = [...declared[1].matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+  // The React UI positions elements and sets CSS variables through style
+  // attributes, which a bare 'self' blocks at runtime.
+  assert.ok(
+    directives.includes("style-src 'self' 'unsafe-inline'"),
+    `style-src should allow inline styles, saw: ${directives.join('; ')}`
+  );
+  const scriptSrc = directives.find((directive) => directive.startsWith('script-src '));
+  assert.ok(scriptSrc, 'script-src should be declared');
+  assert.doesNotMatch(scriptSrc, /'unsafe-inline'|'unsafe-eval'/);
+});
