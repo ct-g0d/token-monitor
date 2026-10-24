@@ -108,10 +108,16 @@ export default defineConfig({
   resolve: {
     dedupe: ['react', 'react-dom', '@tanstack/react-router', '@effect/atom-react', 'effect', 'lucide-react'],
     alias: [
-      // App.tsx bridge: point hand-written path to genuine T3 UsagePage
+      // Local copy of T3's UsagePage, restyled for Token Monitor's page header
       {
         find: /^(?:\.\/components\/usage\/UsagePage|~\/components\/usage\/UsagePage)$/,
-        replacement: path.resolve(t3WebSrc, 'components/usage/UsagePage.tsx'),
+        replacement: path.resolve(__dirname, 'src/components/usage/UsagePage.tsx'),
+      },
+
+      // Usage limits pooled override
+      {
+        find: /^(?:~\/components\/usage\/UsageLimitsPooled|\.\/UsageLimitsPooled)$/,
+        replacement: path.resolve(__dirname, 'src/components/usage/UsageLimitsPooled.tsx'),
       },
 
       // Provider presentation override: token monitor custom provider registry

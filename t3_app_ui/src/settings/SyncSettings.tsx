@@ -140,14 +140,14 @@ export function SyncSettings({ settings, updateSettings, refreshSettings }: Sync
             description="Interval between data upload syncing to the Hub."
             control={
               <select
-                value={String(settings.syncUploadIntervalMs || 10000)}
+                value={String(settings.syncUploadIntervalMs ?? 0)}
                 onChange={(e) => updateSettings({ syncUploadIntervalMs: parseInt(e.target.value, 10) })}
                 className="h-8 rounded-md border border-input bg-background px-2.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               >
-                <option value="5000">5 seconds</option>
-                <option value="10000">10 seconds</option>
-                <option value="30000">30 seconds</option>
-                <option value="60000">1 minute</option>
+                <option value="0">Live (Real-time)</option>
+                <option value="600000">Every 10 minutes</option>
+                <option value="1200000">Every 20 minutes</option>
+                <option value="1800000">Every 30 minutes</option>
               </select>
             }
           />
@@ -200,23 +200,6 @@ export function SyncSettings({ settings, updateSettings, refreshSettings }: Sync
               </div>
             }
           />
-
-          <SettingRow
-            title="Upload Sync Interval"
-            description="Interval between synchronization pushes."
-            control={
-              <select
-                value={String(settings.syncUploadIntervalMs || 10000)}
-                onChange={(e) => updateSettings({ syncUploadIntervalMs: parseInt(e.target.value, 10) })}
-                className="h-8 rounded-md border border-input bg-background px-2.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              >
-                <option value="5000">5 seconds</option>
-                <option value="10000">10 seconds</option>
-                <option value="30000">30 seconds</option>
-                <option value="60000">1 minute</option>
-              </select>
-            }
-          />
         </SettingSection>
       )}
 
@@ -229,7 +212,8 @@ export function SyncSettings({ settings, updateSettings, refreshSettings }: Sync
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="font-semibold text-foreground">{dev.name || dev.id}</span>
-                    {dev.os && <span className="text-2xs text-muted-foreground capitalize">({dev.os})</span>}\n                  </div>
+                    {dev.os && <span className="text-2xs text-muted-foreground capitalize">({dev.os})</span>}
+                  </div>
                   <div className="text-2xs text-muted-foreground mt-0.5">
                     {dev.lastSeen ? `Last seen: ${new Date(dev.lastSeen).toLocaleString()}` : 'Online'}
                     {dev.ip ? ` · IP: ${dev.ip}` : ''}

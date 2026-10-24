@@ -50,7 +50,7 @@ export function barColor(driver: ServerProvider["driver"]): string {
   const kind: UsageProviderKind | undefined =
     driver === "codex"
       ? "codex"
-      : driver === "claudeAgent"
+      : driver === "claudeAgent" || (driver as any) === "claude"
         ? "claude"
         : driver === "antigravity"
           ? "antigravity"

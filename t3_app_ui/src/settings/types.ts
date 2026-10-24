@@ -48,6 +48,8 @@ export interface LimitAccountForm {
   steps?: string[];
 }
 
+export type LimitAccountForms = LimitAccountForm[];
+
 export interface ManagedAccount {
   id: string;
   label?: string;
@@ -126,14 +128,13 @@ export interface TokenMonitorSettingsState {
   historyIntervalMs?: number;
 
   // Limits
-  claudeWebOrganizationId?: string;
-  copilotApiToken?: string;
   showLimitSource?: boolean;
   showLimitUsed?: 'remaining' | 'used';
   maskLimitAccountEmails?: boolean;
   limitProviderOrder?: string[] | string;
   limitProviderHiddenItems?: Record<string, any> | string;
   limitsEnabled?: boolean;
+  copilotApiToken?: string;
   limitProviders?: string[] | string;
 
   // Widget Layout & Metrics
@@ -173,9 +174,6 @@ export interface TokenMonitorSettingsState {
   hubHostSecret?: string;
   syncUploadIntervalMs?: number;
   hubSyncSessionTitles?: boolean;
-
-  // Dynamic limit account forms
-  limitAccountForms?: LimitAccountForm[];
 
   // Managed Accounts
   codexManagedAccounts?: ManagedAccount[];

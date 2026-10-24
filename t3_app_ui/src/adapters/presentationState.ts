@@ -29,27 +29,19 @@ function maskEmailIfNeeded(email: string | undefined, mask: boolean): string | u
   const parts = email.split("@");
   if (parts.length !== 2) return email;
   const [name, domain] = parts;
+  if (!name || !domain) return email;
   const visible = name.length > 2 ? `${name.slice(0, 2)}***` : `${name.slice(0, 1)}***`;
   return `${visible}@${domain}`;
 }
 
-// Wire marker for money balances following src/shared/limits/balanceDisplay.js
 function creditsMeterPercent(item: any, window: any): number | null {
-  const used = typeof window?.usedPercent === "number" ? window.usedPercent : null;
-  if (used !== null) return Math.max(0, Math.min(100, 100 - used));
-  const remaining = typeof window?.remainingPercent === "number" ? window.remainingPercent : null;
-  if (remaining !== null) return Math.max(0, Math.min(100, remaining));
-  const amount =
-    typeof window?.remaining === "number"
-      ? window.remaining
-      : typeof item?.balance?.amount === "number"
-        ? item.balance.amount
-        : null;
-  if (amount === null) return null;
-  const funds = Math.max(0, amount);
-  if (funds === 0) return 0;
-  const spend = Math.max(0, typeof item?.balance?.monthSpend === "number" ? item.balance.monthSpend : 0);
-  return Math.max(0, Math.min(100, (funds / (funds + spend)) * 100));
+  if (typeof window?.usedPercent === "number") return window.usedPercent;
+  if (typeof window?.remainingPercent === "number") return 100 - window.remainingPercent;
+  const amount = typeof window?.remaining === "number" ? window.remaining : item?.balance?.amount;
+  const spend = item?.balance?.monthSpend;
+  if (typeof amount !== "number") return null;
+  if (amount <= 0) return amount === 0 ? 100 : null;
+  return typeof spend === "number" ? (spend / (amount + Math.max(0, spend))) * 100 : 0;
 }
 
 function makeInstanceId(rawDriver: string, accountIdentifier: string, idx: number): ProviderInstanceId {
@@ -94,40 +86,35 @@ export function transformStatsToProviders(
   });
 
   const results: ServerProvider[] = [];
-  const nowIso = (stats.limits as any)?.updatedAt || new Date().toISOString();
 
   flattened.forEach((item: any, idx: number) => {
-    const rawDriver = String(item.provider || "generic");
+    const rawDriver = String(item.provider || "").trim();
+    if (!rawDriver) return;
     const driverKind = (rawDriver === "claude" ? "claudeAgent" : rawDriver) as ProviderDriverKind;
-    const accountIdentifier = String(item.accountKey || item.accountId || item.accountName || item.label || idx);
+    const accountIdentifier = String(item.accountKey || item.accountId || item.accountName || rawDriver);
     const instanceId = makeInstanceId(rawDriver, accountIdentifier, idx);
 
-    const displayName =
-      item.accountName ||
-      item.accountLabel ||
-      item.displayName ||
-      (rawDriver === "codex"
-        ? "Codex"
-        : rawDriver === "claude" || rawDriver === "claudeAgent"
-          ? "Claude"
-          : rawDriver === "cursor"
-            ? "Cursor"
-            : rawDriver);
+    const displayName = item.accountName || item.accountLabel || (rawDriver === "claude" ? "Claude Code" : undefined);
 
     const rawWindows = Array.isArray(item.windows) ? item.windows : [];
-    const mappedWindows: ServerProviderUsageWindow[] = rawWindows.map((w: any, wIdx: number) => {
-      let percentUsed = 0;
+    const mappedWindows: ServerProviderUsageWindow[] = rawWindows.flatMap((w: any, wIdx: number) => {
+      let percentUsed: number | null = null;
       if (w?.metric === "credits") {
         const meter = creditsMeterPercent(item, w);
-        if (meter !== null) {
-          percentUsed = Math.max(0, Math.min(100, Math.round(100 - meter)));
-        }
+        if (meter !== null) percentUsed = meter;
       } else if (typeof w.usedPercent === "number") {
-        percentUsed = Math.max(0, Math.min(100, Math.round(w.usedPercent)));
+        percentUsed = w.usedPercent;
       } else if (typeof w.percentage === "number") {
-        percentUsed = Math.max(0, Math.min(100, Math.round(w.percentage)));
+        percentUsed = w.percentage;
       } else if (typeof w.remainingPercent === "number") {
-        percentUsed = Math.max(0, Math.min(100, 100 - Math.round(w.remainingPercent)));
+        percentUsed = 100 - w.remainingPercent;
+      }
+      if (percentUsed === null && w?.metric !== "credits") {
+        if (w?.showMeter === false || typeof w?.resetDescription === "string" || w?.resetsAt) {
+          percentUsed = 100;
+        } else {
+          return [];
+        }
       }
 
       // Valid kind literals: "session" | "weekly" | "monthly" | "other"
@@ -141,48 +128,61 @@ export function transformStatsToProviders(
       const winDuration =
         typeof w.windowMinutes === "number"
           ? w.windowMinutes
-          : typeof w.windowDurationMins === "number"
-            ? w.windowDurationMins
-            : 300;
+          : w.windowDurationMins;
 
-      let windowId = String(w.limitId || w.id || "");
-      if (!windowId) {
-        if (rawDriver === "antigravity") {
-          const l = (w.label || "").toLowerCase();
-          if (l.includes("gemini") && (l.includes("5h") || l.includes("5-hour"))) windowId = "gemini-5h";
-          else if (l.includes("gemini") && l.includes("week")) windowId = "gemini-weekly";
-          else if (l.includes("claude") && (l.includes("5h") || l.includes("5-hour"))) windowId = "claude-5h";
-          else if (l.includes("claude") && l.includes("week")) windowId = "claude-weekly";
-          else windowId = `window-${wIdx}`;
-        } else {
-          windowId = `window-${wIdx}`;
-        }
+      let label = String(w.label || w.name || "").trim();
+      if (!label) {
+        if (kind === "session") label = "Session";
+        else if (kind === "weekly") label = "Weekly";
+        else if (kind === "monthly") label = "Monthly";
+        else label = `Quota ${wIdx + 1}`;
       }
 
-      return {
+      let windowId = String(w.limitId || w.id || "").trim();
+      if (!windowId || windowId === "claude" || windowId === "codex") {
+        windowId = `${rawDriver}-${kind}-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+      }
+
+      return [{
         id: windowId,
         kind,
-        label: String(w.label || (kind === "session" ? "Session" : kind === "weekly" ? "Weekly" : "Quota")),
-        usedPercent: percentUsed,
-        resetsAt: w.resetsAt ? new Date(w.resetsAt).toISOString() : undefined,
-        windowDurationMins: winDuration,
-      };
+        label,
+        usedPercent: percentUsed !== null ? Math.max(0, Math.min(100, percentUsed)) : 0,
+        ...(w.resetsAt ? { resetsAt: w.resetsAt } : {}),
+        ...(typeof winDuration === "number" ? { windowDurationMins: winDuration } : {}),
+        ...(w.metric === "credits" ? { metric: "credits" } : {}),
+        ...(typeof w.remaining === "number" ? { remaining: w.remaining } : (typeof item?.balance?.amount === "number" ? { remaining: item.balance.amount } : {})),
+        ...(w.currency ? { currency: w.currency } : (item?.balance?.currency ? { currency: item.balance.currency } : {})),
+      } as any];
     });
+
+    const rawCheckedAt = item.updatedAt || item.checkedAt || (stats.limits as any)?.updatedAt;
+    const checkedAt =
+      typeof rawCheckedAt === "string" && Number.isFinite(Date.parse(rawCheckedAt))
+        ? rawCheckedAt
+        : new Date().toISOString();
+
+    const isNotConfigured = item.status === "notConfigured";
+    const unavailableReason = item.status === "unsupported" ? "unsupported" :
+      item.status && item.status !== "ok" && !isNotConfigured && mappedWindows.length === 0 ? "probeFailed" : undefined;
+    if (mappedWindows.length === 0 && !unavailableReason && !isNotConfigured) return;
 
     const resetCredits =
       item.resetCredits && typeof item.resetCredits.availableCount === "number"
         ? {
             availableCount: item.resetCredits.availableCount,
-            nextExpiresAt: item.resetCredits.nextExpiresAt ? new Date(item.resetCredits.nextExpiresAt).toISOString() : undefined,
+            ...(item.resetCredits.nextExpiresAt ? { nextExpiresAt: item.resetCredits.nextExpiresAt } : {}),
           }
         : undefined;
 
     const usageLimits: ServerProviderUsageLimits = {
-      checkedAt: nowIso,
+      checkedAt,
       windows: mappedWindows,
       resetCredits,
       credentialFingerprint: item.accountKey ? String(item.accountKey) : undefined,
-    };
+      ...(unavailableReason ? { unavailable: { reason: unavailableReason, ...(item.message ? { message: String(item.message) } : {}) } } : {}),
+      ...(item.balance ? { balance: item.balance } : {}),
+    } as any;
 
     const rawEmail =
       (typeof item.accountEmail === "string" && item.accountEmail.trim()) ||
@@ -190,29 +190,26 @@ export function transformStatsToProviders(
       undefined;
     const realEmail = rawEmail ? maskEmailIfNeeded(rawEmail, maskEmails) : undefined;
 
-    const authLabel =
-      item.accountLabel ||
-      item.planLabel ||
-      item.plan ||
-      (driverKind === "codex" ? "ChatGPT" : driverKind === "claudeAgent" ? "Claude" : "Pro");
+    const authLabel = item.accountLabel || item.planLabel || item.plan;
 
     results.push({
       instanceId,
       driver: driverKind,
-      displayName,
+      ...(displayName ? { displayName } : {}),
       accentColor: undefined,
       enabled: item.status !== "disabled",
       installed: true,
       availability: "available",
-      status: "ready",
-      version: "1.0.0",
+      status: unavailableReason ? "error" : item.status === "disabled" ? "disabled" : isNotConfigured ? "ready" : "ready",
+      version: null,
       skills: [],
       auth: {
-        status: "authenticated",
+        status: isNotConfigured ? "unauthenticated" : (rawEmail ? "authenticated" : "unknown"),
         email: realEmail,
-        label: authLabel,
+        workspaceId: item.accountKey ? String(item.accountKey) : String(idx),
+        ...(authLabel ? { label: authLabel } : {}),
       },
-      checkedAt: nowIso,
+      checkedAt,
       models: [],
       slashCommands: [],
       usageLimits,
@@ -226,36 +223,32 @@ export const serverProvidersAtom = Atom.make<ReadonlyArray<ServerProvider>>([]).
   Atom.withLabel("server-providers")
 );
 
-export const primaryPresentationAtom = Atom.make<EnvironmentPresentation | null>((get) => {
+export const primaryPresentationAtom = Atom.make((get): EnvironmentPresentation | null => {
   const providers = get(serverProvidersAtom);
   const settings = get(serverSettingsAtom);
 
   return {
-    environmentId: PRIMARY_ENV_ID,
-    label: "Token Monitor Workstation",
     entry: {
-      environmentId: PRIMARY_ENV_ID,
       enabled: true,
       target: {
         _tag: "local",
         label: "Token Monitor Workstation",
       } as any,
-    },
+    } as any,
     connection: {
       phase: "connected",
-    },
+      error: null,
+      traceId: null,
+    } as any,
     serverConfig: {
-      version: "1.0.0",
       environmentId: PRIMARY_ENV_ID,
       settings: settings || DEFAULT_SERVER_SETTINGS,
       providers,
-    },
+    } as any,
   };
 }).pipe(Atom.withLabel("primary-presentation"));
 
-export const environmentPresentationsAtom = Atom.make<
-  ReadonlyMap<EnvironmentId, EnvironmentPresentation>
->((get) => {
+export const environmentPresentationsAtom = Atom.make((get): ReadonlyMap<EnvironmentId, EnvironmentPresentation> => {
   const primary = get(primaryPresentationAtom);
   const map = new Map<EnvironmentId, EnvironmentPresentation>();
   if (primary) {
@@ -306,9 +299,10 @@ export function syncStatsToPresentation(rawStats: any, maskEmails?: boolean) {
 
 // Immediate fetch and event subscriptions on load
 if (typeof window !== "undefined" && window.tokenMonitor) {
+  const tokenMonitor = window.tokenMonitor;
   Promise.all([
-    window.tokenMonitor.getStats().catch(() => null),
-    window.tokenMonitor.getSettings().catch(() => null),
+    tokenMonitor.getStats().catch(() => null),
+    tokenMonitor.getSettings().catch(() => null),
   ]).then(([stats, settings]) => {
     const maskEmails = Boolean((settings as any)?.maskLimitAccountEmails);
     if (stats) syncStatsToPresentation(stats, maskEmails);
@@ -316,22 +310,22 @@ if (typeof window !== "undefined" && window.tokenMonitor) {
     const actual = extractStats(stats);
     const provs = (actual?.limits as any)?.providers;
     if (!provs || provs.length === 0 || !provs.some((p: any) => p.status === "ok")) {
-      window.tokenMonitor.getStats({ force: true, feedback: true }).then((liveStats: any) => {
+      tokenMonitor.getStats({ force: true, feedback: true }).then((liveStats: any) => {
         if (liveStats) syncStatsToPresentation(liveStats, maskEmails);
       }).catch(() => null);
     }
   });
 
-  if (typeof window.tokenMonitor.onStatsPush === "function") {
-    window.tokenMonitor.onStatsPush((nextStats: any) => {
+  if (typeof tokenMonitor.onStatsPush === "function") {
+    tokenMonitor.onStatsPush((nextStats: any) => {
       const settings = appAtomRegistry.get(serverSettingsAtom);
       const maskEmails = Boolean((settings as any)?.maskLimitAccountEmails);
       syncStatsToPresentation(nextStats, maskEmails);
     });
   }
 
-  if (typeof window.tokenMonitor.onSettingsPush === "function") {
-    window.tokenMonitor.onSettingsPush((nextSettings: any) => {
+  if (typeof tokenMonitor.onSettingsPush === "function") {
+    tokenMonitor.onSettingsPush((nextSettings: any) => {
       const maskEmails = Boolean(nextSettings?.maskLimitAccountEmails);
       if (lastKnownStats) {
         syncStatsToPresentation(lastKnownStats, maskEmails);

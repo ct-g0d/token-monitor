@@ -78,7 +78,7 @@ export function SettingSection({
       {(title || description || headerAction) && (
         <div className="flex items-center justify-between gap-4 px-1 pb-1">
           <div className="space-y-0.5">
-            {title && <h2 className="text-sm font-semibold tracking-tight text-foreground">{title}</h2>}
+            {title && <h2 className="tm-label !text-foreground">{title}</h2>}
             {description && <p className="text-xs text-muted-foreground">{description}</p>}
           </div>
           {headerAction && <div>{headerAction}</div>}

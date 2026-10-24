@@ -538,7 +538,7 @@ export function UsageLimitsPooled({
   const cursorPromptAt =
     Math.max(
       pools.findIndex((pool) => pool.driver === "codex"),
-      pools.findIndex((pool) => pool.driver === "claudeAgent"),
+      pools.findIndex((pool) => pool.driver === "claudeAgent" || (pool.driver as any) === "claude"),
     ) + 1;
   return (
     <div className="flex flex-col gap-8">

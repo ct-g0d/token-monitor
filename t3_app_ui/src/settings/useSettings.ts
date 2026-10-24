@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { TokenMonitorSettingsState } from './types';
+import type { LimitAccountForms, TokenMonitorSettingsState } from './types';
 
 export function useTokenMonitorSettings() {
   const [settings, setSettings] = useState<TokenMonitorSettingsState>({});
+  const [accountForms, setAccountForms] = useState<LimitAccountForms>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -10,7 +11,11 @@ export function useTokenMonitorSettings() {
     try {
       if (typeof window !== 'undefined' && window.tokenMonitor?.getSettings) {
         const data = await window.tokenMonitor.getSettings();
-        setSettings(data || {});
+        const { limitAccountForms, ...persistedSettings } = (data || {}) as TokenMonitorSettingsState & {
+          limitAccountForms?: LimitAccountForms;
+        };
+        setSettings(persistedSettings);
+        setAccountForms(limitAccountForms || []);
       }
     } catch (err: any) {
       setError(err?.message || 'Failed to load settings');
@@ -25,7 +30,11 @@ export function useTokenMonitorSettings() {
     if (typeof window !== 'undefined' && window.tokenMonitor?.onSettingsPush) {
       const unsubscribe = window.tokenMonitor.onSettingsPush((pushed: TokenMonitorSettingsState) => {
         if (pushed) {
-          setSettings((prev) => ({ ...prev, ...pushed }));
+          const { limitAccountForms, ...persistedSettings } = pushed as TokenMonitorSettingsState & {
+            limitAccountForms?: LimitAccountForms;
+          };
+          if (limitAccountForms) setAccountForms(limitAccountForms);
+          setSettings((prev) => ({ ...prev, ...persistedSettings }));
         }
       });
       return () => {
@@ -50,6 +59,7 @@ export function useTokenMonitorSettings() {
 
   return {
     settings,
+    accountForms,
     loading,
     error,
     updateSettings,

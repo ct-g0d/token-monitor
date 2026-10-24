@@ -7,7 +7,7 @@ const STORAGE_KEY = "t3code:usage-page-preferences:v1";
 const UsagePagePreferencesSchema = Schema.Struct({
   metric: Schema.Literals(["cost", "tokens", "limits"]),
   windowDays: Schema.Literals([1, 7, 30, 90]),
-  hiddenProviders: Schema.optional(Schema.Array(Schema.String as unknown as Schema.Schema<UsageProviderKind>)),
+  hiddenProviders: Schema.optional(Schema.Array(UsageProviderKind)),
 });
 export type UsagePagePreferences = typeof UsagePagePreferencesSchema.Type;
 
@@ -15,10 +15,9 @@ const DEFAULT_PREFERENCES: UsagePagePreferences = { metric: "tokens", windowDays
 
 export function readUsagePagePreferences(): UsagePagePreferences {
   try {
-    const item = getLocalStorageItem(STORAGE_KEY, UsagePagePreferencesSchema);
+    const item = getLocalStorageItem<UsagePagePreferences, any>(STORAGE_KEY, UsagePagePreferencesSchema as any);
     if (item) {
-      // Ensure initial view is always tokens overview so totals and breakdown table are displayed
-      return { ...item, metric: "tokens" };
+      return item;
     }
   } catch {
     // fallback
@@ -28,7 +27,7 @@ export function readUsagePagePreferences(): UsagePagePreferences {
 
 export function saveUsagePagePreferences(preferences: UsagePagePreferences): void {
   try {
-    setLocalStorageItem(STORAGE_KEY, preferences, UsagePagePreferencesSchema);
+    setLocalStorageItem<UsagePagePreferences, any>(STORAGE_KEY, preferences, UsagePagePreferencesSchema as any);
   } catch (error) {
     console.error("Could not save Usage page preferences.", error);
   }

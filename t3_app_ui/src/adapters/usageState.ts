@@ -9,7 +9,14 @@ import {
 } from "@t3tools/contracts";
 import { mergeUsage, type EnvironmentUsage, type MergedUsage } from "@t3tools/shared/usageMerge";
 import { useState, useMemo, useEffect, useCallback } from "react";
-import type { DashboardHistory, DashboardHistoryDay, TokenMonitorStats } from "../types/tokenMonitor";
+import type {
+  DashboardHistory,
+  DashboardHistoryDay,
+  TokenMonitorStats,
+  WindowKey,
+  WindowSessions,
+  SessionsByWindow,
+} from "../types/tokenMonitor";
 import { PRIMARY_ENV_ID, syncStatsToPresentation } from "./presentationState";
 
 export interface EnvironmentUsageStatus {
@@ -33,8 +40,12 @@ export interface UsageView {
     readonly merged: MergedUsage;
   } | null;
   readonly isPartial: boolean;
-  readonly refresh: (input?: UsageSummaryInput) => void;
+  readonly refresh: (input?: UsageSummaryInput) => Promise<void>;
   readonly stats?: TokenMonitorStats | null;
+  readonly activeDays?: number;
+  readonly peakDayTokens?: number;
+  readonly hasWindowSessions?: boolean;
+  readonly windowSessions?: WindowSessions;
 }
 
 export interface ModelPricingRates {
@@ -183,7 +194,10 @@ function apportionInteger(total: number, weights: readonly number[]): number[] {
   let remainder = roundedTotal - result.reduce((value, item) => value + item, 0);
   const step = remainder > 0 ? 1 : -1;
   for (let index = 0; remainder !== 0; index = (index + 1) % result.length, remainder -= step) {
-    result[index] += step;
+    const cur = result[index];
+    if (cur !== undefined) {
+      result[index] = cur + step;
+    }
   }
   return result;
 }
@@ -200,7 +214,7 @@ function modelRowsForClient(dayRow: DashboardHistoryDay, client: string, clientT
   if (source.length === 0) return [["unknown", clientTokens] as [string, number]];
   const names = source.map(([model]) => model || "unknown");
   const weights = source.map(([, value]) => nonNegative(value));
-  return names.map((name, index) => [name, apportionInteger(clientTokens, weights)[index]] as [string, number]);
+  return names.map((name, index) => [name, apportionInteger(clientTokens, weights)[index] ?? 0] as [string, number]);
 }
 
 function transformDayToBuckets(
@@ -218,33 +232,20 @@ function transformDayToBuckets(
   const dayCacheWrite = componentsKnown ? nonNegative(dayRow.cacheWriteTokens) : 0;
   const dayOutput = componentsKnown ? nonNegative(dayRow.outputTokens) : 0;
 
-  // Exact formula per user specification:
-  // Input/Uncached input = Σtokens − cacheRead − cacheWrite − output
-  // Guarantees: uncached + cached + cacheCreation + output = tokens
-  const dayUncached = dayTokens - dayCacheRead - dayCacheWrite - dayOutput;
+  // Real client breakdown
+  type ClientInfo = [string, { tokens: number; cost: number; messages: number }];
+  const rawClients = (dayRow.byClient || dayRow.perClient || {}) as Record<string, { tokens?: number; cost?: number; messages?: number }>;
+  const clients: ClientInfo[] = Object.entries(rawClients)
+    .filter(([, stats]) => nonNegative(stats?.tokens) > 0)
+    .map(([client, stats]) => [client, { tokens: nonNegative(stats.tokens), cost: nonNegative(stats.cost), messages: nonNegative(stats.messages) }]);
+  const fallbackClients: ClientInfo[] = clients.length > 0
+    ? clients
+    : [["other", { tokens: dayTokens, cost: dayCost, messages: 1 }]];
 
-  const clientEntries = Object.entries(dayRow.perClient || {}).filter(
-    ([, stats]) => nonNegative(stats.tokens) > 0 || nonNegative(stats.cost) > 0,
-  );
+  const clientTokensList = fallbackClients.map(([, stats]) => nonNegative(stats.tokens));
+  const clientCostsList = apportionInteger(dayCost * 1_000_000, clientTokensList).map((val) => val / 1_000_000);
 
-  const fallbackClients: [string, { tokens: number; cost?: number; messages?: number }][] =
-    clientEntries.length > 0
-      ? clientEntries
-      : [["unknown", { tokens: dayTokens, cost: dayCost, messages: 1 }]];
-
-  const clientTokensList = apportionInteger(
-    dayTokens,
-    fallbackClients.map(([, s]) => nonNegative(s.tokens)),
-  );
-  const rawClientCosts = fallbackClients.map(([, s]) => nonNegative(s.cost));
-  const sumRawCost = rawClientCosts.reduce((a, b) => a + b, 0);
-  const costWeights = sumRawCost > 0 ? rawClientCosts : fallbackClients.map(([, s]) => nonNegative(s.tokens));
-  const clientCostsList = apportionInteger(
-    Math.round(dayCost * 1_000_000),
-    costWeights,
-  ).map((c) => c / 1_000_000);
-
-  // Apportion day cache read, cache write, and output across clients
+  // Apportion token components across clients using apportionInteger
   const clientReads = apportionInteger(
     dayCacheRead,
     fallbackClients.map(([, s]) => nonNegative(s.tokens)),
@@ -261,15 +262,15 @@ function transformDayToBuckets(
   // Client uncached input follows the exact subtraction formula:
   // clientUncached = clientTokens - clientRead - clientWrite - clientOutput
   const clientUncacheds = clientTokensList.map((t, idx) =>
-    t - clientReads[idx] - clientWrites[idx] - clientOutputs[idx]
+    t - (clientReads[idx] ?? 0) - (clientWrites[idx] ?? 0) - (clientOutputs[idx] ?? 0)
   );
 
   fallbackClients.forEach(([client, stats], clientIndex) => {
-    const clientTokens = clientTokensList[clientIndex];
-    const clientCost = clientCostsList[clientIndex];
-    const clientRead = clientReads[clientIndex];
-    const clientWrite = clientWrites[clientIndex];
-    const clientOutput = clientOutputs[clientIndex];
+    const clientTokens = clientTokensList[clientIndex] ?? 0;
+    const clientCost = clientCostsList[clientIndex] ?? 0;
+    const clientRead = clientReads[clientIndex] ?? 0;
+    const clientWrite = clientWrites[clientIndex] ?? 0;
+    const clientOutput = clientOutputs[clientIndex] ?? 0;
 
     const models = modelRowsForClient(dayRow, client, clientTokens);
     const modelWeights = models.map(([, tokens]) => tokens);
@@ -283,21 +284,30 @@ function transformDayToBuckets(
     // Model uncached input follows the exact subtraction formula:
     // modelUncached = modelTokens - modelRead - modelWrite - modelOutput
     const modelUncacheds = modelTokensList.map((mTokens, idx) =>
-      mTokens - modelReads[idx] - modelWrites[idx] - modelOutputs[idx]
+      mTokens - (modelReads[idx] ?? 0) - (modelWrites[idx] ?? 0) - (modelOutputs[idx] ?? 0)
     );
+
+    const rawRecords = (stats as any).messages != null
+      ? nonNegative((stats as any).messages)
+      : (stats as any).records != null
+        ? nonNegative((stats as any).records)
+        : 0;
+
+    const modelSessionsList = apportionInteger(0, modelWeights);
+    const modelRecordsList = apportionInteger(rawRecords, modelWeights);
 
     let allocatedModelCost = 0;
     models.forEach(([model, modelTokens], modelIndex) => {
-      const ratio = clientTokens > 0 ? modelTokens / clientTokens : 1 / models.length;
+      const ratio = clientTokens > 0 ? (modelTokens ?? 0) / clientTokens : 1 / models.length;
       const cost = modelIndex === models.length - 1
         ? Math.max(0, Number((clientCost - allocatedModelCost).toFixed(6)))
         : Number((clientCost * ratio).toFixed(6));
       allocatedModelCost += cost;
 
-      const cached = modelReads[modelIndex];
-      const cacheWrite = modelWrites[modelIndex];
-      const output = modelOutputs[modelIndex];
-      const uncached = modelUncacheds[modelIndex];
+      const cached = modelReads[modelIndex] ?? 0;
+      const cacheWrite = modelWrites[modelIndex] ?? 0;
+      const output = modelOutputs[modelIndex] ?? 0;
+      const uncached = modelUncacheds[modelIndex] ?? 0;
 
       // Compute cache savings from real model pricing rates
       const pricing = pricingMap[model] || pricingMap[model.toLowerCase()] || null;
@@ -321,9 +331,9 @@ function transformDayToBuckets(
         costUsd: cost,
         cacheSavingsUsd,
         costSource: "modelPriced",
-        records: Math.max(1, Math.round((stats.messages || 1) * ratio)),
+        records: modelRecordsList[modelIndex] ?? 0,
+        sessions: modelSessionsList[modelIndex] ?? 0,
         unpricedRecords: 0,
-        sessions: 0,
       });
     });
   });
@@ -331,78 +341,112 @@ function transformDayToBuckets(
   return buckets;
 }
 
+export function resolveWindowKey(
+  input?: UsageSummaryInput | { days?: number; windowDays?: number },
+): WindowKey {
+  if (!input) return "90";
+  if ("days" in input && (input.days === 1 || input.days === 7 || input.days === 30 || input.days === 90)) {
+    return String(input.days) as WindowKey;
+  }
+  if ("windowDays" in input && (input.windowDays === 1 || input.windowDays === 7 || input.windowDays === 30 || input.windowDays === 90)) {
+    return String(input.windowDays) as WindowKey;
+  }
+  const win = input as any;
+  if (win?.resolution === "hour") {
+    return "1";
+  }
+  if (win?.sinceDay && win?.untilDay) {
+    const start = new Date(String(win.sinceDay)).getTime();
+    const end = new Date(String(win.untilDay)).getTime();
+    const diff = Math.round((end - start) / (1000 * 60 * 60 * 24)) + 1;
+    if (diff <= 2) return "1";
+    if (diff <= 10) return "7";
+    if (diff <= 45) return "30";
+    return "90";
+  }
+  return "90";
+}
+
 export function buildUsageSummaryFromData(
   history: DashboardHistory | null,
-  stats?: TokenMonitorStats | null,
-  input?: UsageSummaryInput,
+  stats: TokenMonitorStats | null,
+  input: UsageSummaryInput,
   now: Date = new Date(),
   pricingMap: Record<string, ModelPricingRates | null> = {},
-): UsageSummary | null {
-  if (!history || !Array.isArray(history.daily) || history.daily.length === 0) {
-    return null;
-  }
+): UsageSummary {
+  const daily = Array.isArray(history?.daily) ? history.daily : [];
+  const sinceDay = input?.sinceDay ? String(input.sinceDay) : undefined;
+  const untilDay = input?.untilDay ? String(input.untilDay) : undefined;
 
-  // Exact calendar date window matching dashboard history dates (YYYY-MM-DD)
-  const sinceDay = input?.sinceDay;
-  const untilDay = input?.untilDay;
-
-  const relevantDays = history.daily.filter((day) => {
-    if (sinceDay && day.date < sinceDay) return false;
-    if (untilDay && day.date > untilDay) return false;
+  const relevantDays = daily.filter((d) => {
+    if (sinceDay && d.date < sinceDay) return false;
+    if (untilDay && d.date > untilDay) return false;
     return true;
   });
+
+  // Active days inside selected range with tokens > 0
+  const activeDays = relevantDays.filter((d) => nonNegative(d.tokens) > 0).length;
+  const peakDayTokens = relevantDays.reduce((max, d) => Math.max(max, nonNegative(d.tokens)), 0);
 
   const buckets: UsageBucket[] = [];
   for (const dayRow of relevantDays) {
     buckets.push(...transformDayToBuckets(dayRow, pricingMap));
   }
 
-  const distinctProviders = new Set<UsageProviderKind>();
-  for (const day of history.daily) {
-    if (day.perClient) {
-      for (const client of Object.keys(day.perClient)) {
-        distinctProviders.add(normalizeProviderKind(client));
+  const distinctProviders = Array.from(new Set(buckets.map((b) => b.provider)));
+
+  // Sessions by window support:
+  // Expected shape from backend: sessionsByWindow: {"1","7","30","90": {<client>: n, total: n}}
+  // Guard against missing field: keep "—" (0) when absent.
+  const rawSessionsByWindow: SessionsByWindow | undefined =
+    history?.sessionsByWindow ?? stats?.sessionsByWindow;
+  const windowKey = resolveWindowKey(input);
+  const windowSessions: WindowSessions | undefined =
+    rawSessionsByWindow && typeof rawSessionsByWindow === "object"
+      ? rawSessionsByWindow[windowKey]
+      : undefined;
+  const hasWindowSessions = Boolean(windowSessions && typeof windowSessions === "object");
+
+  const providerSessionsMap = new Map<UsageProviderKind, number>();
+  if (hasWindowSessions && windowSessions) {
+    for (const [client, count] of Object.entries(windowSessions)) {
+      if (client !== "total" && typeof count === "number" && count >= 0) {
+        const p = normalizeProviderKind(client);
+        providerSessionsMap.set(p, count);
       }
     }
   }
-  for (const b of buckets) {
-    distinctProviders.add(b.provider);
-  }
-  const allProviders: UsageProviderKind[] = distinctProviders.size > 0
-    ? Array.from(distinctProviders)
-    : [
-        normalizeProviderKind("codex"),
-        normalizeProviderKind("claude"),
-        normalizeProviderKind("opencode"),
-        normalizeProviderKind("antigravity"),
-        normalizeProviderKind("cursor"),
-      ];
 
-  const sources = allProviders.map((p) => ({
+  const totalSessionsOverride =
+    hasWindowSessions && typeof windowSessions?.total === "number" && windowSessions.total >= 0
+      ? windowSessions.total
+      : undefined;
+
+  const sources = distinctProviders.map((provider) => ({
     fingerprint: {
-      provider: p,
-      resolvedHomePath: `/workspace/${p}`,
+      provider,
+      resolvedHomePath: `token-monitor/${provider}`,
       isConfigHome: false,
     },
     status: "ok" as const,
-    scannedFiles: 10,
+    scannedFiles: 0,
     skippedFiles: 0,
     malformedRecords: 0,
-    distinctSessions: 10,
+    distinctSessions: providerSessionsMap.get(provider) ?? 0,
     message: null,
   }));
 
-  const windowSinceDay = (sinceDay || (relevantDays.length > 0 ? relevantDays[relevantDays.length - 1].date : "2026-01-01")) as any;
-  const windowUntilDay = (untilDay || (relevantDays.length > 0 ? relevantDays[0].date : "2026-12-31")) as any;
+  const windowSinceDay = (sinceDay || (relevantDays.length > 0 ? relevantDays[relevantDays.length - 1]?.date : "2026-01-01")) as any;
+  const windowUntilDay = (untilDay || (relevantDays.length > 0 ? relevantDays[0]?.date : "2026-12-31")) as any;
 
-  return {
+  const summary: UsageSummary = {
     contractVersion: USAGE_CONTRACT_VERSION,
     readAt: now.toISOString(),
     timeZone: input?.timeZone || "UTC",
     sinceDay: UsageDay.make(windowSinceDay),
     untilDay: UsageDay.make(windowUntilDay),
     buckets,
-    sources,
+    sources: sources as any,
     pricing: {
       status: "fresh" as const,
       source: "tokex",
@@ -411,6 +455,14 @@ export function buildUsageSummaryFromData(
     },
     scanDurationMs: 42,
   };
+
+  (summary as any).activeDays = activeDays;
+  (summary as any).peakDayTokens = peakDayTokens;
+  (summary as any).hasWindowSessions = hasWindowSessions;
+  (summary as any).windowSessions = windowSessions;
+  (summary as any).totalSessionsOverride = totalSessionsOverride;
+
+  return summary;
 }
 
 export function deriveSelection(
@@ -427,10 +479,22 @@ export function deriveSelection(
     selectedIds ? selectedIds.has(env.environmentId) : true,
   );
 
+  const merged = mergeAnsweredUsage(
+    withoutProviders(selectedEnvironments, hiddenProviders),
+    keepBucket,
+  );
+
+  const primarySummary = selectedEnvironments[0]?.summary as any;
+  if (primarySummary?.hasWindowSessions && typeof primarySummary?.totalSessionsOverride === "number") {
+    (merged as any).sessions = primarySummary.totalSessionsOverride;
+  } else if (!primarySummary?.hasWindowSessions) {
+    (merged as any).sessions = 0;
+  }
+
   return {
     environments,
     selectedEnvironments,
-    merged: mergeAnsweredUsage(withoutProviders(selectedEnvironments, hiddenProviders), keepBucket),
+    merged,
   };
 }
 
@@ -462,11 +526,12 @@ export function mergeAnsweredUsage(
     if (env.summary) {
       validEnvironments.push({
         environmentId: env.environmentId,
+        label: env.label || "local",
         summary: {
           ...env.summary,
           buckets: keepBucket ? env.summary.buckets.filter(keepBucket) : env.summary.buckets,
         },
-      });
+      } as any);
     }
   }
 
@@ -480,32 +545,44 @@ export function useUsage(
 ): UsageView {
   const [history, setHistory] = useState<DashboardHistory | null>(null);
   const [stats, setStats] = useState<TokenMonitorStats | null>(null);
-  const [isPending, setIsPending] = useState(false);
-  const [hasTokenMonitor, setHasTokenMonitor] = useState<boolean | null>(true);
-  const [customOverrides, setCustomOverrides] = useState<Map<string, ModelPricingRates>>(() => new Map());
+  const [isPending, setIsPending] = useState<boolean>(false);
+  const [hasTokenMonitor, setHasTokenMonitor] = useState<boolean | null>(null);
   const [resolvedPricing, setResolvedPricing] = useState<Record<string, ModelPricingRates | null>>({});
+  const [customOverrides, setCustomOverrides] = useState<Map<string, ModelPricingRates>>(new Map());
 
   const pricingMap = useMemo(() => {
-    const map: Record<string, ModelPricingRates | null> = { ...resolvedPricing };
-    // User overrides from settings customModelPricing take precedence
-    for (const [modelId, rates] of customOverrides.entries()) {
-      map[modelId] = rates;
+    const combined: Record<string, ModelPricingRates | null> = { ...resolvedPricing };
+    for (const [model, rates] of customOverrides.entries()) {
+      combined[model] = rates;
     }
-    return map;
+    return combined;
   }, [resolvedPricing, customOverrides]);
 
-  const updatePricingForHistory = useCallback((h: DashboardHistory | null) => {
-    const models = extractDistinctModels(h);
-    if (models.length === 0) return;
-    Promise.all(models.map((m) => lookupModelPricingMemoized(m))).then(() => {
-      const nextMap: Record<string, ModelPricingRates | null> = {};
-      for (const m of models) {
-        nextMap[m] = sessionResolvedRates.get(m) ?? null;
-      }
+  const updatePricingForHistory = useCallback((hist: DashboardHistory | null) => {
+    const distinct = extractDistinctModels(hist);
+    if (distinct.length === 0) return;
+
+    distinct.forEach((model) => {
+      lookupModelPricingMemoized(model).then((rates) => {
+        setResolvedPricing((prev) => {
+          if (prev[model] === rates) return prev;
+          return { ...prev, [model]: rates };
+        });
+      });
+    });
+
+    Promise.all(distinct.map((m) => lookupModelPricingMemoized(m))).then(() => {
       setResolvedPricing((prev) => {
+        const nextMap: Record<string, ModelPricingRates | null> = {};
         let changed = false;
-        for (const [k, v] of Object.entries(nextMap)) {
+        for (const [k, v] of sessionResolvedRates.entries()) {
           if (prev[k] !== v) {
+            nextMap[k] = v;
+            changed = true;
+          }
+        }
+        for (const m of distinct) {
+          if (!(m in prev)) {
             changed = true;
             break;
           }
@@ -521,19 +598,20 @@ export function useUsage(
       return;
     }
 
+    const tm = window.tokenMonitor;
     setHasTokenMonitor(true);
     try {
       const [histData, statsData, allTimeSessions, settingsData] = await Promise.all([
-        window.tokenMonitor.getDashboardHistory({ days: 90, includeDevices: true })
-          .catch(() => window.tokenMonitor.getDashboardHistory(90))
-          .catch(() => window.tokenMonitor.getDashboardHistory())
+        tm.getDashboardHistory({ days: 90, includeDevices: true })
+          .catch(() => (tm.getDashboardHistory as any)(90))
+          .catch(() => tm.getDashboardHistory())
           .catch(() => null),
-        window.tokenMonitor.getStats().catch(() => null),
-        typeof window.tokenMonitor.getAllTimeSessions === "function"
-          ? window.tokenMonitor.getAllTimeSessions().catch(() => null)
+        tm.getStats().catch(() => null),
+        typeof tm.getAllTimeSessions === "function"
+          ? tm.getAllTimeSessions().catch(() => null)
           : Promise.resolve(null),
-        typeof window.tokenMonitor.getSettings === "function"
-          ? window.tokenMonitor.getSettings().catch(() => null)
+        typeof tm.getSettings === "function"
+          ? tm.getSettings().catch(() => null)
           : Promise.resolve(null),
       ]);
       if (histData && Array.isArray(histData.daily) && histData.daily.length > 0) {
@@ -570,17 +648,18 @@ export function useUsage(
     fetchRealData();
 
     if (typeof window !== "undefined" && window.tokenMonitor) {
+      const tm = window.tokenMonitor;
       const unsubs: Array<() => void> = [];
 
-      if (typeof window.tokenMonitor.onDashboardHistoryChanged === "function") {
-        const u = window.tokenMonitor.onDashboardHistoryChanged(() => {
+      if (typeof tm.onDashboardHistoryChanged === "function") {
+        const u = tm.onDashboardHistoryChanged(() => {
           fetchRealData();
         });
         if (typeof u === "function") unsubs.push(u);
       }
 
-      if (typeof window.tokenMonitor.onStatsPush === "function") {
-        const u = window.tokenMonitor.onStatsPush((nextStats) => {
+      if (typeof tm.onStatsPush === "function") {
+        const u = tm.onStatsPush((nextStats: any) => {
           if (nextStats) {
             const actualStats = (nextStats as any)?.data?.stats || (nextStats as any)?.stats || nextStats;
             setStats((previous) => {
@@ -606,8 +685,8 @@ export function useUsage(
         if (typeof u === "function") unsubs.push(u);
       }
 
-      if (typeof window.tokenMonitor.onSettingsPush === "function") {
-        const u = window.tokenMonitor.onSettingsPush((newSettings) => {
+      if (typeof tm.onSettingsPush === "function") {
+        const u = tm.onSettingsPush((newSettings: any) => {
           if (newSettings?.customModelPricing) {
             setCustomOverrides(parseCustomPricing(newSettings.customModelPricing));
           }
@@ -681,13 +760,19 @@ export function useUsage(
 
   const refresh = useCallback((_refreshInput?: UsageSummaryInput) => {
     setIsPending(true);
-    fetchRealData().finally(() => setIsPending(false));
+    return fetchRealData().finally(() => setIsPending(false));
   }, [fetchRealData]);
 
   const answeredCount = selection.selectedEnvironments.filter(
     (e) => e.summary !== null,
   ).length;
   const shown = answeredCount > 0 ? { window: input, merged: selection.merged } : null;
+
+  const primarySummary = environmentsList[0]?.summary as any;
+  const activeDays = primarySummary?.activeDays;
+  const peakDayTokens = primarySummary?.peakDayTokens;
+  const hasWindowSessions = primarySummary?.hasWindowSessions ?? false;
+  const windowSessions = primarySummary?.windowSessions;
 
   return {
     environments: selection.environments,
@@ -698,5 +783,9 @@ export function useUsage(
     isPartial: false,
     refresh,
     stats,
+    activeDays,
+    peakDayTokens,
+    hasWindowSessions,
+    windowSessions,
   };
 }

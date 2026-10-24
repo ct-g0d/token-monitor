@@ -41,7 +41,7 @@ export function useEnvironmentScope(
   _environmentId: EnvironmentId | null,
   scope: AuthEnvironmentScope,
 ): boolean {
-  if (scope === AuthProvidersManageScope || scope === "providers:manage") {
+  if (scope === AuthProvidersManageScope || (scope as string) === "providers:manage") {
     return false;
   }
   return true;
@@ -51,7 +51,7 @@ export function readEnvironmentScope(
   _environmentId: EnvironmentId,
   scope: AuthEnvironmentScope,
 ): boolean {
-  if (scope === AuthProvidersManageScope || scope === "providers:manage") {
+  if (scope === AuthProvidersManageScope || (scope as string) === "providers:manage") {
     return false;
   }
   return true;
@@ -61,7 +61,7 @@ export function useEnvironmentsWithScope(
   environments: ReadonlyArray<{ readonly environmentId: EnvironmentId }>,
   scope: AuthEnvironmentScope,
 ): ReadonlySet<EnvironmentId> {
-  if (scope === AuthProvidersManageScope || scope === "providers:manage") {
+  if (scope === AuthProvidersManageScope || (scope as string) === "providers:manage") {
     return new Set();
   }
   return new Set(environments.map(({ environmentId }) => environmentId));

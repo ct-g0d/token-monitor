@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { SettingRow, SettingSection } from './SettingsComponents';
 import { Switch } from '~/components/ui/switch';
 import { Button } from '~/components/ui/button';
+import { Input } from '~/components/ui/input';
 import { Spinner } from '~/components/ui/spinner';
+import { useTheme } from '~/hooks/useTheme';
 import type { TokenMonitorSettingsState } from './types';
 
 interface GeneralSettingsProps {
@@ -10,12 +12,40 @@ interface GeneralSettingsProps {
   updateSettings: (patch: Partial<TokenMonitorSettingsState>) => Promise<void>;
 }
 
+export const selectClass =
+  'h-8 rounded-md border border-input bg-background px-2.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
+
+const COMMON_CURRENCIES = [
+  { code: 'USD', symbol: '$', name: 'US Dollar' },
+  { code: 'CNY', symbol: '¥', name: 'Chinese Yuan' },
+  { code: 'EUR', symbol: '€', name: 'Euro' },
+  { code: 'GBP', symbol: '£', name: 'British Pound' },
+  { code: 'JPY', symbol: '¥', name: 'Japanese Yen' },
+  { code: 'KRW', symbol: '₩', name: 'South Korean Won' },
+  { code: 'HKD', symbol: 'HK$', name: 'Hong Kong Dollar' },
+  { code: 'TWD', symbol: 'NT$', name: 'New Taiwan Dollar' },
+  { code: 'CAD', symbol: 'CA$', name: 'Canadian Dollar' },
+  { code: 'AUD', symbol: 'A$', name: 'Australian Dollar' },
+  { code: 'SGD', symbol: 'S$', name: 'Singapore Dollar' },
+  { code: 'CHF', symbol: 'CHF', name: 'Swiss Franc' },
+];
+
 export function GeneralSettings({ settings, updateSettings }: GeneralSettingsProps) {
+  const { theme, setTheme } = useTheme();
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateMessage, setUpdateMessage] = useState<string | null>(null);
   const [generatingReport, setGeneratingReport] = useState(false);
   const [reportResult, setReportResult] = useState<string | null>(null);
   const [tokscaleInfo, setTokscaleInfo] = useState<any>(null);
+
+  const [customRates, setCustomRates] = useState<Record<string, string>>(() => {
+    const existing = settings.currencyRates || {};
+    const init: Record<string, string> = {};
+    for (const [k, v] of Object.entries(existing)) {
+      init[k] = String(v);
+    }
+    return init;
+  });
 
   useEffect(() => {
     if (typeof window !== 'undefined' && window.tokenMonitor?.getTokscaleStatus) {
@@ -29,14 +59,8 @@ export function GeneralSettings({ settings, updateSettings }: GeneralSettingsPro
     setCheckingUpdate(true);
     setUpdateMessage(null);
     try {
-      if (typeof window !== 'undefined' && window.tokenMonitor?.checkAppUpdateNow) {
-        const res = await window.tokenMonitor.checkAppUpdateNow();
-        if (res && res.updateAvailable) {
-          setUpdateMessage(`Update available: ${res.version}`);
-        } else {
-          setUpdateMessage('You are on the latest version.');
-        }
-      }
+      const res = await window.tokenMonitor?.checkAppUpdateNow?.();
+      setUpdateMessage(res?.updateAvailable ? `Update available: ${res.version}` : 'You are on the latest version.');
     } catch (err: any) {
       setUpdateMessage(err?.message || 'Failed to check updates');
     } finally {
@@ -65,19 +89,40 @@ export function GeneralSettings({ settings, updateSettings }: GeneralSettingsPro
     }
   };
 
+  const handleRateChange = (code: string, value: string) => {
+    setCustomRates((prev) => ({ ...prev, [code]: value }));
+  };
+
+  const handleSaveRates = async () => {
+    const numericRates: Record<string, number> = {};
+    for (const [k, v] of Object.entries(customRates)) {
+      const parsed = parseFloat(v);
+      if (!isNaN(parsed) && parsed > 0) {
+        numericRates[k] = parsed;
+      }
+    }
+    await updateSettings({ currencyRates: numericRates });
+  };
+
   return (
     <div className="space-y-6">
-      <SettingSection title="Preferences" description="Basic application behavior and display language.">
+      <SettingSection title="General" description="Basic application behavior and display preferences.">
+        <SettingRow
+          title="Theme"
+          control={
+            <select value={theme || 'system'} onChange={(e) => setTheme(e.target.value as any)} className={selectClass}>
+              <option value="system">System</option>
+              <option value="dark">Dark</option>
+              <option value="light">Light</option>
+            </select>
+          }
+        />
+
         <SettingRow
           title="Language"
-          description="Interface display language."
           control={
-            <select
-              value={settings.language || 'auto'}
-              onChange={(e) => updateSettings({ language: e.target.value })}
-              className="h-8 rounded-md border border-input bg-background px-2.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            >
-              <option value="auto">System Default</option>
+            <select value={settings.language || 'auto'} onChange={(e) => updateSettings({ language: e.target.value })} className={selectClass}>
+              <option value="auto">System</option>
               <option value="en">English</option>
               <option value="zh-CN">简体中文</option>
               <option value="zh-TW">繁體中文</option>
@@ -86,12 +131,22 @@ export function GeneralSettings({ settings, updateSettings }: GeneralSettingsPro
         />
 
         <SettingRow
-          title="Startup"
-          description="Automatically launch Token Monitor when you sign in."
+          title="Launch at login"
           control={
             <Switch
               checked={Boolean(settings.startAtLogin)}
               onCheckedChange={(checked) => updateSettings({ startAtLogin: checked })}
+            />
+          }
+        />
+
+        <SettingRow
+          title="Edge dock"
+          description="Quota rail on the screen edge."
+          control={
+            <Switch
+              checked={Boolean(settings.edgeDockEnabled)}
+              onCheckedChange={(checked) => updateSettings({ edgeDockEnabled: checked })}
             />
           }
         />
@@ -106,35 +161,143 @@ export function GeneralSettings({ settings, updateSettings }: GeneralSettingsPro
             />
           }
         />
+
+        <SettingRow
+          title="Automatic updates"
+          description={updateMessage ?? undefined}
+          control={
+            <>
+              <Button variant="outline" size="xs" disabled={checkingUpdate} onClick={handleCheckUpdate}>
+                {checkingUpdate ? <Spinner className="mr-1 size-3.5" /> : null}
+                Check now
+              </Button>
+              <Switch
+                checked={settings.automaticAppUpdates !== false}
+                onCheckedChange={(checked) => updateSettings({ automaticAppUpdates: checked })}
+              />
+            </>
+          }
+        />
       </SettingSection>
 
-      <SettingSection title="Updates" description="Software update checks and background installations.">
+      <SettingSection title="Token & Session Settings" description="Workspace grouping, currency, and session indicators.">
         <SettingRow
-          title="Automatic Updates"
-          description="Automatically check for and install application updates in the background."
+          title="Display Currency"
+          description="Currency used for token cost calculations."
+          control={
+            <select
+              value={settings.currency || 'USD'}
+              onChange={(e) => updateSettings({ currency: e.target.value })}
+              className={selectClass}
+            >
+              {COMMON_CURRENCIES.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.code} ({c.symbol}) - {c.name}
+                </option>
+              ))}
+            </select>
+          }
+        />
+
+        <SettingRow
+          title="Session Titles"
+          description="Show custom prompt topics and titles in session lists."
           control={
             <Switch
-              checked={settings.automaticAppUpdates !== false}
-              onCheckedChange={(checked) => updateSettings({ automaticAppUpdates: checked })}
+              checked={settings.sessionTitlesEnabled !== false}
+              onCheckedChange={(checked) => updateSettings({ sessionTitlesEnabled: checked })}
             />
           }
         />
 
         <SettingRow
-          title="Check for Updates"
-          description={updateMessage || "Check for the latest available release."}
+          title="Projects Grouping"
+          description="Group sessions into project workspaces based on git repository root paths."
           control={
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={checkingUpdate}
-              onClick={handleCheckUpdate}
-            >
-              {checkingUpdate ? <Spinner className="size-3.5 mr-1" /> : null}
-              Check now
-            </Button>
+            <Switch
+              checked={settings.projectsEnabled !== false}
+              onCheckedChange={(checked) => updateSettings({ projectsEnabled: checked })}
+            />
           }
         />
+
+        <SettingRow
+          title="Session Context Metric"
+          description="Format for context window usage in inspectors and edge dock."
+          control={
+            <select
+              value={settings.sessionContextMetric || 'used'}
+              onChange={(e) => updateSettings({ sessionContextMetric: e.target.value as 'used' | 'remaining' })}
+              className={selectClass}
+            >
+              <option value="used">Used Context</option>
+              <option value="remaining">Remaining Context</option>
+            </select>
+          }
+        />
+
+        <SettingRow
+          title="Token Rate Framing"
+          description="Measurement framing for live streaming token rates."
+          control={
+            <select
+              value={settings.tokenRateMode || 'speed'}
+              onChange={(e) => updateSettings({ tokenRateMode: e.target.value as any })}
+              className={selectClass}
+            >
+              <option value="speed">Output Speed (tok/s)</option>
+              <option value="burn">Burn Rate (tok/min)</option>
+            </select>
+          }
+        />
+
+        <SettingRow
+          title="Codex Indicator Dots"
+          description="Display session activity indicator dots on models and sessions."
+          control={
+            <Switch
+              checked={settings.codexDotsEnabled !== false}
+              onCheckedChange={(checked) => updateSettings({ codexDotsEnabled: checked })}
+            />
+          }
+        />
+
+        <SettingRow
+          title="Always Visible Dots"
+          description="Keep Codex indicator dots visible even when idle."
+          control={
+            <Switch
+              checked={Boolean(settings.codexDotsVisible)}
+              onCheckedChange={(checked) => updateSettings({ codexDotsVisible: checked })}
+            />
+          }
+        />
+
+        <div className="p-3.5 space-y-3 bg-muted/20 rounded-lg border border-border/50">
+          <h4 className="tm-label !text-foreground">
+            Custom Exchange Rates (Relative to 1 USD)
+          </h4>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {['CNY', 'EUR', 'GBP', 'JPY', 'KRW', 'HKD'].map((code) => (
+              <div key={code} className="space-y-1">
+                <label className="text-xs text-muted-foreground font-medium">{code}</label>
+                <Input
+                  type="number"
+                  step="0.0001"
+                  placeholder="Rate"
+                  value={customRates[code] || ''}
+                  onChange={(e) => handleRateChange(code, e.target.value)}
+                  className="h-7 text-xs"
+                />
+              </div>
+            ))}
+          </div>
+          <div className="flex justify-end pt-1">
+            <Button size="sm" variant="outline" onClick={handleSaveRates}>
+              Save Rates
+            </Button>
+          </div>
+        </div>
       </SettingSection>
 
       <SettingSection title="Diagnostics & System" description="Troubleshooting details and configuration directories.">

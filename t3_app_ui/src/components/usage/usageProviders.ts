@@ -190,6 +190,7 @@ export const PROVIDER_PRESENTATION: Record<string, UsageProviderPresentation> = 
   get(target, prop: string) {
     if (typeof prop !== "string") return undefined;
     const key = prop.toLowerCase();
+    if (key === "claude" || key === "claudeagent") return target.claude;
     if (key in target) {
       return target[key];
     }

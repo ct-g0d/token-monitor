@@ -195,7 +195,7 @@ export const serverEnvironment = {
 
   refreshProviders: async () => {
     if (typeof window !== "undefined" && window.tokenMonitor) {
-      const res = await window.tokenMonitor.getStats({ force: true, feedback: true }).catch(() => null);
+      const res = await window.tokenMonitor.getStats().catch(() => null);
       if (res) {
         const stats = (res as any)?.data?.stats || (res as any)?.stats || res;
         syncStatsToPresentation(stats);

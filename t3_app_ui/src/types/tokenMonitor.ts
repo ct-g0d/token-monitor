@@ -3,6 +3,7 @@ export interface DashboardHistoryDay {
   tokens: number;
   cost: number;
   messages: number;
+  sessions?: number;
   activeTimeMs?: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
@@ -10,10 +11,17 @@ export interface DashboardHistoryDay {
   unclassifiedTokens: number;
   unpricedTokens?: number;
   tokenComponentsAvailable?: boolean;
+  byClient?: Record<string, {
+    tokens: number;
+    cost?: number;
+    messages?: number;
+    sessions?: number;
+  }>;
   perClient?: Record<string, {
     tokens: number;
     cost: number;
     messages: number;
+    sessions?: number;
     cacheReadTokens: number;
     cacheWriteTokens: number;
     outputTokens: number;
@@ -55,10 +63,22 @@ export interface DashboardHistorySummary {
   unpricedTokens?: number;
 }
 
+export type WindowKey = "1" | "7" | "30" | "90";
+
+export type WindowSessions = {
+  total?: number;
+  [client: string]: number | undefined;
+};
+
+export type SessionsByWindow = {
+  [K in WindowKey]?: WindowSessions;
+} & Record<string, WindowSessions | undefined>;
+
 export interface DashboardHistory {
   daily: DashboardHistoryDay[];
   monthly?: DashboardHistoryMonthly[];
   summary?: DashboardHistorySummary;
+  sessionsByWindow?: SessionsByWindow;
 }
 
 export interface LimitWindow {
@@ -94,6 +114,7 @@ export interface TokenMonitorStats {
     month?: any;
     allTime?: any;
   };
+  sessionsByWindow?: SessionsByWindow;
   limits?: TokenMonitorLimits;
   devices?: any[];
   [key: string]: any;
