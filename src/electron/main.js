@@ -1,5 +1,4 @@
 'use strict';
-console.log('[smoke] Electron process PID:', process.pid);
 
 const fs = require('node:fs');
 const crypto = require('node:crypto');
@@ -7248,7 +7247,7 @@ function loadWindowFile(target, options = {}) {
   if (devUiUrl) {
     try {
       const parsed = new URL(devUiUrl);
-      if (['127.0.0.1', 'localhost', '[::1]'].includes(parsed.hostname)) {
+      if (['http:', 'https:'].includes(parsed.protocol) && ['127.0.0.1', 'localhost', '[::1]'].includes(parsed.hostname)) {
         target.loadURL(devUiUrl).catch((error) => {
           console.log(`[window] renderer load failed: ${error.message}`);
           reveal();
@@ -7382,144 +7381,6 @@ function createWindow(boundsOverride, options = {}) {
   win.on('hide', () => sendMainWindowVisibility(win));
   win.on('minimize', () => sendMainWindowVisibility(win));
   win.on('restore', () => sendMainWindowVisibility(win));
-  if (process.env.TOKEN_MONITOR_SMOKE_CAPTURE) {
-    const reportsDir = 'C:/Users/user2/.t3/tokex-port/r10/reports';
-    win.webContents.once('did-finish-load', async () => {
-      try {
-        console.log('[smoke] did-finish-load, polling for 1 full collector tick (up to 120s)...');
-        const startMs = Date.now();
-        let initialSweepId = 0;
-        try {
-          if (tokenLedgerStore?.database) {
-            const db = tokenLedgerStore.database();
-            const r = db.prepare("SELECT MAX(sweep_id) as max_id FROM usage_sweep_runs WHERE status = 'completed'").get();
-            initialSweepId = Number(r?.max_id || 0);
-          }
-        } catch (_) {}
-
-        while (Date.now() - startMs < 120000) {
-          await new Promise((r) => setTimeout(r, 2000));
-          const elapsedSec = Math.round((Date.now() - startMs) / 1000);
-
-          let completedSweeps = [];
-          try {
-            if (tokenLedgerStore?.database) {
-              const db = tokenLedgerStore.database();
-              completedSweeps = db.prepare("SELECT sweep_id, status, event_count FROM usage_sweep_runs WHERE status = 'completed' AND sweep_id > ? ORDER BY sweep_id ASC").all(initialSweepId);
-            }
-          } catch (_) {}
-
-          if (completedSweeps.length >= 1) {
-            console.log(`[smoke] Full collector tick completed at ${elapsedSec}s (sweep ${completedSweeps[0].sweep_id})!`);
-            break;
-          }
-        }
-
-        // Allow 3500ms for React renders and charts to paint
-        await new Promise((r) => setTimeout(r, 3500));
-        fs.mkdirSync(reportsDir, { recursive: true });
-
-        // 1. CAPTURE smoke-usage.png
-        console.log('[smoke] Preparing 90-day Usage page...');
-        await win.webContents.executeJavaScript(`
-          (() => {
-            const btn = Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('90 DAYS') || b.textContent.includes('90 days') || b.value === '90' || b.getAttribute('value') === '90');
-            if (btn) btn.click();
-          })()
-        `);
-        await new Promise((r) => setTimeout(r, 2500));
-
-        const usageImg = await win.webContents.capturePage();
-        const usagePath = path.join(reportsDir, 'smoke-usage.png');
-        fs.writeFileSync(usagePath, usageImg.toPNG());
-        console.log(`[smoke] Saved ${usagePath} (${usageImg.toPNG().length} bytes)`);
-
-        const usageText = await win.webContents.executeJavaScript('document.body.innerText');
-        console.log('[smoke] smoke-usage DOM excerpt:\n' + usageText.slice(0, 500));
-
-        // 2. CAPTURE smoke-limits.png
-        console.log('[smoke] Navigating to Limits page...');
-        await win.webContents.executeJavaScript(`
-          (() => {
-            const tab = document.querySelector('[data-tab="limits"]') || Array.from(document.querySelectorAll('button, a')).find(el => el.textContent.trim() === 'Limits');
-            if (tab) tab.click();
-          })()
-        `);
-        await new Promise((r) => setTimeout(r, 3500));
-
-        const limitsImg = await win.webContents.capturePage();
-        const limitsPath = path.join(reportsDir, 'smoke-limits.png');
-        fs.writeFileSync(limitsPath, limitsImg.toPNG());
-        console.log(`[smoke] Saved ${limitsPath} (${limitsImg.toPNG().length} bytes)`);
-
-        const limitsText = await win.webContents.executeJavaScript('document.body.innerText');
-        console.log('[smoke] smoke-limits DOM excerpt:\n' + limitsText.slice(0, 500));
-
-        // 3. CAPTURE smoke-settings.png
-        console.log('[smoke] Navigating to Settings -> Accounts/Limits...');
-        await win.webContents.executeJavaScript(`
-          (() => {
-            const tab = document.querySelector('[data-tab="settings"]') || Array.from(document.querySelectorAll('button, a')).find(el => el.textContent.trim() === 'Settings');
-            if (tab) tab.click();
-          })()
-        `);
-        await new Promise((r) => setTimeout(r, 2000));
-        await win.webContents.executeJavaScript(`
-          (() => {
-            const headings = Array.from(document.querySelectorAll('h2, h3, div'));
-            const accountsHeading = headings.find(el => el.textContent.trim() === 'Accounts');
-            if (accountsHeading) accountsHeading.scrollIntoView({ behavior: 'instant', block: 'start' });
-          })()
-        `);
-        await new Promise((r) => setTimeout(r, 1500));
-
-        const settingsImg = await win.webContents.capturePage();
-        const settingsPath = path.join(reportsDir, 'smoke-settings.png');
-        fs.writeFileSync(settingsPath, settingsImg.toPNG());
-        console.log(`[smoke] Saved ${settingsPath} (${settingsImg.toPNG().length} bytes)`);
-
-        const settingsText = await win.webContents.executeJavaScript('document.body.innerText');
-        console.log('[smoke] smoke-settings DOM excerpt:\n' + settingsText.slice(0, 500));
-
-        // 4. TEST Antigravity Add Account & Cancel
-        console.log('[smoke] Testing Antigravity Add Account & Cancel...');
-        const addResult = await win.webContents.executeJavaScript(`
-          (() => {
-            const sections = Array.from(document.querySelectorAll('section, div'));
-            const agSection = sections.find(s => s.textContent.includes('Antigravity Accounts'));
-            const addBtn = Array.from(agSection ? agSection.querySelectorAll('button') : document.querySelectorAll('button'))
-              .find(b => b.textContent.trim() === 'Add Account');
-            if (addBtn) {
-              addBtn.click();
-              return true;
-            }
-            return false;
-          })()
-        `);
-        console.log('[smoke] Antigravity Add Account clicked:', addResult);
-
-        await new Promise((r) => setTimeout(r, 2500));
-
-        const cancelResult = await win.webContents.executeJavaScript(`
-          (() => {
-            const cancelBtn = Array.from(document.querySelectorAll('button')).find(b => b.textContent.trim() === 'Cancel');
-            if (cancelBtn) {
-              cancelBtn.click();
-              return true;
-            }
-            return false;
-          })()
-        `);
-        console.log('[smoke] Antigravity Cancel clicked:', cancelResult);
-        await new Promise((r) => setTimeout(r, 1500));
-
-        console.log('[smoke] SUCCESS: UI-6 smoke tests and captures completed!');
-        app.quit();
-      } catch (err) {
-        console.error('[smoke] smoke test error:', err);
-      }
-    });
-  }
   win.webContents.on('did-finish-load', () => {
     sendFloatingBubbleState();
     // Only report a window that is already on screen. A window still awaiting its
