@@ -32,6 +32,7 @@ async function quotaEndpointSnapshot(fetchQuota) {
     fetch: async (url, init) => {
       if (url.endsWith(':loadCodeAssist')) return response(200, {});
       assert.ok(url.endsWith(':retrieveUserQuotaSummary'));
+      assert.match(init.headers['user-agent'], /^antigravity\/hub\/2\.23\.1 /);
       assert.deepEqual(JSON.parse(init.body), { project: 'fixture-project' });
       return fetchQuota(url);
     }
@@ -53,6 +54,130 @@ test('daily quota wins over a successful but different production Gemini quota',
   assert.equal(snapshot.windows[0].remainingFraction, 0.81);
   assert.equal(snapshot.windows[0].resetTime, '2026-09-16T15:00:00.000Z');
   assert.deepEqual(urls, ['https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary']);
+});
+
+// Sanitized retrieveUserQuotaSummary responses captured from a Google AI Pro
+// account on 2026-10-20. The daily service reports the separate weekly-only
+// Gemini 4 Argon group; production omits it for the same credential.
+const capturedArgonSummary = {
+  "daily": {
+    "groups": [
+      {
+        "buckets": [
+          {
+            "bucketId": "gemini-weekly",
+            "displayName": "Weekly Limit Remaining",
+            "window": "weekly",
+            "resetTime": "2026-10-25T04:15:26Z",
+            "description": "You have used some of your weekly limit, it will fully refresh in 4 days, 16 hours.",
+            "remainingFraction": 0.99242824
+          },
+          {
+            "bucketId": "gemini-5h",
+            "displayName": "Five Hour Limit Remaining",
+            "window": "5h",
+            "resetTime": "2026-10-20T16:40:42Z",
+            "remainingFraction": 1
+          }
+        ],
+        "displayName": "Gemini Models",
+        "description": "Models within this group: Gemini Flash, Gemini Pro"
+      },
+      {
+        "buckets": [
+          {
+            "bucketId": "3p-weekly",
+            "displayName": "Weekly Limit Remaining",
+            "window": "weekly",
+            "resetTime": "2026-10-27T11:40:42Z",
+            "remainingFraction": 1
+          },
+          {
+            "bucketId": "3p-5h",
+            "displayName": "Five Hour Limit Remaining",
+            "window": "5h",
+            "resetTime": "2026-10-20T16:40:42Z",
+            "remainingFraction": 1
+          }
+        ],
+        "displayName": "Claude and GPT models",
+        "description": "Models within this group: Claude Opus, Claude Sonnet, GPT-OSS"
+      },
+      {
+        "buckets": [
+          {
+            "bucketId": "gemini-argon-wtu-weekly",
+            "displayName": "Gemini 4 Argon Weekly Limit",
+            "window": "weekly",
+            "resetTime": "2026-10-27T11:40:42Z",
+            "remainingFraction": 1
+          }
+        ],
+        "displayName": "Gemini 4 Argon",
+        "description": "For paid Pro plans, Argon quota is separate. Higher Argon quota (included as part of the larger Gemini quota bucket) is available on Ultra plans."
+      }
+    ],
+    "description": "Within each group, models share a weekly limit and a 5-hour limit. Quota is consumed proportionally to the cost of the tokens. Thus, limits will last longer with shorter tasks or using more cost-effective models. The 5-hour limit smooths out aggregate demand to fairly distribute global capacity across all users, while your weekly limit is tied directly to your individual tier."
+  },
+  "production": {
+    "groups": [
+      {
+        "buckets": [
+          {
+            "bucketId": "gemini-weekly",
+            "displayName": "Weekly Limit Remaining",
+            "window": "weekly",
+            "resetTime": "2026-10-27T11:40:44Z",
+            "remainingFraction": 1
+          },
+          {
+            "bucketId": "gemini-5h",
+            "displayName": "Five Hour Limit Remaining",
+            "window": "5h",
+            "resetTime": "2026-10-20T16:40:44Z",
+            "remainingFraction": 1
+          }
+        ],
+        "displayName": "Gemini Models",
+        "description": "Models within this group: Gemini Flash, Gemini Pro"
+      },
+      {
+        "buckets": [
+          {
+            "bucketId": "3p-weekly",
+            "displayName": "Weekly Limit Remaining",
+            "window": "weekly",
+            "resetTime": "2026-10-27T11:40:44Z",
+            "remainingFraction": 1
+          },
+          {
+            "bucketId": "3p-5h",
+            "displayName": "Five Hour Limit Remaining",
+            "window": "5h",
+            "resetTime": "2026-10-20T16:40:44Z",
+            "remainingFraction": 1
+          }
+        ],
+        "displayName": "Claude and GPT models",
+        "description": "Models within this group: Claude Opus, Claude Sonnet, GPT-OSS"
+      }
+    ],
+    "description": "Within each group, models share a weekly limit and a 5-hour limit. Quota is consumed proportionally to the cost of the tokens. Thus, limits will last longer with shorter tasks or using more cost-effective models. The 5-hour limit smooths out aggregate demand to fairly distribute global capacity across all users, while your weekly limit is tied directly to your individual tier."
+  }
+};
+
+test('captured daily quota summary surfaces Gemini 4 Argon as its own weekly window', async () => {
+  assert.ok(!JSON.stringify(capturedArgonSummary.production).includes('Argon'));
+  const snapshot = await quotaEndpointSnapshot(async (url) => response(200, (
+    url.includes('daily-cloudcode') ? capturedArgonSummary.daily : capturedArgonSummary.production
+  )));
+  assert.deepEqual(snapshot.windows.map((window) => [window.name, window.kind, window.remainingFraction, window.resetTime]), [
+    ['Gemini 5-hour', 'session', 1, '2026-10-20T16:40:42.000Z'],
+    ['Gemini weekly', 'weekly', 0.99242824, '2026-10-25T04:15:26.000Z'],
+    ['Gemini 4 Argon weekly', 'weekly', 1, '2026-10-27T11:40:42.000Z'],
+    ['Claude/GPT 5-hour', 'session', 1, '2026-10-20T16:40:42.000Z'],
+    ['Claude/GPT weekly', 'weekly', 1, '2026-10-27T11:40:42.000Z']
+  ]);
 });
 
 for (const [name, status, payload] of [
@@ -262,14 +387,14 @@ test('fetchRemoteSnapshot follows the Antigravity Hub daily onboarding protocol'
 
   const loadRequest = requests[0];
   assert.deepEqual(loadRequest.body, { metadata: { ideType: 'ANTIGRAVITY' } });
-  assert.match(loadRequest.headers['user-agent'], /^antigravity\/hub\/2\.9\.1 /);
+  assert.match(loadRequest.headers['user-agent'], /^antigravity\/hub\/2\.23\.1 /);
   assert.equal(loadRequest.headers.accept, '*/*');
   const onboardRequest = requests[1];
   assert.deepEqual(onboardRequest.body, {
     tier_id: 'free-tier',
     metadata: {
       ide_type: 'ANTIGRAVITY',
-      ide_version: '2.9.1',
+      ide_version: '2.23.1',
       ide_name: 'antigravity'
     }
   });
@@ -495,4 +620,92 @@ test('fetchRemoteSnapshot surfaces Google account verification without swallowin
     assert.doesNotMatch(error.message, /token=private/);
     return true;
   });
+});
+
+test('modelsFromAvailable, modelsFromBuckets, and fetchRemoteSnapshot preserve null remainingFraction through collapsePools', async () => {
+  const available = antigravityOAuth.modelsFromAvailable({
+    models: {
+      'gemini-4-argon-high': {
+        displayName: 'Gemini 4 Argon (High)',
+        quotaInfo: { remainingFraction: null, resetTime: '2026-10-23T00:33:37Z' }
+      },
+      'gemini-4-argon-medium': {
+        displayName: 'Gemini 4 Argon (Medium)',
+        quotaInfo: { remainingFraction: 0.74, resetTime: '2026-10-23T00:33:37Z' }
+      },
+      'claude-opus-5-5-low': {
+        displayName: 'Claude Opus 5.5 (Low)',
+        quotaInfo: { resetTime: '2026-10-17T10:01:00Z' }
+      }
+    }
+  });
+  assert.deepEqual(available.map((model) => [model.modelId, model.remainingFraction]), [
+    ['gemini-4-argon-high', null],
+    ['gemini-4-argon-medium', 0.74],
+    ['claude-opus-5-5-low', null]
+  ]);
+  assert.deepEqual(antigravityProbe._collapsePools(available).map((pool) => [pool.name, pool.remainingFraction]), [
+    ['Claude', null],
+    ['Gemini 4 Argon', 0.74]
+  ]);
+
+  const buckets = antigravityOAuth.modelsFromBuckets({
+    buckets: [
+      { modelId: 'gemini-4-argon-high', remainingFraction: null, resetTime: '2026-10-23T00:33:37Z' },
+      { modelId: 'gemini-4-argon-high', remainingFraction: 0.74, resetTime: '2026-10-23T00:33:37Z' },
+      { modelId: 'claude-opus-5-5-low', resetTime: '2026-10-17T10:01:00Z' }
+    ]
+  });
+  assert.deepEqual(buckets.map((model) => [model.modelId, model.remainingFraction]), [
+    ['gemini-4-argon-high', 0.74],
+    ['claude-opus-5-5-low', null]
+  ]);
+  assert.deepEqual(antigravityProbe._collapsePools(buckets).map((pool) => [pool.name, pool.remainingFraction]), [
+    ['Claude', null],
+    ['Gemini 4 Argon', 0.74]
+  ]);
+
+  const snapshot = await antigravityOAuth.fetchRemoteSnapshot({
+    id: 'account-1',
+    accountEmail: 'user@example.com',
+    credentials: {
+      accessToken: 'access',
+      expiresAt: Date.now() + 3600_000,
+      clientId: 'client',
+      clientSecret: 'secret',
+      projectId: 'project-1'
+    }
+  }, {
+    collapsePools: antigravityProbe._collapsePools,
+    fetch: async (url) => {
+      if (url.endsWith(':loadCodeAssist')) return response(200, { currentTier: { id: 'standard-tier' } });
+      if (url.endsWith(':fetchAvailableModels')) {
+        return response(200, {
+          models: {
+            'gemini-4-argon-high': {
+              displayName: 'Gemini 4 Argon (High)',
+              quotaInfo: { remainingFraction: null, resetTime: '2026-10-23T00:33:37Z' }
+            },
+            'gemini-4-argon-medium': {
+              displayName: 'Gemini 4 Argon (Medium)',
+              quotaInfo: { remainingFraction: 0.74, resetTime: '2026-10-23T00:33:37Z' }
+            },
+            'claude-opus-5-5-low': {
+              displayName: 'Claude Opus 5.5 (Low)',
+              quotaInfo: { resetTime: '2026-10-17T10:01:00Z' }
+            },
+            'claude-sonnet-5-5-low': {
+              displayName: 'Claude Sonnet 5.5 (Low)',
+              quotaInfo: { remainingFraction: 0.25, resetTime: '2026-10-17T10:01:00Z' }
+            }
+          }
+        });
+      }
+      throw new Error(`Unexpected URL ${url}`);
+    }
+  });
+  assert.deepEqual(snapshot.pools.map((pool) => [pool.name, pool.remainingFraction]), [
+    ['Claude', 0.25],
+    ['Gemini 4 Argon', 0.74]
+  ]);
 });

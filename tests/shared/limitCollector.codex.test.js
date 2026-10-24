@@ -2181,3 +2181,144 @@ test('LimitsRuntime compatibility snapshot probes initially and reuses the confi
   assert.equal(calls, 2);
   collector.stop();
 });
+
+
+test('mapCodexRateLimitsToProvider normalizes windows from limitWindowSeconds and classifies session, daily, weekly, and monthly', () => {
+  const payload = {
+    account: { email: 'user@example.com', planType: 'pro' },
+    rateLimits: {
+      primary: {
+        usedPercent: 20,
+        limitWindowSeconds: 18000,
+        resetsAt: '2026-10-23T22:00:00Z'
+      },
+      secondary: {
+        usedPercent: 40,
+        limitWindowSeconds: 604800,
+        resetsAt: '2026-10-29T12:00:00Z'
+      }
+    }
+  };
+
+  const provider = mapCodexRateLimitsToProvider(payload, {
+    accountKey: 'codex-pro',
+    updatedAt: '2026-10-23T17:00:00Z'
+  });
+
+  assert.equal(provider.provider, 'codex');
+  assert.equal(provider.status, 'ok');
+  assert.equal(provider.windows.length, 2);
+
+  const session = provider.windows.find((w) => w.kind === 'session');
+  assert.ok(session);
+  assert.equal(session.usedPercent, 20);
+  assert.equal(session.windowMinutes, 300);
+
+  const weekly = provider.windows.find((w) => w.kind === 'weekly');
+  assert.ok(weekly);
+  assert.equal(weekly.usedPercent, 40);
+  assert.equal(weekly.windowMinutes, 10080);
+});
+
+test('mapCodexRateLimitsToProvider classifies daily and monthly limitWindowSeconds', () => {
+  const dailyPayload = {
+    account: { email: 'daily@example.com', planType: 'team' },
+    rateLimits: {
+      primary: {
+        usedPercent: 15,
+        limitWindowSeconds: 86400,
+        resetsAt: '2026-10-24T00:00:00Z'
+      }
+    }
+  };
+  const dailyProvider = mapCodexRateLimitsToProvider(dailyPayload);
+  assert.equal(dailyProvider.windows[0].kind, 'daily');
+  assert.equal(dailyProvider.windows[0].windowMinutes, 1440);
+
+  const monthlyPayload = {
+    account: { email: 'monthly@example.com', planType: 'team' },
+    rateLimits: {
+      primary: {
+        usedPercent: 80,
+        limitWindowSeconds: 2592000,
+        resetsAt: '2026-11-20T00:00:00Z'
+      }
+    }
+  };
+  const monthlyProvider = mapCodexRateLimitsToProvider(monthlyPayload);
+  assert.equal(monthlyProvider.windows[0].kind, 'billing');
+  assert.equal(monthlyProvider.windows[0].label, 'Monthly');
+  assert.equal(monthlyProvider.windows[0].windowMinutes, 43200);
+});
+
+test('mapCodexRateLimitsToProvider classifies Free and Go primary windows as Monthly billing lane when duration is absent', () => {
+  for (const plan of ['free', 'go']) {
+    const payload = {
+      account: { email: plan + '@example.com', planType: plan },
+      rateLimits: {
+        primary: {
+          usedPercent: 50,
+          resetsAt: '2026-11-01T00:00:00Z'
+        }
+      }
+    };
+    const provider = mapCodexRateLimitsToProvider(payload);
+    assert.equal(provider.windows.length, 1);
+    assert.equal(provider.windows[0].kind, 'billing');
+    assert.equal(provider.windows[0].label, 'Monthly');
+    assert.equal(provider.windows[0].windowMinutes, 43200);
+  }
+});
+
+test('mapCodexRateLimitsToProvider normalizes individualLimit into a Monthly credit limit window', () => {
+  const payload = {
+    account: { email: 'credit@example.com', planType: 'plus' },
+    rateLimits: {
+      primary: { usedPercent: 10, windowDurationMins: 300 },
+      individualLimit: {
+        remainingPercent: 75,
+        resetsAt: '2026-11-01T00:00:00Z'
+      }
+    }
+  };
+
+  const provider = mapCodexRateLimitsToProvider(payload);
+  const creditWindow = provider.windows.find((w) => w.limitId === 'individual');
+  assert.ok(creditWindow);
+  assert.equal(creditWindow.kind, 'billing');
+  assert.equal(creditWindow.label, 'Monthly credit limit');
+  assert.equal(creditWindow.usedPercent, 25);
+  assert.equal(creditWindow.remainingPercent, 75);
+  assert.equal(creditWindow.windowMinutes, 43200);
+});
+
+test('mapCodexRateLimitsToProvider keeps additive windows from rateLimitsByLimitId without promoting them into canonical lanes', () => {
+  const payload = {
+    account: { email: 'features@example.com', planType: 'plus' },
+    rateLimits: {
+      primary: { usedPercent: 10, windowDurationMins: 300 }
+    },
+    rateLimitsByLimitId: {
+      codex: {
+        primary: { usedPercent: 10, windowDurationMins: 300 }
+      },
+      'feature-spark': {
+        limitName: 'Spark Model',
+        primary: { usedPercent: 30, limitWindowSeconds: 86400 }
+      }
+    }
+  };
+
+  const provider = mapCodexRateLimitsToProvider(payload);
+  assert.equal(provider.windows.length, 2);
+  const canonical = provider.windows.find((w) => w.limitId === 'codex');
+  assert.ok(canonical);
+  assert.equal(canonical.additional, undefined);
+
+  const spark = provider.windows.find((w) => w.limitId === 'feature-spark');
+  assert.ok(spark);
+  assert.equal(spark.additional, true);
+  assert.equal(spark.label, 'Spark Model');
+  assert.equal(spark.kind, 'daily');
+  assert.equal(spark.windowMinutes, 1440);
+});

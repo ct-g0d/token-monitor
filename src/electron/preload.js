@@ -4,7 +4,11 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('tokenMonitor', {
   getSettings: () => ipcRenderer.invoke('settings:get'),
-  updateSettings: (patch) => ipcRenderer.invoke('settings:update', patch),
+  updateSettings: (patch) => {
+    // Membership is owned by the dedicated account commands, never generic settings.
+    const { workbuddyManagedAccounts: _managedAccounts, ...safePatch } = patch || {};
+    return ipcRenderer.invoke('settings:update', safePatch);
+  },
   // Subscriptions are shared across devices when a hub is configured, so they
   // have their own channel: the write is a network round trip main.js has to
   // await, and it can fail in ways a settings write cannot.
@@ -103,6 +107,7 @@ contextBridge.exposeInMainWorld('tokenMonitor', {
   rescanClient: (clientId) => ipcRenderer.invoke('usage:rescanClient', clientId),
   repairClientSyncLock: (clientId) => ipcRenderer.invoke('usage:repairClientSyncLock', clientId),
   openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
+  openExternalUrl: (url) => ipcRenderer.invoke('app:openExternal', url),
   openUserData: () => ipcRenderer.invoke('app:openUserData'),
   antigravity: {
     accounts: () => ipcRenderer.invoke('antigravity:accounts'),
@@ -114,6 +119,18 @@ contextBridge.exposeInMainWorld('tokenMonitor', {
       const handler = (_event, accounts) => callback(accounts);
       ipcRenderer.on('antigravity:accounts', handler);
       return () => ipcRenderer.removeListener('antigravity:accounts', handler);
+    }
+  },
+  workbuddy: {
+    accounts: () => ipcRenderer.invoke('workbuddy:accounts'),
+    addAccount: (realm) => ipcRenderer.invoke('workbuddy:addAccount', realm),
+    cancelLogin: () => ipcRenderer.invoke('workbuddy:cancelLogin'),
+    removeAccount: (id) => ipcRenderer.invoke('workbuddy:removeAccount', id),
+    setAccountEnabled: (id, enabled) => ipcRenderer.invoke('workbuddy:setAccountEnabled', id, enabled),
+    onAccounts: (callback) => {
+      const handler = (_event, accounts) => { try { callback(accounts); } catch (_) {} };
+      ipcRenderer.on('workbuddy:accounts', handler);
+      return () => ipcRenderer.removeListener('workbuddy:accounts', handler);
     }
   },
   mimo: {

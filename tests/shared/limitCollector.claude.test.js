@@ -9,7 +9,7 @@ const test = require('node:test');
 
 const { aggregateLimits } = require('../../src/shared/limits/core');
 const { claudeCommandCandidates, claudeWebCookie, fetchClaudeLimits, mapClaudeCliUsageToProvider, mapClaudeUsageToProvider, normalizeClaudeWebCookieInput } = require('../../src/shared/limits/collector');
-const { listClaudeWebOrganizations, runClaudeAuthStatus, touchClaudeAuthPath } = require('../../src/shared/providers/claude/limits');
+const { listClaudeWebOrganizations, mapClaudeSdkUsageToProvider, runClaudeAuthStatus, runClaudeCliSdkProbe, touchClaudeAuthPath } = require('../../src/shared/providers/claude/limits');
 
 function fakeSpawnForClaudeUsage(expectedCommand = 'cmd.exe') {
   return (command, args, options) => {
@@ -1769,7 +1769,7 @@ test('Claude usage credits with a monthly limit render a metered window', () => 
 test('Claude usage credits without a limit carry no percentage', () => {
   const provider = mapClaudeUsageToProvider(claudeUsagePayload({
     extra_usage: { is_enabled: true, monthly_limit: null, used_credits: 235, utilization: null, currency: 'USD', decimal_places: 2 },
-    // The live API reports percent 0 — not null — in this state.
+    // The live API reports percent 0 �?not null �?in this state.
     spend: { enabled: true, used: { amount_minor: 235, currency: 'USD', exponent: 2 }, limit: null, percent: 0 }
   }));
   const window = creditsWindowOf(provider);
@@ -2102,13 +2102,13 @@ test('an unfunded credits-off pool backs off well past the normal TTL', async ()
 
   await fetchClaudeLimits(options, deps);
 
-  // Three intervals in — well past the 2x TTL a funded pool would use.
+  // Three intervals in �?well past the 2x TTL a funded pool would use.
   requests.length = 0;
   nowMs += 180_000;
   await fetchClaudeLimits(options, deps);
   assert.deepEqual(requests.filter((url) => url.includes('/prepaid/credits')), []);
 
-  // Just past the 12x TTL — an hour at the default refresh — it is re-read:
+  // Just past the 12x TTL �?an hour at the default refresh �?it is re-read:
   // buying credits must still surface without restarting the widget.
   requests.length = 0;
   nowMs += 541_000;
@@ -2501,4 +2501,249 @@ test('the prepaid TTL follows the limits refresh interval at twice its length', 
   nowMs += 61_000;
   await fetchClaudeLimits(options, deps);
   assert.equal(requests.filter((url) => url.includes('/prepaid/credits')).length, 1);
+});
+
+
+test('mapClaudeSdkUsageToProvider maps inert initialization and get_usage windows correctly', () => {
+  const initResult = {
+    account: {
+      email: 'engineer@example.com',
+      subscriptionType: 'pro',
+      tokenSource: 'oauth',
+      organization: 'Acme Corp'
+    }
+  };
+  const usageResult = {
+    rate_limits_available: true,
+    rate_limits: {
+      five_hour: {
+        utilization: 35.5,
+        resets_at: '2026-10-23T22:00:00Z'
+      },
+      seven_day: {
+        utilization: 62.0,
+        resets_at: '2026-10-29T12:00:00Z'
+      },
+      model_scoped: [
+        {
+          display_name: 'Claude 3.7 Sonnet',
+          utilization: 45.0,
+          resets_at: '2026-10-29T12:00:00Z'
+        }
+      ],
+      spend: {
+        enabled: true,
+        used: { amount_minor: 2500, currency: 'USD', exponent: 2 },
+        limit: { amount_minor: 10000, currency: 'USD', exponent: 2 }
+      }
+    }
+  };
+
+  const provider = mapClaudeSdkUsageToProvider(initResult, usageResult, {
+    updatedAt: '2026-10-23T17:00:00Z'
+  });
+
+  assert.equal(provider.provider, 'claude');
+  assert.equal(provider.status, 'ok');
+  assert.equal(provider.source, 'cli');
+  assert.equal(provider.accountEmail, 'engineer@example.com');
+  assert.equal(provider.accountName, 'Acme Corp');
+  assert.equal(provider.accountLabel, 'Pro');
+
+  const session = provider.windows.find((w) => w.kind === 'session');
+  assert.ok(session);
+  assert.equal(session.usedPercent, 35.5);
+  assert.equal(session.resetsAt, '2026-10-23T22:00:00.000Z');
+  assert.equal(session.windowMinutes, 300);
+
+  const weekly = provider.windows.find((w) => w.kind === 'weekly' && w.limitId === 'seven_day');
+  assert.ok(weekly);
+  assert.equal(weekly.usedPercent, 62);
+  assert.equal(weekly.resetsAt, '2026-10-29T12:00:00.000Z');
+  assert.equal(weekly.windowMinutes, 10080);
+
+  const scoped = provider.windows.find((w) => w.limitId === 'seven_day_claude_3_7_sonnet');
+  assert.ok(scoped);
+  assert.equal(scoped.usedPercent, 45);
+  assert.equal(scoped.label, 'Weekly Claude 3.7 Sonnet');
+  assert.equal(scoped.windowMinutes, 10080);
+
+  const spend = provider.windows.find((w) => w.kind === 'billing');
+  assert.ok(spend);
+  assert.equal(spend.usedPercent, 25);
+  assert.equal(spend.label, 'Monthly spend');
+});
+
+test('mapClaudeSdkUsageToProvider reports unsupported with empty windows for API-key sessions', () => {
+  const initResult = {
+    account: {
+      email: 'api@example.com',
+      tokenSource: 'api_key'
+    }
+  };
+  const usageResult = {
+    rate_limits_available: false,
+    rate_limits: null
+  };
+
+  const provider = mapClaudeSdkUsageToProvider(initResult, usageResult, {
+    updatedAt: '2026-10-23T17:00:00Z'
+  });
+
+  assert.equal(provider.provider, 'claude');
+  assert.equal(provider.status, 'unavailable');
+  assert.equal(provider.source, 'cli');
+  assert.equal(provider.accountEmail, 'api@example.com');
+  assert.deepEqual(provider.windows, []);
+});
+
+test('runClaudeCliSdkProbe handles initialization and get_usage stream-json lifecycle', async () => {
+  const written = [];
+  const fakeSpawn = () => {
+    const child = new EventEmitter();
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.stdin = {
+      write: (data) => {
+        written.push(data);
+        const parsed = JSON.parse(data.trim());
+        if (parsed.request?.subtype === 'initialize') {
+          process.nextTick(() => {
+            child.stdout.emit('data', JSON.stringify({
+              type: 'control_response',
+              response: {
+                subtype: 'success',
+                request_id: parsed.request_id,
+                response: {
+                  account: {
+                    email: 'sdk-test@example.com',
+                    subscriptionType: 'team'
+                  }
+                }
+              }
+            }) + '\n');
+          });
+        } else if (parsed.request?.subtype === 'get_usage') {
+          assert.equal(parsed.request.skip_behaviors, true);
+          process.nextTick(() => {
+            child.stdout.emit('data', JSON.stringify({
+              type: 'control_response',
+              response: {
+                subtype: 'success',
+                request_id: parsed.request_id,
+                response: {
+                  rate_limits_available: true,
+                  rate_limits: {
+                    five_hour: { utilization: 10, resets_at: '2026-10-23T23:00:00Z' }
+                  }
+                }
+              }
+            }) + '\n');
+          });
+        }
+      },
+      end: () => {}
+    };
+    child.kill = () => {};
+    return child;
+  };
+
+  const result = await runClaudeCliSdkProbe({
+    platform: 'linux',
+    env: { PATH: '/usr/bin' },
+    existsSync: () => true,
+    spawn: fakeSpawn
+  });
+
+  assert.equal(result.init?.account?.email, 'sdk-test@example.com');
+  assert.equal(result.usage?.rate_limits?.five_hour?.utilization, 10);
+  assert.equal(written.length, 2);
+});
+
+test('runClaudeCliSdkProbe keeps initialization metadata when get_usage times out', async () => {
+  const fakeSpawn = () => {
+    const child = new EventEmitter();
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.stdin = {
+      write: (data) => {
+        const parsed = JSON.parse(data.trim());
+        if (parsed.request?.subtype === 'initialize') {
+          process.nextTick(() => {
+            child.stdout.emit('data', JSON.stringify({
+              type: 'control_response',
+              response: {
+                subtype: 'success',
+                request_id: parsed.request_id,
+                response: {
+                  account: {
+                    email: 'timeout-user@example.com',
+                    subscriptionType: 'pro'
+                  }
+                }
+              }
+            }) + '\n');
+          });
+        }
+      },
+      end: () => {}
+    };
+    child.kill = () => {};
+    return child;
+  };
+
+  const result = await runClaudeCliSdkProbe({
+    platform: 'linux',
+    env: { PATH: '/usr/bin' },
+    existsSync: () => true,
+    claudeUsageTimeoutMs: 50,
+    spawn: fakeSpawn
+  });
+
+  assert.equal(result.init?.account?.email, 'timeout-user@example.com');
+  assert.equal(result.usage, null);
+  assert.equal(result.usageError, 'probeFailed');
+
+  const provider = mapClaudeSdkUsageToProvider(result.init, result.usage, {
+    updatedAt: '2026-10-23T17:00:00Z'
+  });
+  assert.equal(provider.status, 'unavailable');
+  assert.equal(provider.accountEmail, 'timeout-user@example.com');
+  assert.deepEqual(provider.windows, []);
+});
+
+test('fetchClaudeLimits prefers CLI SDK probe and falls back to OAuth when CLI probe fails', async () => {
+  const cliProvider = await fetchClaudeLimits({}, {
+    probeClaudeCli: async () => ({
+      provider: 'claude',
+      status: 'ok',
+      source: 'cli',
+      accountEmail: 'cli-primary@example.com',
+      windows: [{ kind: 'session', usedPercent: 15 }]
+    })
+  });
+  assert.equal(cliProvider.source, 'cli');
+  assert.equal(cliProvider.accountEmail, 'cli-primary@example.com');
+
+  const oauthProvider = await fetchClaudeLimits({}, {
+    probeClaudeCli: async () => {
+      const err = new Error('CLI unavailable');
+      err.status = 'unavailable';
+      throw err;
+    },
+    platform: 'linux',
+    claudeCredentialPath: '/home/test/.claude/.credentials.json',
+    stat: async () => ({ mtimeMs: 1 }),
+    readFile: async () => JSON.stringify({
+      claudeAiOauth: {
+        accessToken: 'access-fallback',
+        refreshToken: 'refresh-fallback',
+        expiresAt: Date.now() + 86400000,
+        subscriptionType: 'pro'
+      }
+    }),
+    fetch: fakeClaudeOauthFetch({ five_hour: { utilization: 25 } })
+  });
+  assert.equal(oauthProvider.source, 'oauth');
+  assert.equal(oauthProvider.windows[0].usedPercent, 25);
 });

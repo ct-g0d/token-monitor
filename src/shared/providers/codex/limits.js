@@ -84,14 +84,21 @@ function codexPlanLabelFromParts(...parts) {
   return displayPlanText(cleaned, Infinity);
 }
 
-function codexWindowKind(name, window) {
-  const mins = Number(window?.windowDurationMins || window?.window_duration_mins || 0);
+function codexWindowKind(name, window, planType) {
+  const seconds = Number(window?.limitWindowSeconds ?? window?.limit_window_seconds);
+  const mins = Number.isFinite(seconds) && seconds > 0
+    ? Math.round(seconds / 60)
+    : Number(window?.windowDurationMins || window?.window_duration_mins || 0);
+
   // Monthly quotas use the shared wire contract's billing lane. The display
   // label below keeps the cadence explicit instead of presenting it as money.
-  if (mins === 30 * 24 * 60) return 'billing';
+  if (mins >= 30 * 24 * 60) return 'billing';
   if (mins >= 7 * 24 * 60) return 'weekly';
   if (mins >= 24 * 60) return 'daily';
   if (mins === 5 * 60) return 'session';
+
+  const isMonthlyPlan = planType === 'free' || planType === 'go';
+  if (String(name).toLowerCase() === 'primary' && isMonthlyPlan) return 'billing';
   if (String(name).toLowerCase() === 'secondary') return 'weekly';
   return 'session';
 }
@@ -110,17 +117,22 @@ function codexAdditionalRateLimitWindows(payload = {}) {
     if (limitId === 'codex' || !snapshot || typeof snapshot !== 'object') continue;
     const limitName = String(snapshot.limitName ?? snapshot.limit_name ?? '').trim() || String(limitId).trim();
     if (!limitName) continue;
+    const planType = snapshot.planType ?? snapshot.plan_type;
     for (const key of ['primary', 'secondary']) {
-      const window = snapshot[key];
+      const window = snapshot[key] || snapshot[`${key}Window`] || snapshot[`${key}_window`];
       if (!window) continue;
+      const seconds = Number(window.limitWindowSeconds ?? window.limit_window_seconds);
+      const windowMinutes = Number.isFinite(seconds) && seconds > 0
+        ? Math.round(seconds / 60)
+        : (window.windowDurationMins ?? window.window_duration_mins);
       windows.push({
-        kind: codexWindowKind(key, window),
+        kind: codexWindowKind(key, window, planType),
         label: limitName,
         limitId,
         additional: true,
         usedPercent: window.usedPercent ?? window.used_percent,
         resetsAt: window.resetsAt ?? window.resets_at,
-        windowMinutes: window.windowDurationMins ?? window.window_duration_mins
+        windowMinutes
       });
     }
   }
@@ -138,24 +150,29 @@ function codexRateLimitsById(payload = {}) {
 function normalizeCodexUsageWindow(window) {
   if (!window || typeof window !== 'object') return null;
   const seconds = Number(window.limitWindowSeconds ?? window.limit_window_seconds);
+  const windowDurationMins = Number.isFinite(seconds) && seconds > 0
+    ? Math.round(seconds / 60)
+    : (window.windowDurationMins ?? window.window_duration_mins);
   return {
     ...window,
     usedPercent: window.usedPercent ?? window.used_percent,
     resetsAt: window.resetsAt ?? window.resetAt ?? window.reset_at,
-    windowDurationMins: Number.isFinite(seconds) ? seconds / 60 : undefined
+    windowDurationMins: Number.isFinite(Number(windowDurationMins)) ? Number(windowDurationMins) : undefined
   };
 }
 
 function normalizeCodexUsageRateLimit(rateLimit, meta = {}) {
   const source = rateLimit && typeof rateLimit === 'object' ? rateLimit : {};
-  const primary = normalizeCodexUsageWindow(source.primaryWindow || source.primary_window);
-  const secondary = normalizeCodexUsageWindow(source.secondaryWindow || source.secondary_window);
+  const primary = normalizeCodexUsageWindow(source.primary || source.primaryWindow || source.primary_window);
+  const secondary = normalizeCodexUsageWindow(source.secondary || source.secondaryWindow || source.secondary_window);
+  const individualLimit = source.individualLimit || source.individual_limit;
   return {
     ...(primary ? { primary } : {}),
     ...(secondary ? { secondary } : {}),
+    ...(individualLimit ? { individualLimit } : {}),
     ...(meta.limitId ? { limitId: meta.limitId } : {}),
     ...(meta.limitName ? { limitName: meta.limitName } : {}),
-    planType: meta.planType
+    planType: meta.planType ?? source.planType ?? source.plan_type
   };
 }
 
@@ -525,19 +542,48 @@ async function waitForCodexEmptyQuotaRetry(deps = {}) {
 function mapCodexRateLimitsToProvider(payload, meta = {}) {
   const rateLimits = codexRateLimitSnapshot(payload);
   const canonicalLimitId = String(rateLimits.limitId ?? rateLimits.limit_id ?? 'codex').trim() || 'codex';
+  const planType = String(
+    rateLimits.planType
+    ?? rateLimits.plan_type
+    ?? payload.account?.planType
+    ?? payload.account?.plan_type
+    ?? ''
+  ).trim().toLowerCase();
   const windows = [];
   for (const key of ['primary', 'secondary']) {
     const window = rateLimits[key];
     if (!window) continue;
-    const kind = codexWindowKind(key, window);
+    const kind = codexWindowKind(key, window, planType);
+    const seconds = Number(window.limitWindowSeconds ?? window.limit_window_seconds);
+    const windowMinutes = Number.isFinite(window.windowDurationMins)
+      ? window.windowDurationMins
+      : (Number.isFinite(seconds) && seconds > 0
+        ? Math.round(seconds / 60)
+        : (kind === 'billing' ? 30 * 24 * 60 : undefined));
     windows.push({
       kind,
       ...(kind === 'billing' ? { label: 'Monthly' } : {}),
       limitId: canonicalLimitId,
       usedPercent: window.usedPercent ?? window.used_percent,
       resetsAt: window.resetsAt ?? window.resets_at,
-      windowMinutes: window.windowDurationMins ?? window.window_duration_mins
+      windowMinutes
     });
+  }
+  const individualLimit = rateLimits.individualLimit || rateLimits.individual_limit;
+  if (individualLimit && typeof individualLimit === 'object') {
+    const remainingPercent = individualLimit.remainingPercent ?? individualLimit.remaining_percent;
+    const usedPercent = individualLimit.usedPercent ?? individualLimit.used_percent
+      ?? (Number.isFinite(Number(remainingPercent)) ? 100 - Number(remainingPercent) : null);
+    if (usedPercent !== null && Number.isFinite(Number(usedPercent))) {
+      windows.push({
+        kind: 'billing',
+        label: 'Monthly credit limit',
+        limitId: 'individual',
+        usedPercent: Math.max(0, Math.min(100, Number(usedPercent))),
+        resetsAt: individualLimit.resetsAt ?? individualLimit.resets_at,
+        windowMinutes: 30 * 24 * 60
+      });
+    }
   }
   windows.push(...codexAdditionalRateLimitWindows(payload));
   return normalizeLimitProvider({
@@ -1208,6 +1254,15 @@ function codexOAuthCanFallbackToRpc(error, deps = {}, managedRpcIsScoped = false
 async function readCodexUsageOrRpc(deps = {}) {
   const oauthReader = deps.readCodexUsage || fetchCodexUsage;
   const rpcReader = deps.readCodexRpc || readCodexRpc;
+
+  if (deps.preferCodexRpc) {
+    try {
+      const rpcPayload = await rpcReader(deps);
+      return { payload: rpcPayload, source: 'rpc', sourceDetail: rpcPayload.sourceDetail };
+    } catch (_) {
+      // Fall through to OAuth
+    }
+  }
   let latestOAuthAuthSnapshot = null;
   const readOAuth = async () => {
     let oauthAuthSnapshot = null;

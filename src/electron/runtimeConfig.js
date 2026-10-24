@@ -120,6 +120,8 @@ function usageConfigFromSettings(settings = {}, context = {}) {
     intervalRequiresActivity: Boolean(context.intervalRequiresActivity),
     watchDebounceMs: Number(context.watchDebounceMs || 1500),
     wslScanEnabled: settings.wslScanEnabled !== false,
+    tokenLedgerStore: context.tokenLedgerStore,
+    tokenLedgerPath: context.tokenLedgerPath,
     onError: context.onError,
     logger: context.logger
   };
@@ -147,9 +149,17 @@ function limitsConfigFromSettings(settings = {}, context = {}) {
     // declared default. The workbuddy fields below stay hand-written because
     // the desktop session rewrites their lanes entirely.
     ...limitsAccountConfig(settings, context),
+    workbuddyLocalSessions: context.workbuddyDesktopSessionEnabled === true && Array.isArray(context.workbuddyLocalSessions)
+      ? context.workbuddyLocalSessions
+      : undefined,
+    workbuddyLocalSessionsComplete: context.workbuddyLocalSessionsComplete,
+    workbuddyRealm: context.workbuddyDesktopSessionEnabled === true ? workbuddyLocalSession.realm || 'cn' : 'cn',
     workbuddyAccessToken: workbuddySettings.workbuddyAccessToken
+      || workbuddySettings.workbuddyToken
       || workbuddyEnv.TOKEN_MONITOR_WORKBUDDY_ACCESS_TOKEN
       || workbuddyEnv.WORKBUDDY_ACCESS_TOKEN
+      || workbuddyEnv.TOKEN_MONITOR_WORKBUDDY_TOKEN
+      || workbuddyEnv.WORKBUDDY_TOKEN
       || '',
     workbuddyUserId: workbuddySettings.workbuddyUserId
       || workbuddyEnv.TOKEN_MONITOR_WORKBUDDY_USER_ID

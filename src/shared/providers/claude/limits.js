@@ -1351,6 +1351,22 @@ async function fetchClaudeLimits(options = {}, deps = {}) {
   const platform = deps.platform || process.platform;
   const webCookie = claudeWebCookie(deps.env || process.env, options);
   if (webCookie) return fetchClaudeWebLimits(webCookie, deps, options);
+
+  const isTestWithoutCli = (deps.readFile || deps.claudeCredentialPath || deps.fetch)
+    && !deps.spawn
+    && !deps.probeClaudeCli
+    && !deps.claudeCliProbe
+    && !deps.runClaudeCliSdkProbe;
+  if (!isTestWithoutCli) {
+    try {
+      return await probeClaudeCliSdkLimits(deps, options);
+    } catch (cliError) {
+      if (!shouldTryClaudeCliFallback(cliError) && cliError?.code !== 'ERR_ASSERTION') {
+        throw cliError;
+      }
+    }
+  }
+
   let oauthIdentity = null;
   try {
     let credentials = await readClaudeCredentials(deps);
@@ -1922,6 +1938,304 @@ async function touchClaudeAuthPath(deps = {}) {
   });
 }
 
+function claudeSdkPercentFromAmounts(used, limit) {
+  if (
+    typeof used !== "number"
+    || typeof limit !== "number"
+    || !Number.isFinite(used)
+    || !Number.isFinite(limit)
+    || used < 0
+    || limit <= 0
+  ) {
+    return undefined;
+  }
+  const percent = (used / limit) * 100;
+  return Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : undefined;
+}
+
+function readClaudeSdkSpendPercent(rateLimits) {
+  if (!rateLimits || typeof rateLimits !== "object") return undefined;
+  const spend = rateLimits.spend;
+  if (
+    spend
+    && typeof spend === "object"
+    && spend.enabled
+    && spend.used
+    && spend.limit
+    && typeof spend.used.amount_minor === "number"
+    && typeof spend.limit.amount_minor === "number"
+    && String(spend.used.currency || "").trim()
+    && String(spend.used.currency || "").trim() === String(spend.limit.currency || "").trim()
+    && spend.used.exponent === spend.limit.exponent
+  ) {
+    const percent = claudeSdkPercentFromAmounts(spend.used.amount_minor, spend.limit.amount_minor);
+    if (percent !== undefined) return percent;
+  }
+
+  const extra = rateLimits.extra_usage;
+  if (extra && typeof extra === "object" && extra.is_enabled === true) {
+    const percent = claudeSdkPercentFromAmounts(extra.used_credits, extra.monthly_limit) ?? extra.utilization;
+    if (typeof percent === "number" && Number.isFinite(percent) && percent >= 0) {
+      return Math.max(0, Math.min(100, percent));
+    }
+  }
+  return undefined;
+}
+
+function mapClaudeSdkUsageToProvider(initResult, usageResult, meta = {}) {
+  const account = initResult?.account || {};
+  const email = String(account.email || account.email_address || "").trim().toLowerCase();
+  const subscriptionType = String(account.subscriptionType || account.subscription_type || "").trim().toLowerCase();
+  const tokenSource = String(account.tokenSource || account.token_source || "").trim();
+  const organization = String(account.organization || account.organizationName || account.organization_name || "").trim();
+  const planLabel = planLabelFromParts(subscriptionType);
+  const accountKey = hashKey("claude-cli", [email, subscriptionType, tokenSource, organization].filter(Boolean).join("|") || "claude-cli");
+
+  const rateLimitsAvailable = usageResult?.rate_limits_available === true;
+  const rateLimits = usageResult?.rate_limits;
+
+  if (!usageResult || !rateLimitsAvailable || !rateLimits || typeof rateLimits !== "object") {
+    return normalizeLimitProvider({
+      provider: "claude",
+      accountKey,
+      accountLabel: planLabel,
+      planLabel,
+      accountEmail: email,
+      accountName: organization,
+      source: "cli",
+      status: "unavailable",
+      updatedAt: meta.updatedAt,
+      windows: []
+    });
+  }
+
+  const windows = [];
+
+  if (rateLimits.five_hour && typeof rateLimits.five_hour.utilization === "number" && Number.isFinite(rateLimits.five_hour.utilization)) {
+    windows.push({
+      kind: "session",
+      label: "Session",
+      limitId: "five_hour",
+      usedPercent: Math.max(0, Math.min(100, rateLimits.five_hour.utilization)),
+      resetsAt: rateLimits.five_hour.resets_at || null,
+      windowMinutes: CLAUDE_SESSION_WINDOW_MINUTES
+    });
+  }
+
+  if (rateLimits.seven_day && typeof rateLimits.seven_day.utilization === "number" && Number.isFinite(rateLimits.seven_day.utilization)) {
+    windows.push({
+      kind: "weekly",
+      label: "Weekly",
+      limitId: "seven_day",
+      usedPercent: Math.max(0, Math.min(100, rateLimits.seven_day.utilization)),
+      resetsAt: rateLimits.seven_day.resets_at || null,
+      windowMinutes: CLAUDE_WEEKLY_WINDOW_MINUTES
+    });
+  }
+
+  const modelScoped = Array.isArray(rateLimits.model_scoped) ? rateLimits.model_scoped : [];
+  for (const entry of modelScoped) {
+    if (!entry || typeof entry !== "object") continue;
+    const displayName = String(entry.display_name || entry.displayName || "").trim();
+    if (!displayName || typeof entry.utilization !== "number" || !Number.isFinite(entry.utilization)) continue;
+    const limitId = "seven_day_" + displayName.toLowerCase().replace(/[^a-z0-9]+/g, "_");
+    windows.push({
+      kind: "weekly",
+      label: "Weekly �� " + displayName,
+      limitId,
+      usedPercent: Math.max(0, Math.min(100, entry.utilization)),
+      resetsAt: entry.resets_at || null,
+      windowMinutes: CLAUDE_WEEKLY_WINDOW_MINUTES
+    });
+  }
+
+  const spendPercent = readClaudeSdkSpendPercent(rateLimits);
+  if (spendPercent !== undefined) {
+    windows.push({
+      kind: "billing",
+      label: "Monthly spend",
+      limitId: "monthly_spend",
+      usedPercent: spendPercent,
+      windowMinutes: 30 * 24 * 60
+    });
+  }
+
+  return normalizeLimitProvider({
+    provider: "claude",
+    accountKey,
+    accountLabel: planLabel,
+    planLabel,
+    accountEmail: email,
+    accountName: organization,
+    source: "cli",
+    status: "ok",
+    updatedAt: meta.updatedAt,
+    windows
+  });
+}
+
+function runClaudeCliSdkProbe(deps = {}, _options = {}) {
+  const env = deps.env || process.env;
+  const platform = deps.platform || process.platform;
+  const candidates = claudeCommandCandidates(env, platform);
+  const existing = existingClaudeCommandCandidates(candidates, deps);
+  const command = existing[0];
+  if (!command) {
+    throw errorWithStatus("notConfigured", "Claude CLI not found");
+  }
+
+  const args = ["--output-format", "stream-json", "--verbose", "--input-format", "stream-json"];
+  const invocation = claudeDirectInvocation(command, args, platform, env);
+  const spawnFn = deps.spawn || spawn;
+  const initTimeoutMs = Number(deps.claudeInitTimeoutMs || 10000);
+  const usageTimeoutMs = Number(deps.claudeUsageTimeoutMs || 10000);
+
+  return new Promise((resolve, reject) => {
+    let child;
+    try {
+      child = spawnFn(invocation.command, invocation.args, {
+        windowsHide: true,
+        windowsVerbatimArguments: invocation.windowsVerbatimArguments,
+        shell: false,
+        env: withClaudePathHints(env, platform),
+        stdio: ["pipe", "pipe", "ignore"]
+      });
+    } catch (err) {
+      return reject(errorWithStatus("unavailable", "Failed to spawn Claude CLI: " + err.message));
+    }
+
+    let stdoutBuffer = "";
+    let settled = false;
+    let initReceived = false;
+    let initResult = null;
+    let usageResult = null;
+    let usageError = null;
+    let usageTimer = null;
+    let initTimer = null;
+
+    const cleanup = () => {
+      if (initTimer) clearTimeout(initTimer);
+      if (usageTimer) clearTimeout(usageTimer);
+      try {
+        if (child?.stdin && !child.stdin.destroyed) child.stdin.end();
+      } catch (_) {}
+      try {
+        if (typeof child?.kill === "function") child.kill();
+      } catch (_) {}
+    };
+
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(result);
+    };
+
+    const fail = (err) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(err);
+    };
+
+    initTimer = setTimeout(() => {
+      fail(errorWithStatus("unavailable", "Claude CLI initialization timed out"));
+    }, initTimeoutMs);
+
+    const initRequestId = "init_" + Math.random().toString(36).slice(2, 9);
+    const usageRequestId = "usage_" + Math.random().toString(36).slice(2, 9);
+
+    child?.on?.("error", (err) => {
+      fail(errorWithStatus("unavailable", "Claude CLI process error: " + err.message));
+    });
+
+    child?.on?.("close", (code) => {
+      if (!initReceived) {
+        fail(errorWithStatus("unavailable", "Claude CLI exited before initialization (code: " + code + ")"));
+      } else {
+        finish({ init: initResult, usage: usageResult, usageError: usageError || "probeFailed" });
+      }
+    });
+
+    child?.stdout?.on?.("data", (chunk) => {
+      stdoutBuffer += chunk.toString();
+      let newlineIdx;
+      while ((newlineIdx = stdoutBuffer.indexOf("\n")) !== -1) {
+        const line = stdoutBuffer.slice(0, newlineIdx).trim();
+        stdoutBuffer = stdoutBuffer.slice(newlineIdx + 1);
+        if (!line) continue;
+        try {
+          const msg = JSON.parse(line);
+          if (msg?.type === "control_response") {
+            const resp = msg.response;
+            if (resp?.request_id === initRequestId) {
+              if (resp.subtype === "success") {
+                initReceived = true;
+                if (initTimer) clearTimeout(initTimer);
+                initResult = resp.response || {};
+                usageTimer = setTimeout(() => {
+                  usageError = "probeFailed";
+                  finish({ init: initResult, usage: null, usageError: "probeFailed" });
+                }, usageTimeoutMs);
+
+                const getUsageReq = JSON.stringify({
+                  type: "control_request",
+                  request_id: usageRequestId,
+                  request: { subtype: "get_usage", skip_behaviors: true }
+                }) + "\n";
+                try {
+                  child?.stdin?.write?.(getUsageReq);
+                } catch (_) {
+                  usageError = "probeFailed";
+                  finish({ init: initResult, usage: null, usageError: "probeFailed" });
+                }
+              } else {
+                fail(errorWithStatus("unavailable", "Claude CLI initialization failed: " + (resp.error || "unknown")));
+              }
+            } else if (resp?.request_id === usageRequestId) {
+              if (usageTimer) clearTimeout(usageTimer);
+              if (resp.subtype === "success") {
+                usageResult = resp.response;
+              } else {
+                usageError = "probeFailed";
+              }
+              finish({ init: initResult, usage: usageResult, usageError });
+            }
+          }
+        } catch (_) {}
+      }
+    });
+
+    const initReq = JSON.stringify({
+      type: "control_request",
+      request_id: initRequestId,
+      request: { subtype: "initialize" }
+    }) + "\n";
+    try {
+      child?.stdin?.write?.(initReq);
+    } catch (err) {
+      fail(errorWithStatus("unavailable", "Failed to write to Claude CLI stdin: " + err.message));
+    }
+  });
+}
+
+async function probeClaudeCliSdkLimits(deps = {}, options = {}) {
+  const nowMs = (deps.now || Date.now)();
+  if (typeof deps.probeClaudeCli === "function") {
+    return await deps.probeClaudeCli(deps, options);
+  }
+  if (typeof deps.claudeCliProbe === "function") {
+    return await deps.claudeCliProbe(deps, options);
+  }
+  const probeFn = deps.runClaudeCliSdkProbe || runClaudeCliSdkProbe;
+  const probeData = await probeFn(deps, options);
+  const initResult = probeData?.init || {};
+  const usageResult = probeData?.usage || null;
+  return mapClaudeSdkUsageToProvider(initResult, usageResult, {
+    updatedAt: nowIso(nowMs),
+    now: deps.now
+  });
+}
 module.exports = {
   claudeCommandCandidates,
   claudeWebCookie,
@@ -1939,5 +2253,8 @@ module.exports = {
   refreshClaudeCredentials,
   runClaudeAuthStatus,
   touchClaudeAuthPath,
+  mapClaudeSdkUsageToProvider,
+  probeClaudeCliSdkLimits,
+  runClaudeCliSdkProbe,
   wslClaudeCredentialPaths
 };

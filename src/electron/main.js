@@ -1,4 +1,5 @@
 'use strict';
+console.log('[smoke] Electron process PID:', process.pid);
 
 const fs = require('node:fs');
 const crypto = require('node:crypto');
@@ -29,6 +30,8 @@ const { createClaudeWebFetch } = require('./providers/claude/webFetch');
 const { createMimoExchangeFetch } = require('./providers/mimo/exchangeFetch');
 const { runAntigravityOAuthLogin } = require('./providers/antigravity/oauthLogin');
 const antigravityOAuth = require('../shared/providers/antigravity/oauth');
+const workbuddyOAuth = require('../shared/providers/workbuddy/oauth');
+const { createWorkbuddyManagedAccounts } = require('./providers/workbuddy/managedAccounts');
 const {
   createWorkbuddyLocalAuth,
   isSupportedWorkbuddyLocalAppPlatform
@@ -286,6 +289,7 @@ const { createMimoAccountMetadataReader } = require('./providers/mimo/accountMet
 const { deviceHistoryRevision, historyPreview, historyRevision } = require('../shared/history');
 const { completeHistorySource, resolveCompleteHistory, resolveCompleteHistoryWithDevices } = require('./historySource');
 const { createTokenLedgerStore } = require('../shared/usage/tokenLedger');
+const { withLocalLedgerHistory: withLocalLedgerHistorySync, localLedgerHistory: localLedgerHistorySync } = require('./localLedgerSync');
 const { fixedPeriodHistoryMeta } = require('./fixedPeriodHistory');
 const { readSessionDetailForPlatform } = require('../shared/sessionDetailResolver');
 const { startDiscordRpc, stopDiscordRpc, updateDiscordRpc } = require('./discordRpc');
@@ -684,6 +688,7 @@ function defaultSettings() {
     // Third-party global reset predictions are opt-in and remain separate from
     // the account-specific limits wire shape.
     codexResetForecastEnabled: false,
+    workbuddyQuotaTotalEnabled: false,
     showCodexAdditionalLimits: true,
     showLimitUsed: parseBoolean(process.env.TOKEN_MONITOR_SHOW_LIMIT_USED, false),
     // Manual subscription metadata. Plain preferences, not credentials, so they
@@ -792,8 +797,10 @@ function syncUploadIntervalMs() {
 }
 
 function electronUsageConfig(errorPrefix) {
+  tokenLedgerStore ||= createTokenLedgerStore();
   return usageConfigFromSettings(settings, {
     agentVersion: appVersion(),
+    tokenLedgerStore,
     agentRuntime: 'electron-widget',
     commandTimeoutMs: 120 * 1000,
     defaultDeviceId: defaultDeviceId(),
@@ -830,6 +837,8 @@ function electronLimitsConfig() {
     workbuddyDesktopSessionSupported,
     workbuddyDesktopSessionEnabled,
     workbuddyLocalSession: workbuddyDesktopSessionEnabled ? electronWorkbuddyLocalAuth.getSessionInfo() : {},
+    workbuddyLocalSessions: workbuddyDesktopSessionEnabled ? electronWorkbuddyLocalAuth.getSessionInfos() : [],
+    workbuddyManagedAccounts: workbuddyAccountsForRenderer(),
     defaultLimitProviders: defaultLimitProviders(),
     codexManagedAccounts: codexManagedAccountsForCollector(),
     antigravityManagedAccounts: antigravityManagedAccountsForCollector(),
@@ -930,6 +939,7 @@ function electronLimitsDeps() {
     onClaudeWebCookieRenewed: persistClaudeWebCookieRenewal,
     onStepfunTokenRenewed: persistStepfunTokenRenewal,
     onAntigravityCredentialsRenewed: persistAntigravityCredentialsRenewal,
+    resolveWorkbuddyManagedCredential: (account, options) => workbuddyAccountService().resolveCredential(account, options),
     onThirdPartyCredentialsRenewed: persistThirdPartyCredentialsRenewal,
     onThirdPartyAccountKeyResolved: persistThirdPartyAccountKey
   };
@@ -1125,6 +1135,50 @@ function codexManagedAccountsForCollector() {
 
 function normalizeAntigravityManagedAccounts(value) {
   return antigravityOAuth.normalizeManagedAccounts(value);
+}
+
+let workbuddyManagedAccountService = null;
+
+function workbuddyAccountsForRenderer() {
+  return workbuddyOAuth.normalizeManagedAccounts(settings?.workbuddyManagedAccounts);
+}
+
+function workbuddyAccountService() {
+  if (!workbuddyManagedAccountService) {
+    workbuddyManagedAccountService = createWorkbuddyManagedAccounts({
+      getAccounts: () => settings?.workbuddyManagedAccounts,
+      setAccounts: (accounts) => { settings.workbuddyManagedAccounts = accounts; },
+      saveSettings: () => saveSettings({ throwOnError: true }),
+      credentialStore: ensureCredentialStore(),
+      fetch: electronLimitsFetch(),
+      openExternal: (url) => shell.openExternal(url),
+      onChanged: (account, reason, options = {}) => {
+        pushSettingsToRenderer();
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          try { mainWindow.webContents.send('workbuddy:accounts', workbuddyAccountsForRenderer()); } catch (_) {}
+        }
+        const scope = { provider: 'workbuddy', accountId: account.id, accountKey: account.accountKey };
+        // Removal can uncover an independent app-owned session for this identity.
+        // Clear only the removed row, then rebuild the complete discovery union.
+        void queueLimitInvalidation(scope, reason === 'account-enabled' ? 'account-state' : reason, options)
+          .then(() => reason === 'account-removed'
+            ? queueLimitInvalidation({ provider: 'workbuddy' }, 'account-state', { refresh: true })
+            : undefined)
+          .catch(() => {});
+      }
+    });
+  }
+  return workbuddyManagedAccountService;
+}
+
+async function workbuddyAccountOperation(operation) {
+  try {
+    return await operation(workbuddyAccountService());
+  } catch (_) {
+    // Storage/transport errors may contain paths or credential material. IPC
+    // returns the bounded setup error and never forwards their raw message.
+    return { ok: false, errorCode: 'credentialStorageUnavailable' };
+  }
 }
 
 function antigravityAccountsForRenderer() {
@@ -2563,9 +2617,13 @@ function readSettings() {
     merged.homeLimitDisplayMode = normalizeHomeLimitDisplayMode(merged.homeLimitDisplayMode);
     merged.showHomeLimitProviderNames = parseBoolean(merged.showHomeLimitProviderNames, false);
     merged.codexResetForecastEnabled = parseBoolean(merged.codexResetForecastEnabled, false);
+    merged.workbuddyQuotaTotalEnabled = parseBoolean(merged.workbuddyQuotaTotalEnabled, false);
     merged.showCodexAdditionalLimits = parseBoolean(merged.showCodexAdditionalLimits, true);
     merged.opencodeLocalLimitsEnabled = parseBoolean(merged.opencodeLocalLimitsEnabled, false);
     delete merged.workbuddyLocalAppEnabled;
+    if (saved.workbuddyToken && !saved.workbuddyAccessToken && !merged.workbuddyAccessToken) {
+      merged.workbuddyAccessToken = saved.workbuddyToken;
+    }
     merged.windowMaximized = parseBoolean(merged.windowMaximized, false);
     merged.automaticAppUpdates = parseBoolean(merged.automaticAppUpdates, false);
     if (saved.homeLimitProviderOrder !== undefined) {
@@ -2622,6 +2680,7 @@ function readSettings() {
     }
     merged.codexManagedAccounts = normalizeCodexManagedAccounts(merged.codexManagedAccounts);
     merged.antigravityManagedAccounts = normalizeAntigravityManagedAccounts(merged.antigravityManagedAccounts);
+    merged.workbuddyManagedAccounts = workbuddyOAuth.normalizeManagedAccounts(merged.workbuddyManagedAccounts);
     merged.mimoManagedAccounts = normalizeMimoManagedAccounts(merged.mimoManagedAccounts);
     if (saved.keepAboveTaskbar !== undefined) {
       merged.keepAboveTaskbar = parseBoolean(saved.keepAboveTaskbar, false);
@@ -4394,10 +4453,18 @@ function startSyncCollector() {
     async enqueue(summary, revision) {
       seedInitialLimitProviders(summary);
       if (isExternalAgentActive()) { usageTransform.forget(); return; }
+      const synced = typeof withLocalLedgerHistory === 'function'
+        ? withLocalLedgerHistory(summary, summary.history, { tokenLedgerStore, writeHistory: false, isWatchTick: false })
+        : summary;
       const visibleSummary = {
         ...summary,
+        ...synced,
         syncUploadIntervalMs: syncUploadIntervalMs()
       };
+      delete visibleSummary.watermarks;
+      delete visibleSummary.sourceWatermarks;
+      delete visibleSummary.sourcePaths;
+      delete visibleSummary.sweepResult;
       lastCollectedDevice = { ...visibleSummary, receivedAt: new Date().toISOString() };
       requestSyncDisplayStats({
         reason: 'local',
@@ -4438,7 +4505,14 @@ function startHostCollector() {
     enqueue(summary) {
       seedInitialLimitProviders(summary);
       if (isExternalAgentActive()) { usageTransform.forget(); return; }
-      const visibleSummary = summary;
+      const synced = typeof withLocalLedgerHistory === 'function'
+        ? withLocalLedgerHistory(summary, summary.history, { tokenLedgerStore, writeHistory: false, isWatchTick: false })
+        : summary;
+      const visibleSummary = synced;
+      delete visibleSummary.watermarks;
+      delete visibleSummary.sourceWatermarks;
+      delete visibleSummary.sourcePaths;
+      delete visibleSummary.sweepResult;
       lastCollectedDevice = { ...visibleSummary, receivedAt: new Date().toISOString() };
       if (!embeddedHub) return;
       const handle = embeddedHub;
@@ -4695,132 +4769,44 @@ function getCompleteHistory() {
   return resolveCompleteHistory(historyResolverOptions());
 }
 
-function localLedgerHistory(overlayHistory) {
+function localLedgerHistory(overlayHistory, options = {}) {
   if (settings?.historyEnabled === false || mode !== 'local') return null;
   tokenLedgerStore ||= createTokenLedgerStore();
-  return tokenLedgerStore.readHistory({ overlayHistory });
+  return localLedgerHistorySync(overlayHistory, {
+    ...options,
+    tokenLedgerStore,
+    onDiagnosticEvent: recordDiagnosticEvent
+  });
 }
 
 function withLocalLedgerHistory(stats, overlayHistory, options = {}) {
-  const history = localLedgerHistory(overlayHistory || stats?.history);
-  if (!history || !stats || typeof stats !== 'object') return stats;
-  const targetDeviceId = String(options?.deviceId || settings?.deviceId || lastCollectedDevice?.deviceId || localDevice?.deviceId || '').trim();
-  const targetDevice = Array.isArray(stats.devices)
-    ? stats.devices.find((device, idx) => (targetDeviceId ? String(device?.deviceId || '').trim() === targetDeviceId : (idx === 0 || device?.local)))
-    : null;
-  const store = options?.tokenLedgerStore || (tokenLedgerStore ||= createTokenLedgerStore());
-  const isWatchTick = options?.isWatchTick === true
-    || options?.reason === 'watch'
-    || options?.reason === 'watch-delta'
-    || options?.reason === 'activity'
-    || (typeof options?.reason === 'string' && options.reason.startsWith('watch'));
-
-  const shouldWriteHistory = !isWatchTick && options?.writeHistory === true;
-
-  if (shouldWriteHistory && typeof store?.writeHistory === 'function' && Array.isArray(history.daily) && history.daily.length > 0) {
-    try {
-      store.writeHistory(history);
-    } catch (error) {
-      console.warn('Could not persist runtime history to token ledger:', error?.message || error);
-    }
-  }
-  const periods = store.readPeriods({
-    overlayHistory: overlayHistory || stats.history,
-    basePeriods: stats.periods || targetDevice?.periods,
-    basePeriod: stats.periods?.allTime || targetDevice?.periods?.allTime
+  tokenLedgerStore ||= createTokenLedgerStore();
+  const synced = withLocalLedgerHistorySync(stats, overlayHistory, {
+    ...options,
+    tokenLedgerStore,
+    onDiagnosticEvent: recordDiagnosticEvent
   });
-  if (!periods) return { ...stats, history, historyPreview: historyPreview(history), historyRevision: historyRevision(history) };
-
-  for (const name of ['today', 'month', 'allTime']) {
-    periods[name].sessions = stats.periods?.[name]?.sessions || targetDevice?.periods?.[name]?.sessions || targetDevice?.[name]?.sessions || {};
-    periods[name].projects = stats.periods?.[name]?.projects || targetDevice?.periods?.[name]?.projects || targetDevice?.[name]?.projects || {};
-    const sourceClientModels = stats.periods?.[name]?.clientModels || targetDevice?.periods?.[name]?.clientModels || targetDevice?.[name]?.clientModels;
-    if (sourceClientModels && typeof sourceClientModels === 'object') {
-      periods[name].clientModels = {
-        ...filterAccountingClientMap(sourceClientModels),
-        ...(periods[name].clientModels || {})
+  if (synced?.periods) {
+    if (localDevice) {
+      localDevice = {
+        ...localDevice,
+        periods: synced.periods,
+        today: synced.periods.today,
+        month: synced.periods.month,
+        allTime: synced.periods.allTime
       };
     }
-    const sourceClientModelCosts = stats.periods?.[name]?.clientModelCosts || targetDevice?.periods?.[name]?.clientModelCosts || targetDevice?.[name]?.clientModelCosts;
-    if (sourceClientModelCosts && typeof sourceClientModelCosts === 'object') {
-      periods[name].clientModelCosts = {
-        ...filterAccountingClientMap(sourceClientModelCosts),
-        ...(periods[name].clientModelCosts || {})
+    if (lastCollectedDevice) {
+      lastCollectedDevice = {
+        ...lastCollectedDevice,
+        periods: synced.periods,
+        today: synced.periods.today,
+        month: synced.periods.month,
+        allTime: synced.periods.allTime
       };
     }
-    const unpriced = Math.max(
-      Number(stats.periods?.[name]?.unpricedTokens || 0),
-      Number(targetDevice?.periods?.[name]?.unpricedTokens || 0),
-      Number(targetDevice?.[name]?.unpricedTokens || 0)
-    );
-    if (unpriced > 0) {
-      periods[name].unpricedTokens = Math.max(
-        Number(periods[name].unpricedTokens || 0),
-        unpriced
-      );
-    }
-    const deviceCost = Math.max(
-      Number(targetDevice?.periods?.[name]?.costUsd || 0),
-      Number(targetDevice?.[name]?.costUsd || 0)
-    );
-    const baselineCost = Math.max(
-      Number(stats.periods?.[name]?.costUsd || 0),
-      deviceCost
-    );
-    if (baselineCost > Number(periods[name].costUsd)) {
-      periods[name].costUsd = baselineCost;
-      if (stats.periods?.[name]?.clientCosts && typeof stats.periods[name].clientCosts === 'object') {
-        periods[name].clientCosts = {
-          ...periods[name].clientCosts,
-          ...stats.periods[name].clientCosts
-        };
-      }
-    }
   }
-  const devices = Array.isArray(stats.devices) && stats.devices.length > 0
-    ? stats.devices.map((device, idx) => {
-        const isLocal = targetDeviceId
-          ? String(device?.deviceId || '').trim() === targetDeviceId
-          : (idx === 0 || device.local);
-        if (!isLocal) return device;
-        return {
-          ...device,
-          periods,
-          today: periods.today,
-          month: periods.month,
-          allTime: periods.allTime
-        };
-      })
-    : stats.devices;
-  if (localDevice) {
-    localDevice = {
-      ...localDevice,
-      periods,
-      today: periods.today,
-      month: periods.month,
-      allTime: periods.allTime
-    };
-  }
-  if (lastCollectedDevice) {
-    lastCollectedDevice = {
-      ...lastCollectedDevice,
-      periods,
-      today: periods.today,
-      month: periods.month,
-      allTime: periods.allTime
-    };
-  }
-  return {
-    ...stats,
-    periods,
-    today: periods.today,
-    month: periods.month,
-    allTime: periods.allTime,
-    history,
-    devices,
-    historyPreview: historyPreview(history),
-    historyRevision: historyRevision(history)
-  };
+  return synced;
 }
 
 function macWidgetPresentation() {
@@ -5572,6 +5558,7 @@ function settingsForRenderer() {
     ...accountFieldProjection(settings, process.env),
     codexManagedAccounts: codexAccountsForRenderer(),
     antigravityManagedAccounts: antigravityAccountsForRenderer(),
+    workbuddyManagedAccounts: workbuddyAccountsForRenderer(),
     mimoManagedAccounts: mimoAccountsForRenderer(),
     ...accountStatusProjection(settings, process.env),
     limitAccountForms: limitAccountFormsForRenderer(),
@@ -5693,6 +5680,7 @@ function edgeDockAppearance(rendererSettings = settingsForRenderer()) {
     limitProviderHiddenItems: source.limitProviderHiddenItems,
     showLimitSource: source.showLimitSource,
     codexResetForecastEnabled: source.codexResetForecastEnabled,
+    workbuddyQuotaTotalEnabled: source.workbuddyQuotaTotalEnabled,
     claudePrepaidBalanceEnabled: source.claudePrepaidBalanceEnabled,
     // The dock's session rows carry the same context gauge as the Sessions
     // list, so its Remaining/Used preference has to reach this renderer too.
@@ -6710,9 +6698,10 @@ async function fetchStats(options = {}) {
   if (mode === 'local') {
     if (localStats) return localStats;
     const fallbackStats = withHistoryPreview(aggregateDevices(localDevice ? [localDevice] : [], 0), localDevice ? [localDevice] : []);
-    return typeof withLocalLedgerHistory === 'function'
+    const localRes = typeof withLocalLedgerHistory === 'function'
       ? withLocalLedgerHistory(fallbackStats, localDevice?.history)
       : fallbackStats;
+    return localRes;
   }
   if (settings.hubMode === 'host' && embeddedHub) {
     return injectLocalDeviceStatus(embeddedHub.hub.getStats());
@@ -7255,6 +7244,21 @@ function loadWindowFile(target, options = {}) {
     console.log(`[window] renderer load failed: ${code} ${description}`);
     reveal();
   });
+  const devUiUrl = process.env.TOKEN_MONITOR_DEV_UI_URL;
+  if (devUiUrl) {
+    try {
+      const parsed = new URL(devUiUrl);
+      if (['127.0.0.1', 'localhost', '[::1]'].includes(parsed.hostname)) {
+        target.loadURL(devUiUrl).catch((error) => {
+          console.log(`[window] renderer load failed: ${error.message}`);
+          reveal();
+        });
+        return;
+      }
+    } catch {
+      // fallback to file
+    }
+  }
   const filePath = path.join(__dirname, 'renderer-t3', 'index.html');
   const load = options.query ? target.loadFile(filePath, { query: options.query }) : target.loadFile(filePath);
   load.catch((error) => {
@@ -7378,6 +7382,144 @@ function createWindow(boundsOverride, options = {}) {
   win.on('hide', () => sendMainWindowVisibility(win));
   win.on('minimize', () => sendMainWindowVisibility(win));
   win.on('restore', () => sendMainWindowVisibility(win));
+  if (process.env.TOKEN_MONITOR_SMOKE_CAPTURE) {
+    const reportsDir = 'C:/Users/user2/.t3/tokex-port/r10/reports';
+    win.webContents.once('did-finish-load', async () => {
+      try {
+        console.log('[smoke] did-finish-load, polling for 1 full collector tick (up to 120s)...');
+        const startMs = Date.now();
+        let initialSweepId = 0;
+        try {
+          if (tokenLedgerStore?.database) {
+            const db = tokenLedgerStore.database();
+            const r = db.prepare("SELECT MAX(sweep_id) as max_id FROM usage_sweep_runs WHERE status = 'completed'").get();
+            initialSweepId = Number(r?.max_id || 0);
+          }
+        } catch (_) {}
+
+        while (Date.now() - startMs < 120000) {
+          await new Promise((r) => setTimeout(r, 2000));
+          const elapsedSec = Math.round((Date.now() - startMs) / 1000);
+
+          let completedSweeps = [];
+          try {
+            if (tokenLedgerStore?.database) {
+              const db = tokenLedgerStore.database();
+              completedSweeps = db.prepare("SELECT sweep_id, status, event_count FROM usage_sweep_runs WHERE status = 'completed' AND sweep_id > ? ORDER BY sweep_id ASC").all(initialSweepId);
+            }
+          } catch (_) {}
+
+          if (completedSweeps.length >= 1) {
+            console.log(`[smoke] Full collector tick completed at ${elapsedSec}s (sweep ${completedSweeps[0].sweep_id})!`);
+            break;
+          }
+        }
+
+        // Allow 3500ms for React renders and charts to paint
+        await new Promise((r) => setTimeout(r, 3500));
+        fs.mkdirSync(reportsDir, { recursive: true });
+
+        // 1. CAPTURE smoke-usage.png
+        console.log('[smoke] Preparing 90-day Usage page...');
+        await win.webContents.executeJavaScript(`
+          (() => {
+            const btn = Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('90 DAYS') || b.textContent.includes('90 days') || b.value === '90' || b.getAttribute('value') === '90');
+            if (btn) btn.click();
+          })()
+        `);
+        await new Promise((r) => setTimeout(r, 2500));
+
+        const usageImg = await win.webContents.capturePage();
+        const usagePath = path.join(reportsDir, 'smoke-usage.png');
+        fs.writeFileSync(usagePath, usageImg.toPNG());
+        console.log(`[smoke] Saved ${usagePath} (${usageImg.toPNG().length} bytes)`);
+
+        const usageText = await win.webContents.executeJavaScript('document.body.innerText');
+        console.log('[smoke] smoke-usage DOM excerpt:\n' + usageText.slice(0, 500));
+
+        // 2. CAPTURE smoke-limits.png
+        console.log('[smoke] Navigating to Limits page...');
+        await win.webContents.executeJavaScript(`
+          (() => {
+            const tab = document.querySelector('[data-tab="limits"]') || Array.from(document.querySelectorAll('button, a')).find(el => el.textContent.trim() === 'Limits');
+            if (tab) tab.click();
+          })()
+        `);
+        await new Promise((r) => setTimeout(r, 3500));
+
+        const limitsImg = await win.webContents.capturePage();
+        const limitsPath = path.join(reportsDir, 'smoke-limits.png');
+        fs.writeFileSync(limitsPath, limitsImg.toPNG());
+        console.log(`[smoke] Saved ${limitsPath} (${limitsImg.toPNG().length} bytes)`);
+
+        const limitsText = await win.webContents.executeJavaScript('document.body.innerText');
+        console.log('[smoke] smoke-limits DOM excerpt:\n' + limitsText.slice(0, 500));
+
+        // 3. CAPTURE smoke-settings.png
+        console.log('[smoke] Navigating to Settings -> Accounts/Limits...');
+        await win.webContents.executeJavaScript(`
+          (() => {
+            const tab = document.querySelector('[data-tab="settings"]') || Array.from(document.querySelectorAll('button, a')).find(el => el.textContent.trim() === 'Settings');
+            if (tab) tab.click();
+          })()
+        `);
+        await new Promise((r) => setTimeout(r, 2000));
+        await win.webContents.executeJavaScript(`
+          (() => {
+            const headings = Array.from(document.querySelectorAll('h2, h3, div'));
+            const accountsHeading = headings.find(el => el.textContent.trim() === 'Accounts');
+            if (accountsHeading) accountsHeading.scrollIntoView({ behavior: 'instant', block: 'start' });
+          })()
+        `);
+        await new Promise((r) => setTimeout(r, 1500));
+
+        const settingsImg = await win.webContents.capturePage();
+        const settingsPath = path.join(reportsDir, 'smoke-settings.png');
+        fs.writeFileSync(settingsPath, settingsImg.toPNG());
+        console.log(`[smoke] Saved ${settingsPath} (${settingsImg.toPNG().length} bytes)`);
+
+        const settingsText = await win.webContents.executeJavaScript('document.body.innerText');
+        console.log('[smoke] smoke-settings DOM excerpt:\n' + settingsText.slice(0, 500));
+
+        // 4. TEST Antigravity Add Account & Cancel
+        console.log('[smoke] Testing Antigravity Add Account & Cancel...');
+        const addResult = await win.webContents.executeJavaScript(`
+          (() => {
+            const sections = Array.from(document.querySelectorAll('section, div'));
+            const agSection = sections.find(s => s.textContent.includes('Antigravity Accounts'));
+            const addBtn = Array.from(agSection ? agSection.querySelectorAll('button') : document.querySelectorAll('button'))
+              .find(b => b.textContent.trim() === 'Add Account');
+            if (addBtn) {
+              addBtn.click();
+              return true;
+            }
+            return false;
+          })()
+        `);
+        console.log('[smoke] Antigravity Add Account clicked:', addResult);
+
+        await new Promise((r) => setTimeout(r, 2500));
+
+        const cancelResult = await win.webContents.executeJavaScript(`
+          (() => {
+            const cancelBtn = Array.from(document.querySelectorAll('button')).find(b => b.textContent.trim() === 'Cancel');
+            if (cancelBtn) {
+              cancelBtn.click();
+              return true;
+            }
+            return false;
+          })()
+        `);
+        console.log('[smoke] Antigravity Cancel clicked:', cancelResult);
+        await new Promise((r) => setTimeout(r, 1500));
+
+        console.log('[smoke] SUCCESS: UI-6 smoke tests and captures completed!');
+        app.quit();
+      } catch (err) {
+        console.error('[smoke] smoke test error:', err);
+      }
+    });
+  }
   win.webContents.on('did-finish-load', () => {
     sendFloatingBubbleState();
     // Only report a window that is already on screen. A window still awaiting its
@@ -7446,6 +7588,15 @@ function createDashboardWindow() {
   return mainWindow;
 }
 
+function getSessionsByWindow(options = {}) {
+  try {
+    tokenLedgerStore ||= createTokenLedgerStore();
+    return tokenLedgerStore?.sessionsByWindow?.(options) || null;
+  } catch (_) {
+    return null;
+  }
+}
+
 async function getDashboardHistory(options = {}) {
   const includeDevices = options?.includeDevices === true;
   const currentLastCollected = typeof lastCollectedDevice !== 'undefined' ? lastCollectedDevice : null;
@@ -7471,12 +7622,14 @@ async function getDashboardHistory(options = {}) {
   }
   const history = resolved.history;
   const source = completeHistorySource(historyResolverOptions());
+  const sessionsByWindow = (typeof getSessionsByWindow === 'function' ? getSessionsByWindow(options) : null) || history?.sessionsByWindow || null;
   return projectModelAliasHistory({
     ...history,
     ...(includeDevices ? { deviceHistories: resolved.deviceHistories } : {}),
     fixedPeriods: fixedPeriodHistoryMeta({
       source
-    })
+    }),
+    ...(sessionsByWindow ? { sessionsByWindow } : {})
   }, settings?.modelAliases, { grouping: settings?.modelAliasGrouping });
 }
 
@@ -7905,6 +8058,7 @@ app.whenReady().then(() => {
       maskLimitAccountEmails: parseBoolean(patch.maskLimitAccountEmails ?? settings.maskLimitAccountEmails, false),
       claudePrepaidBalanceEnabled: parseBoolean(patch.claudePrepaidBalanceEnabled ?? settings.claudePrepaidBalanceEnabled, true),
       codexResetForecastEnabled: parseBoolean(patch.codexResetForecastEnabled ?? settings.codexResetForecastEnabled, false),
+      workbuddyQuotaTotalEnabled: parseBoolean(patch.workbuddyQuotaTotalEnabled ?? settings.workbuddyQuotaTotalEnabled, false),
       showCodexAdditionalLimits: parseBoolean(patch.showCodexAdditionalLimits ?? settings.showCodexAdditionalLimits, true),
       opencodeAmbientEnabled: parseBoolean(patch.opencodeAmbientEnabled ?? settings.opencodeAmbientEnabled, true),
       opencodeLocalLimitsEnabled: parseBoolean(patch.opencodeLocalLimitsEnabled ?? settings.opencodeLocalLimitsEnabled, false),
@@ -8370,6 +8524,11 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('app:openUserData', () => shell.openPath(app.getPath('userData')));
   ipcMain.handle('antigravity:accounts', () => antigravityAccountsForRenderer());
+  ipcMain.handle('workbuddy:accounts', () => workbuddyAccountsForRenderer());
+  ipcMain.handle('workbuddy:addAccount', (_event, realm) => workbuddyAccountOperation((service) => service.addAccount(realm)));
+  ipcMain.handle('workbuddy:cancelLogin', () => workbuddyManagedAccountService?.cancelLogin() || false);
+  ipcMain.handle('workbuddy:removeAccount', (_event, id) => workbuddyAccountOperation((service) => service.removeAccount(id)));
+  ipcMain.handle('workbuddy:setAccountEnabled', (_event, id, enabled) => workbuddyAccountOperation((service) => service.setAccountEnabled(id, enabled)));
   ipcMain.handle('antigravity:addAccount', () => addAntigravityManagedAccount());
   ipcMain.handle('antigravity:cancelLogin', () => cancelAntigravityManagedAccountLogin());
   ipcMain.handle('antigravity:setAccountEnabled', (_event, id, enabled) => setAntigravityManagedAccountEnabled(id, enabled));
@@ -9388,6 +9547,7 @@ app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(
 app.on('before-quit', () => {
   quitRequested = true;
   antigravityOAuthLoginController?.abort();
+  workbuddyManagedAccountService?.cancelLogin();
   resetMacWidgetReloadThrottle();
   if (rateRefreshTimer) clearInterval(rateRefreshTimer);
   if (appUpdateBackgroundTimer) clearInterval(appUpdateBackgroundTimer);

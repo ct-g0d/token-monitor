@@ -183,6 +183,37 @@ function dockView(appearance = {}, overrides = {}) {
   });
 }
 
+test('Notion rolling and monthly allowances render in both display modes and hide independently', () => {
+  const provider = normalizeLimitProvider({
+    provider: 'notion', status: 'ok', source: 'web',
+    windows: [
+      { kind: 'session', label: 'Rolling', used: 21, limit: 50, usedPercent: 42, resetsAt: '2026-11-01T00:00:00Z' },
+      { kind: 'billing', label: 'Monthly', used: 18, limit: 100, usedPercent: 18, resetsAt: '2026-12-01T00:00:00Z' }
+    ]
+  });
+  const before = JSON.stringify(provider);
+  for (const showLimitUsed of [false, true]) {
+    const view = dockView({ showLimitUsed });
+    const card = view.renderProviderWindows(provider, '#888888');
+    assert.equal(card.children.length, 2);
+    assert.deepEqual(card.children.map((row) => row.children[0].children[0].textContent), ['Rolling', 'Monthly']);
+    assert.match(card.text, showLimitUsed ? /42% used/ : /58% left/);
+    assert.match(card.text, showLimitUsed ? /18% used/ : /82% left/);
+    assert.equal(card.text.includes('$'), false, 'included allowance units are not spendable money');
+    assert.ok(card.children.every((row) => row.find('limit-reset').text));
+    const items = view.limitProviderUsageItems([provider]);
+    assert.equal(items.length, 2);
+    for (const item of items) {
+      const hidden = dockView({ showLimitUsed, limitProviderHiddenItems: { notion: [item.id] } });
+      assert.equal(hidden.renderProviderWindows(provider, '#888888').children.length, 1);
+      assert.deepEqual(hidden.limitProviderUsageItems([provider]), items);
+    }
+  }
+  const monthlyOnly = { ...provider, windows: [provider.windows[1]] };
+  assert.ok(dockView().renderProviderWindows(monthlyOnly, '#888888').children[0].classNames.has('limit-window-wide'));
+  assert.equal(JSON.stringify(provider), before);
+});
+
 test('Home text and bars use the plan text rendered by Limits account rows', () => {
   const window = { kind: 'weekly', remainingPercent: 40 };
   const fixtures = [
@@ -879,6 +910,7 @@ test('a provider that drops its mark inside a group keeps it standing alone', ()
   const view = dockView();
 
   for (const [id, label, color] of [
+    ['workbuddy', 'WorkBuddy', '#10B981'],
     ['claude', 'Claude', '#D97757'],
     ['openrouter', 'OpenRouter', '#6566F1'],
     ['antigravity', 'Antigravity', '#4285F4']
@@ -1693,4 +1725,28 @@ test('with every item unchecked, Home and the picker keep no window the card dre
     }
   }
   assert.deepEqual(problems, []);
+});
+
+test('WorkBuddy sealed credentials show their cause instead of signed-out instructions on shared rows', () => {
+  const view = dockView();
+  const provider = { provider: 'workbuddy', status: 'notConfigured', accountKey: 'encrypted-account', actionRequired: 'appSessionEncrypted', windows: [] };
+  const row = view.renderLimitProviderSolo('workbuddy', 'WorkBuddy', provider, '#10A37F');
+  assert.equal(row.find('limit-plan').textContent, 'Encrypted by app');
+  assert.equal(view.limitProviderMeta(provider), 'Encrypted by app');
+  assert.equal(view.renderLimitProviderSolo('workbuddy', 'WorkBuddy', { ...provider, actionRequired: undefined }, '#10A37F').find('limit-plan').textContent, 'Not signed in');
+});
+
+
+test('WorkBuddy groups count accounts and retain failures without repeating the provider mark', () => {
+  const view = dockView();
+  const accounts = [
+    { provider: 'workbuddy', status: 'ok', accountKey: 'a', accountName: 'Personal', region: 'cn', windows: [{ kind: 'billing', metric: 'credits', currency: 'CREDITS', remaining: 80, limit: 100 }] },
+    { provider: 'workbuddy', status: 'unavailable', accountKey: 'b', accountName: 'Work', region: 'cn', windows: [] }
+  ];
+  const group = view.renderLimitProviderGroup('workbuddy', 'WorkBuddy', accounts, '#10B981');
+  assert.equal(group.find('limit-plan').textContent, '2 accounts');
+  assert.equal([...group.walk()].filter((node) => node.classNames.has('limit-icon')).length, 1);
+  const rows = group.find('limit-account-list').children;
+  assert.deepEqual(rows.map((row) => row.find('limit-name-title').textContent), ['Personal', 'Work']);
+  assert.equal(rows[1].find('limit-plan').textContent, 'Unavailable');
 });
