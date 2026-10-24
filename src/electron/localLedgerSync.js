@@ -12,10 +12,10 @@ let defaultStoreInstance = null;
 function resolveLedgerStore(options = {}) {
   if (options.tokenLedgerStore) return options.tokenLedgerStore;
   if (options.path) {
-    return createTokenLedgerStore(options);
+    return createTokenLedgerStore({ maintenance: false, ...options });
   }
   if (!defaultStoreInstance) {
-    defaultStoreInstance = createTokenLedgerStore(options);
+    defaultStoreInstance = createTokenLedgerStore({ maintenance: false, ...options });
   }
   return defaultStoreInstance;
 }
