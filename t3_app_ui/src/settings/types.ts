@@ -81,31 +81,12 @@ export interface TokenMonitorSettingsState {
   edgeDockSide?: 'left' | 'right';
   edgeDockSize?: 'small' | 'medium' | 'large' | 'custom';
   edgeDockCustomScale?: number;
-  edgeDockWindowsBackdrop?: 'inherit' | 'acrylic' | 'mica' | 'tabbed';
   edgeDockMacBackdrop?: 'inherit' | 'vibrancy' | 'liquid-glass' | 'liquid-glass-clear';
   edgeDockWarnColors?: boolean;
   edgeDockRunningIndicatorEnabled?: boolean;
   edgeDockHaptic?: boolean;
   edgeDockItems?: any;
 
-  // Presence - Notch
-  notchEnabled?: boolean;
-  notchHoverAction?: 'peek' | 'open';
-  notchHoverDelay?: number;
-  notchShape?: 'auto' | 'notch' | 'pill';
-  notchSize?: 'small' | 'medium' | 'large' | 'custom';
-  notchCustomScale?: number;
-  notchStyle?: 'inherit' | 'black' | 'vibrancy' | 'liquid-glass' | 'liquid-glass-clear';
-  notchProgressiveBlur?: boolean;
-  notchSummaryEnabled?: boolean;
-  notchHideSummaryInFullScreen?: boolean;
-  notchRunningIndicatorEnabled?: boolean;
-  notchWarnColors?: boolean;
-  notchHaptic?: boolean;
-  notchSwipeGestures?: boolean;
-  notchSummaryMode?: 'sessions' | 'auto' | 'tray' | 'custom';
-  notchItems?: any;
-  notchCustomLayout?: any;
 
   // Presence - Floating Bubble
   floatingBubbleEnabled?: boolean;
@@ -125,8 +106,6 @@ export interface TokenMonitorSettingsState {
   systemGlass?: boolean;
   windowsBackdrop?: 'acrylic' | 'mica' | 'tabbed' | 'transparent';
   macBackdrop?: 'vibrancy' | 'liquid-glass' | 'liquid-glass-clear' | 'frosted-solid' | 'transparent';
-  macGlassTint?: number;
-  macClearGlassTint?: number;
   glassOpacity?: number;
   glassBlur?: number;
   zoomFactor?: number;
@@ -138,7 +117,6 @@ export interface TokenMonitorSettingsState {
   vendorColors?: Record<string, string>;
   tokenRateMode?: 'speed' | 'burn';
   reduceMotion?: boolean | 'system' | 'on' | 'off';
-  tokenNumberAnimation?: 'roll' | 'fade' | 'instant';
   showLiveDot?: boolean;
   showToolIcons?: boolean;
   titleIconOnly?: boolean;
@@ -146,7 +124,6 @@ export interface TokenMonitorSettingsState {
   showLiveTokenRate?: boolean;
   liveTokenRateScope?: 'all' | 'device';
   compactTokenUnits?: 'western' | 'localized';
-  settingsInTitlebar?: boolean;
 
   // Collection
   clients?: string;

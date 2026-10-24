@@ -6,8 +6,9 @@ const path = require('node:path');
 const test = require('node:test');
 
 /**
- * All settings keys written by origin/main's renderer settings panel
- * (extracted from origin/main:src/electron/renderer/index.html & app.js).
+ * Settings keys written by origin/main's renderer settings panel that exist
+ * in this branch's src/ (main.js, sanitizer, controllers, shared).
+ * Excludes upstream-only keys added after merge-base 478ec910.
  */
 const OG_RENDERER_SETTINGS_KEYS = [
   'language',
@@ -47,8 +48,6 @@ const OG_RENDERER_SETTINGS_KEYS = [
   'systemGlass',
   'windowsBackdrop',
   'macBackdrop',
-  'macGlassTint',
-  'macClearGlassTint',
   'glassOpacity',
   'glassBlur',
   'zoomFactor',
@@ -56,7 +55,6 @@ const OG_RENDERER_SETTINGS_KEYS = [
   'textSize',
   'interfaceFontFamily',
   'displayFontFamily',
-  'tokenNumberAnimation',
   'reduceMotion',
   'showLiveDot',
   'showToolIcons',
@@ -65,7 +63,6 @@ const OG_RENDERER_SETTINGS_KEYS = [
   'showLiveTokenRate',
   'liveTokenRateScope',
   'compactTokenUnits',
-  'settingsInTitlebar',
   'themeColors',
   'vendorColors',
   'windowBehavior',
@@ -76,29 +73,11 @@ const OG_RENDERER_SETTINGS_KEYS = [
   'edgeDockSide',
   'edgeDockSize',
   'edgeDockCustomScale',
-  'edgeDockWindowsBackdrop',
   'edgeDockMacBackdrop',
   'edgeDockWarnColors',
   'edgeDockRunningIndicatorEnabled',
   'edgeDockHaptic',
   'edgeDockItems',
-  'notchEnabled',
-  'notchHoverAction',
-  'notchHoverDelay',
-  'notchShape',
-  'notchSize',
-  'notchCustomScale',
-  'notchStyle',
-  'notchProgressiveBlur',
-  'notchSummaryEnabled',
-  'notchHideSummaryInFullScreen',
-  'notchRunningIndicatorEnabled',
-  'notchWarnColors',
-  'notchHaptic',
-  'notchSwipeGestures',
-  'notchSummaryMode',
-  'notchItems',
-  'notchCustomLayout',
   'floatingBubbleEnabled',
   'floatingBubbleTrigger',
   'floatingBubbleContent',
@@ -141,7 +120,37 @@ const OG_RENDERER_SETTINGS_KEYS = [
   'limitProviderHiddenItems'
 ];
 
-test('settings sections parity: all origin/main renderer settings keys are present in React settings', () => {
+/**
+ * 22 upstream-only keys added to origin/main after merge-base 478ec910.
+ * The current backend branch does not yet support them, so settings UI
+ * must not include controls that write them.
+ */
+const UPSTREAM_ONLY_KEYS = [
+  'edgeDockWindowsBackdrop',
+  'macClearGlassTint',
+  'macGlassTint',
+  'notchCustomLayout',
+  'notchCustomScale',
+  'notchEnabled',
+  'notchHaptic',
+  'notchHideSummaryInFullScreen',
+  'notchHoverAction',
+  'notchHoverDelay',
+  'notchItems',
+  'notchProgressiveBlur',
+  'notchRunningIndicatorEnabled',
+  'notchShape',
+  'notchSize',
+  'notchStyle',
+  'notchSummaryEnabled',
+  'notchSummaryMode',
+  'notchSwipeGestures',
+  'notchWarnColors',
+  'settingsInTitlebar',
+  'tokenNumberAnimation'
+];
+
+test('settings sections parity: all backend-supported settings keys are present in React settings', () => {
   const settingsDir = path.join(__dirname, '..', '..', 't3_app_ui', 'src', 'settings');
   const files = fs.readdirSync(settingsDir).filter(f => f.endsWith('.tsx'));
 
@@ -162,8 +171,35 @@ test('settings sections parity: all origin/main renderer settings keys are prese
   assert.deepEqual(
     missingKeys,
     [],
-    `The following ${missingKeys.length} settings keys from origin/main are missing from t3_app_ui/src/settings/*.tsx: ${missingKeys.join(', ')}`
+    `The following ${missingKeys.length} settings keys are missing from t3_app_ui/src/settings/*.tsx: ${missingKeys.join(', ')}`
   );
 
-  assert.equal(OG_RENDERER_SETTINGS_KEYS.length, 129);
+  assert.equal(OG_RENDERER_SETTINGS_KEYS.length, 107);
+});
+
+test('settings sections parity: none of the 22 upstream-only keys appear in React settings', () => {
+  const settingsDir = path.join(__dirname, '..', '..', 't3_app_ui', 'src', 'settings');
+  const files = fs.readdirSync(settingsDir).filter(f => f.endsWith('.tsx'));
+
+  const fileContents = files.map(file => ({
+    file,
+    content: fs.readFileSync(path.join(settingsDir, file), 'utf8')
+  }));
+
+  const presentKeys = [];
+
+  for (const key of UPSTREAM_ONLY_KEYS) {
+    const foundFiles = fileContents.filter(f => f.content.includes(key)).map(f => f.file);
+    if (foundFiles.length > 0) {
+      presentKeys.push({ key, files: foundFiles });
+    }
+  }
+
+  assert.deepEqual(
+    presentKeys,
+    [],
+    `The following upstream-only keys unexpectedly appear in settings UI: ${JSON.stringify(presentKeys)}`
+  );
+
+  assert.equal(UPSTREAM_ONLY_KEYS.length, 22);
 });

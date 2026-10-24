@@ -124,52 +124,6 @@ export function AppearanceSettings({ settings, updateSettings }: AppearanceSetti
           }
         />
 
-        {(settings.macBackdrop === 'liquid-glass' || settings.macBackdrop === 'liquid-glass-clear') && (
-          <>
-            <SettingRow
-              title="Liquid Glass Tint"
-              description="Opacity tint level for regular Liquid Glass material (0 - 100)."
-              control={
-                <div className="flex items-center gap-2">
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    step="1"
-                    value={settings.macGlassTint ?? 0}
-                    onChange={(e) => updateSettings({ macGlassTint: parseInt(e.target.value, 10) })}
-                    className="w-28 accent-primary"
-                  />
-                  <span className="text-xs text-muted-foreground w-8">
-                    {settings.macGlassTint ?? 0}%
-                  </span>
-                </div>
-              }
-            />
-
-            <SettingRow
-              title="Clear Glass Tint"
-              description="Opacity tint level for Clear Liquid Glass material (0 - 100)."
-              control={
-                <div className="flex items-center gap-2">
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    step="1"
-                    value={settings.macClearGlassTint ?? 35}
-                    onChange={(e) => updateSettings({ macClearGlassTint: parseInt(e.target.value, 10) })}
-                    className="w-28 accent-primary"
-                  />
-                  <span className="text-xs text-muted-foreground w-8">
-                    {settings.macClearGlassTint ?? 35}%
-                  </span>
-                </div>
-              }
-            />
-          </>
-        )}
-
         <SettingRow
           title="Glass Opacity"
           description="Translucency level of the window background (0 - 100)."
@@ -360,22 +314,6 @@ export function AppearanceSettings({ settings, updateSettings }: AppearanceSetti
         />
 
         <SettingRow
-          title="Token Number Animation"
-          description="Digit animation style when token counts update."
-          control={
-            <select
-              value={settings.tokenNumberAnimation || 'roll'}
-              onChange={(e) => updateSettings({ tokenNumberAnimation: e.target.value as any })}
-              className={selectClass}
-            >
-              <option value="roll">Roll (Slot machine roll)</option>
-              <option value="fade">Fade</option>
-              <option value="instant">Instant</option>
-            </select>
-          }
-        />
-
-        <SettingRow
           title="Token Rate Calculation"
           description="How live generation rate is formatted in headers and badges."
           control={
@@ -495,17 +433,7 @@ export function AppearanceSettings({ settings, updateSettings }: AppearanceSetti
           }
         />
 
-        <SettingRow
-          title="Settings Button in Titlebar"
-          description="Show settings gear icon directly on the main header bar."
-          control={
-            <Switch
-              checked={Boolean(settings.settingsInTitlebar)}
-              onCheckedChange={(checked) => updateSettings({ settingsInTitlebar: checked })}
-            />
-          }
-        />
-      </SettingSection>
+        </SettingSection>
 
       <SettingSection title="Custom Theme & Vendor Colors" description="Color overrides for interface elements and model vendors.">
         <SettingRow
