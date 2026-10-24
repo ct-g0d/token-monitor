@@ -165,6 +165,14 @@ function ensureFactSchema(database, options = {}) {
       created_at_ms INTEGER NOT NULL,
       PRIMARY KEY (canonical_natural_key, source_natural_key)
     );
+    CREATE INDEX IF NOT EXISTS idx_usage_events_active_day ON usage_events(state, date_bucket, client_id, source_kind, session_id);
+    CREATE TABLE IF NOT EXISTS ledger_read_model (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      sweep_id INTEGER NOT NULL,
+      local_day TEXT NOT NULL,
+      built_at_ms INTEGER NOT NULL,
+      payload_json TEXT NOT NULL
+    );
   `);
 }
 
@@ -325,6 +333,16 @@ function ensureSchema(database, options = {}) {
     CREATE INDEX IF NOT EXISTS idx_runtime_history_date ON runtime_history(date_bucket);
   `);
   ensureFactSchema(database, { maintenance });
+  database.exec(`
+    CREATE INDEX IF NOT EXISTS idx_usage_events_active_day ON usage_events(state, date_bucket, client_id, source_kind, session_id);
+    CREATE TABLE IF NOT EXISTS ledger_read_model (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      sweep_id INTEGER NOT NULL,
+      local_day TEXT NOT NULL,
+      built_at_ms INTEGER NOT NULL,
+      payload_json TEXT NOT NULL
+    );
+  `);
   const version = Number(database.prepare('PRAGMA user_version').get().user_version || 0);
   if (version < TOKEN_LEDGER_SCHEMA_VERSION) {
     backfillLegacyFacts(database);
@@ -1603,6 +1621,155 @@ function computeSessionsByWindow(database, options = {}) {
   return res;
 }
 
+function applyOverlayRows(days, overlay, today, loadedFromFacts) {
+  for (const row of overlay || []) {
+    const date = String(row?.date || '').slice(0, 10);
+    if (!date) continue;
+    if (loadedFromFacts) {
+      if (date >= today) {
+        if (!days.has(date)) {
+          addDayRow(days, row);
+        } else {
+          mergeOverlayDay(days, row);
+        }
+      }
+    } else {
+      const isSingleDayOverlay = overlay.length === 1;
+      if (isSingleDayOverlay || date >= today) {
+        days.delete(date);
+        addDayRow(days, row);
+      } else if (!days.has(date)) {
+        addDayRow(days, row);
+      } else {
+        mergeOverlayDay(days, row);
+      }
+    }
+  }
+}
+
+function overlayLedgerHistory(history, overlayDaily, today) {
+  const days = new Map();
+  if (Array.isArray(history?.daily)) {
+    for (const row of history.daily) addDayRow(days, row);
+  }
+  const todayKey = String(today || localDayKey()).slice(0, 10);
+  applyOverlayRows(days, overlayDaily || [], todayKey, true);
+  return historyFromDays(days);
+}
+
+function derivePeriods(history, options = {}, today) {
+  if (!history || !Array.isArray(history.daily)) return null;
+  const todayKey = String(today || options.today || options.todayKey || localDayKey()).slice(0, 10);
+  const month = todayKey.slice(0, 7);
+  const periods = {
+    today: periodFromDays(history.daily.filter((day) => day.date === todayKey)),
+    month: periodFromDays(history.daily.filter((day) => day.date.slice(0, 7) === month)),
+    allTime: periodFromDays(history.daily)
+  };
+
+  const periodNames = ['today', 'month', 'allTime'];
+  for (const name of periodNames) {
+    const period = periods[name];
+    const basePeriod = options.basePeriods?.[name]
+      || options.activePeriods?.[name]
+      || (options.basePeriod && options.basePeriod[name] ? options.basePeriod[name] : null)
+      || (options.activePeriod && options.activePeriod[name] ? options.activePeriod[name] : null)
+      || (name === 'allTime' ? (options.basePeriod || options.activePeriod) : null);
+
+    if (basePeriod && typeof basePeriod === 'object') {
+      const baseCost = Math.max(0, finite(basePeriod.costUsd));
+      if (baseCost > period.costUsd) {
+        period.costUsd = Number(baseCost.toFixed(6));
+      }
+      const baseTokens = Math.max(0, Math.round(Number(basePeriod.totalTokens) || 0));
+      if (baseTokens > period.totalTokens) {
+        period.totalTokens = baseTokens;
+      }
+      for (const field of ['cacheReadTokens', 'cacheWriteTokens', 'outputTokens', 'unclassifiedTokens']) {
+        const baseCount = Math.max(0, Math.round(Number(basePeriod[field]) || 0));
+        if (baseCount > (period[field] || 0)) {
+          period[field] = baseCount;
+        }
+      }
+      const clampedBase = clampBreakdownComponents(
+        period.totalTokens,
+        period.cacheReadTokens,
+        period.cacheWriteTokens,
+        period.outputTokens,
+        period.unclassifiedTokens
+      );
+      period.cacheReadTokens = clampedBase.cr;
+      period.cacheWriteTokens = clampedBase.cw;
+      period.outputTokens = clampedBase.out;
+      period.unclassifiedTokens = clampedBase.unc;
+
+      if (basePeriod.clients && typeof basePeriod.clients === 'object') {
+        period.clients ||= {};
+        for (const [client, tokens] of Object.entries(filterAccountingClientMap(basePeriod.clients) || {})) {
+          const count = Math.max(0, Math.round(Number(tokens) || 0));
+          if (count > (period.clients[client] || 0)) {
+            period.clients[client] = count;
+          }
+        }
+      }
+      if (basePeriod.models && typeof basePeriod.models === 'object') {
+        period.models ||= {};
+        for (const [model, tokens] of Object.entries(basePeriod.models)) {
+          const canonical = canonicalModelKey(model);
+          const count = Math.max(0, Math.round(Number(tokens) || 0));
+          if (count > (period.models[canonical] || 0)) {
+            period.models[canonical] = count;
+          }
+        }
+      }
+      if (basePeriod.clientCosts && typeof basePeriod.clientCosts === 'object') {
+        period.clientCosts ||= {};
+        for (const [client, cost] of Object.entries(basePeriod.clientCosts)) {
+          const baseClientCost = Math.max(0, finite(cost));
+          if (baseClientCost > (period.clientCosts[client] || 0)) {
+            period.clientCosts[client] = Number(baseClientCost.toFixed(6));
+          }
+        }
+      }
+      if (basePeriod.clientModels && typeof basePeriod.clientModels === 'object') {
+        period.clientModels ||= {};
+        for (const [client, models] of Object.entries(filterAccountingClientMap(basePeriod.clientModels) || {})) {
+          if (models && typeof models === 'object') {
+            period.clientModels[client] ||= {};
+            for (const [model, count] of Object.entries(models)) {
+              const canonical = canonicalModelKey(model);
+              period.clientModels[client][canonical] = Math.max(period.clientModels[client][canonical] || 0, positive(count));
+            }
+          }
+        }
+      }
+      if (basePeriod.capabilities?.throughput === true) {
+        period.capabilities.throughput = true;
+        for (const field of ['timedTokens', 'timedOutputTokens', 'timedDurationMs']) {
+          period[field] = Math.max(positive(period[field]), positive(basePeriod[field]));
+        }
+        if (basePeriod.modelThroughput && typeof basePeriod.modelThroughput === 'object') {
+          period.modelThroughput ||= {};
+          for (const [model, counters] of Object.entries(basePeriod.modelThroughput)) {
+            if (!counters || typeof counters !== 'object') continue;
+            period.modelThroughput[model] ||= { timedTokens: 0, timedOutputTokens: 0, timedDurationMs: 0 };
+            for (const field of ['timedTokens', 'timedOutputTokens', 'timedDurationMs']) {
+              period.modelThroughput[model][field] = Math.max(
+                positive(period.modelThroughput[model][field]),
+                positive(counters[field])
+              );
+            }
+          }
+        }
+      }
+      if (basePeriod.unpricedTokens) {
+        period.unpricedTokens = Math.max(period.unpricedTokens || 0, positive(basePeriod.unpricedTokens));
+      }
+    }
+  }
+  return periods;
+}
+
 function createTokenLedgerStore(storeOptions = {}) {
   const maintenance = storeOptions.maintenance !== false;
   const options = storeOptions;
@@ -1612,8 +1779,8 @@ function createTokenLedgerStore(storeOptions = {}) {
     ? repoLedgerPath()
     : null;
   const seedPath = explicitSeed || fallbackSeed;
-  let database = null;
-  let available = false;
+  let database = options.database || options.db || null;
+  let available = Boolean(database);
 
   function cleanStaleWal() {
     try { fs.rmSync(`${databasePath}-wal`, { force: true }); } catch (_) {}
@@ -1630,7 +1797,10 @@ function createTokenLedgerStore(storeOptions = {}) {
   }
 
   function open() {
-    if (database) return database;
+    if (database) {
+      available = true;
+      return database;
+    }
     try {
       fs.mkdirSync(path.dirname(databasePath), { recursive: true });
 
@@ -1723,29 +1893,7 @@ function createTokenLedgerStore(storeOptions = {}) {
       overlay = Array.isArray(collectorOverlay?.daily) ? collectorOverlay.daily : [];
     }
 
-    for (const row of overlay) {
-      const date = String(row?.date || '').slice(0, 10);
-      if (!date) continue;
-      if (loadedFromFacts) {
-        if (date >= today) {
-          if (!days.has(date)) {
-            addDayRow(days, row);
-          } else {
-            mergeOverlayDay(days, row);
-          }
-        }
-      } else {
-        const isSingleDayOverlay = overlay.length === 1;
-        if (isSingleDayOverlay || date >= today) {
-          days.delete(date);
-          addDayRow(days, row);
-        } else if (!days.has(date)) {
-          addDayRow(days, row);
-        } else {
-          mergeOverlayDay(days, row);
-        }
-      }
-    }
+    applyOverlayRows(days, overlay, today, loadedFromFacts);
     const resultHistory = historyFromDays(days);
     if (sweepId !== null && options.bypassCache !== true) {
       historyCache.set(db, {
@@ -1785,113 +1933,10 @@ function createTokenLedgerStore(storeOptions = {}) {
 
     const history = readHistory(options);
     if (!history) return null;
+    const periods = derivePeriods(history, options, today);
+    if (!periods) return null;
     const month = today.slice(0, 7);
-    const periods = {
-      today: periodFromDays(history.daily.filter((day) => day.date === today)),
-      month: periodFromDays(history.daily.filter((day) => day.date.slice(0, 7) === month)),
-      allTime: periodFromDays(history.daily)
-    };
-
     const periodNames = ['today', 'month', 'allTime'];
-    for (const name of periodNames) {
-      const period = periods[name];
-      const basePeriod = options.basePeriods?.[name]
-        || options.activePeriods?.[name]
-        || (options.basePeriod && options.basePeriod[name] ? options.basePeriod[name] : null)
-        || (options.activePeriod && options.activePeriod[name] ? options.activePeriod[name] : null)
-        || (name === 'allTime' ? (options.basePeriod || options.activePeriod) : null);
-
-      if (basePeriod && typeof basePeriod === 'object') {
-        const baseCost = Math.max(0, finite(basePeriod.costUsd));
-        if (baseCost > period.costUsd) {
-          period.costUsd = Number(baseCost.toFixed(6));
-        }
-        const baseTokens = Math.max(0, Math.round(Number(basePeriod.totalTokens) || 0));
-        if (baseTokens > period.totalTokens) {
-          period.totalTokens = baseTokens;
-        }
-        for (const field of ['cacheReadTokens', 'cacheWriteTokens', 'outputTokens', 'unclassifiedTokens']) {
-          const baseCount = Math.max(0, Math.round(Number(basePeriod[field]) || 0));
-          if (baseCount > (period[field] || 0)) {
-            period[field] = baseCount;
-          }
-        }
-        const clampedBase = clampBreakdownComponents(
-          period.totalTokens,
-          period.cacheReadTokens,
-          period.cacheWriteTokens,
-          period.outputTokens,
-          period.unclassifiedTokens
-        );
-        period.cacheReadTokens = clampedBase.cr;
-        period.cacheWriteTokens = clampedBase.cw;
-        period.outputTokens = clampedBase.out;
-        period.unclassifiedTokens = clampedBase.unc;
-
-        if (basePeriod.clients && typeof basePeriod.clients === 'object') {
-          period.clients ||= {};
-          for (const [client, tokens] of Object.entries(filterAccountingClientMap(basePeriod.clients) || {})) {
-            const count = Math.max(0, Math.round(Number(tokens) || 0));
-            if (count > (period.clients[client] || 0)) {
-              period.clients[client] = count;
-            }
-          }
-        }
-        if (basePeriod.models && typeof basePeriod.models === 'object') {
-          period.models ||= {};
-          for (const [model, tokens] of Object.entries(basePeriod.models)) {
-            const canonical = canonicalModelKey(model);
-            const count = Math.max(0, Math.round(Number(tokens) || 0));
-            if (count > (period.models[canonical] || 0)) {
-              period.models[canonical] = count;
-            }
-          }
-        }
-        if (basePeriod.clientCosts && typeof basePeriod.clientCosts === 'object') {
-          period.clientCosts ||= {};
-          for (const [client, cost] of Object.entries(basePeriod.clientCosts)) {
-            const baseClientCost = Math.max(0, finite(cost));
-            if (baseClientCost > (period.clientCosts[client] || 0)) {
-              period.clientCosts[client] = Number(baseClientCost.toFixed(6));
-            }
-          }
-        }
-        if (basePeriod.clientModels && typeof basePeriod.clientModels === 'object') {
-          period.clientModels ||= {};
-          for (const [client, models] of Object.entries(filterAccountingClientMap(basePeriod.clientModels) || {})) {
-            if (models && typeof models === 'object') {
-              period.clientModels[client] ||= {};
-              for (const [model, count] of Object.entries(models)) {
-                const canonical = canonicalModelKey(model);
-                period.clientModels[client][canonical] = Math.max(period.clientModels[client][canonical] || 0, positive(count));
-              }
-            }
-          }
-        }
-        if (basePeriod.capabilities?.throughput === true) {
-          period.capabilities.throughput = true;
-          for (const field of ['timedTokens', 'timedOutputTokens', 'timedDurationMs']) {
-            period[field] = Math.max(positive(period[field]), positive(basePeriod[field]));
-          }
-          if (basePeriod.modelThroughput && typeof basePeriod.modelThroughput === 'object') {
-            period.modelThroughput ||= {};
-            for (const [model, counters] of Object.entries(basePeriod.modelThroughput)) {
-              if (!counters || typeof counters !== 'object') continue;
-              period.modelThroughput[model] ||= { timedTokens: 0, timedOutputTokens: 0, timedDurationMs: 0 };
-              for (const field of ['timedTokens', 'timedOutputTokens', 'timedDurationMs']) {
-                period.modelThroughput[model][field] = Math.max(
-                  positive(period.modelThroughput[model][field]),
-                  positive(counters[field])
-                );
-              }
-            }
-          }
-        }
-        if (basePeriod.unpricedTokens) {
-          period.unpricedTokens = Math.max(period.unpricedTokens || 0, positive(basePeriod.unpricedTokens));
-        }
-      }
-    }
     try {
       const db = open();
       if (db) {
@@ -1982,8 +2027,21 @@ function createTokenLedgerStore(storeOptions = {}) {
     databasePath,
     readHistory,
     readPeriods,
+    derivePeriods: (hist, opts, todayKey) => derivePeriods(hist, opts, todayKey),
     canonicalFactDayRows: (opts) => canonicalFactDayRows(open(), opts),
     sessionsByWindow: (opts) => computeSessionsByWindow(open(), opts),
+    readModel: () => {
+      const { readLedgerReadModel } = require('./ledgerReadModel');
+      return readLedgerReadModel(open());
+    },
+    readLedgerReadModel: () => {
+      const { readLedgerReadModel } = require('./ledgerReadModel');
+      return readLedgerReadModel(open());
+    },
+    writeLedgerReadModel: (model) => {
+      const { writeLedgerReadModel } = require('./ledgerReadModel');
+      return writeLedgerReadModel(open(), model);
+    },
     writeHistory,
     status,
     database: () => open(),
@@ -2031,5 +2089,8 @@ module.exports = {
   ninetyDayWindow,
   window90Days: ninetyDayWindow,
   computeSessionsByWindow,
-  backfillUsageEventCosts
+  backfillUsageEventCosts,
+  applyOverlayRows,
+  derivePeriods,
+  overlayLedgerHistory
 };
