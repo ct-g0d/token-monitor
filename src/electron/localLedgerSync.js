@@ -8,7 +8,8 @@ const {
 } = require('../shared/usage/tokenLedger');
 const {
   readLedgerReadModel,
-  clonePeriods
+  readModelHistory,
+  readModelPeriods
 } = require('../shared/usage/ledgerReadModel');
 
 let defaultStoreInstance = null;
@@ -54,14 +55,16 @@ function localLedgerHistory(overlayHistory, options = {}) {
   const store = resolveLedgerStore(options);
   if (!store) return null;
 
+  const overlayDaily = Array.isArray(overlayHistory?.daily) ? overlayHistory.daily : [];
+  const today = String(options.today || options.todayKey || localDayKey()).slice(0, 10);
+
   const readModel = typeof store.readModel === 'function' ? store.readModel() : readLedgerReadModel(store);
   if (readModel?.history) {
-    return JSON.parse(JSON.stringify(readModel.history));
+    return readModelHistory(readModel, overlayDaily, today);
   }
 
   if (typeof store.readHistory !== 'function') return null;
 
-  const overlayDaily = Array.isArray(overlayHistory?.daily) ? overlayHistory.daily : [];
   const coverage = checkSqlCoverage(store, overlayDaily, options);
 
   // If store is a real token ledger store with readModel capability, row 1 is missing:
@@ -171,15 +174,18 @@ function withLocalLedgerHistory(stats, overlayHistory, options = {}) {
 
   const basePeriods = stats.periods || targetDevice?.periods;
   const readModel = typeof store?.readModel === 'function' ? store.readModel() : readLedgerReadModel(store);
+  const periodsOptions = {
+    overlayHistory: overlayHistory || stats.history,
+    basePeriods,
+    basePeriod: basePeriods?.allTime,
+    sqlCoverageComplete: history?.sqlCoverageComplete,
+    today: options.today || options.todayKey
+  };
   const periods = readModel?.periods
-    ? clonePeriods(readModel.periods)
+    ? readModelPeriods(readModel, periodsOptions)
     : store?.readPeriods?.({
-      overlayHistory: overlayHistory || stats.history,
-      basePeriods,
-      basePeriod: basePeriods?.allTime,
-      sqlCoverageComplete: history?.sqlCoverageComplete,
-      useFacts: false,
-      today: options.today || options.todayKey
+      ...periodsOptions,
+      useFacts: false
     });
   if (!periods) {
     return {

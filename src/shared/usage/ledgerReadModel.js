@@ -71,7 +71,7 @@ function buildLedgerReadModel(storeOrDb, options = {}) {
     sqlCoverageComplete: true,
     overlayHistory: { daily: [] }
   });
-  let history = sanitizeHistoryAccounting(rawHistory);
+  const history = sanitizeHistoryAccounting(rawHistory);
   if (history) {
     history.sqlCoverageComplete = true;
     history.sessionsByWindow = sessionsByWindow;
@@ -81,8 +81,7 @@ function buildLedgerReadModel(storeOrDb, options = {}) {
     periods,
     history,
     sessionsByWindow,
-    dayRows,
-    canonicalDayRows: dayRows
+    dayRows
   };
 
   const model = {
@@ -93,8 +92,7 @@ function buildLedgerReadModel(storeOrDb, options = {}) {
     periods,
     history,
     sessionsByWindow,
-    dayRows,
-    canonicalDayRows: dayRows
+    dayRows
   };
 
   return model;
@@ -169,8 +167,7 @@ function readLedgerReadModel(databaseOrStore) {
       periods: { get() { return payload?.periods; }, enumerable: true },
       history: { get() { return payload?.history; }, enumerable: true },
       sessionsByWindow: { get() { return payload?.sessionsByWindow; }, enumerable: true },
-      dayRows: { get() { return payload?.dayRows; }, enumerable: true },
-      canonicalDayRows: { get() { return payload?.dayRows; }, enumerable: true }
+      dayRows: { get() { return payload?.dayRows; }, enumerable: true }
     });
     return result;
   } catch (_) {
@@ -178,10 +175,51 @@ function readLedgerReadModel(databaseOrStore) {
   }
 }
 
+function readModelHistory(model, overlayDaily, today) {
+  if (!model || !model.history) return null;
+  const { overlayLedgerHistory } = require('./tokenLedger');
+  const todayKey = String(today || localDayKey()).slice(0, 10);
+  const overlaid = overlayLedgerHistory(model.history, overlayDaily || [], todayKey);
+  const history = sanitizeHistoryAccounting(overlaid);
+  if (history) {
+    history.sqlCoverageComplete = true;
+    if (model.history?.sessionsByWindow !== undefined) {
+      history.sessionsByWindow = model.history.sessionsByWindow;
+    } else if (model.sessionsByWindow !== undefined) {
+      history.sessionsByWindow = model.sessionsByWindow;
+    }
+  }
+  return history;
+}
+
+function readModelPeriods(model, options = {}) {
+  if (!model) return null;
+  const { derivePeriods } = require('./tokenLedger');
+  const today = String(options.today || options.todayKey || localDayKey()).slice(0, 10);
+  const history = readModelHistory(model, options.overlayHistory?.daily, today);
+  const periods = derivePeriods(history, options, today);
+  if (!periods) return null;
+
+  for (const name of ['today', 'month', 'allTime']) {
+    const modelPeriod = model.periods?.[name];
+    if (modelPeriod && periods[name]) {
+      if (modelPeriod.clientSessions !== undefined) {
+        periods[name].clientSessions = modelPeriod.clientSessions;
+      }
+      if (modelPeriod.distinctSessions !== undefined) {
+        periods[name].distinctSessions = modelPeriod.distinctSessions;
+      }
+    }
+  }
+  return periods;
+}
+
 module.exports = {
   buildLedgerReadModel,
   writeLedgerReadModel,
   readLedgerReadModel,
+  readModelHistory,
+  readModelPeriods,
   clearReadModelParseCache,
   sanitizeHistoryAccounting,
   clonePeriods

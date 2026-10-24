@@ -290,7 +290,7 @@ const { deviceHistoryRevision, historyPreview, historyRevision } = require('../s
 const { completeHistorySource, resolveCompleteHistory, resolveCompleteHistoryWithDevices } = require('./historySource');
 const { createTokenLedgerStore } = require('../shared/usage/tokenLedger');
 const { withLocalLedgerHistory: withLocalLedgerHistorySync, localLedgerHistory: localLedgerHistorySync } = require('./localLedgerSync');
-const { readLedgerReadModel, clonePeriods } = require('../shared/usage/ledgerReadModel');
+const { readLedgerReadModel, readModelPeriods } = require('../shared/usage/ledgerReadModel');
 const { fixedPeriodHistoryMeta } = require('./fixedPeriodHistory');
 const { readSessionDetailForPlatform } = require('../shared/sessionDetailResolver');
 const { startDiscordRpc, stopDiscordRpc, updateDiscordRpc } = require('./discordRpc');
@@ -4673,15 +4673,18 @@ function historyResolverOptions() {
   const ledgerHistory = localLedgerHistory(rawDevice?.history);
   if (ledgerHistory) {
     const readModel = typeof tokenLedgerStore?.readModel === 'function' ? tokenLedgerStore.readModel() : readLedgerReadModel(tokenLedgerStore);
+    const periodsOptions = {
+      overlayHistory: ledgerHistory,
+      basePeriods: rawDevice?.periods || {
+        today: rawDevice?.today,
+        month: rawDevice?.month,
+        allTime: rawDevice?.allTime
+      }
+    };
     const periods = readModel?.periods
-      ? clonePeriods(readModel.periods)
+      ? readModelPeriods(readModel, periodsOptions)
       : (tokenLedgerStore?.readPeriods?.({
-        overlayHistory: ledgerHistory,
-        basePeriods: rawDevice?.periods || {
-          today: rawDevice?.today,
-          month: rawDevice?.month,
-          allTime: rawDevice?.allTime
-        },
+        ...periodsOptions,
         useFacts: false
       }) || null);
     if (rawDevice) {

@@ -15,6 +15,8 @@ const {
   buildLedgerReadModel,
   writeLedgerReadModel,
   readLedgerReadModel,
+  readModelHistory,
+  readModelPeriods,
   sanitizeHistoryAccounting,
   clonePeriods
 } = require('../../src/shared/usage/ledgerReadModel');
@@ -182,6 +184,136 @@ test('buildLedgerReadModel equivalence: periods, history, sessionsByWindow, and 
   // Now that read model is in DB, localLedgerHistory returns the exact same history
   const servedHistory = localLedgerHistory(null, { tokenLedgerStore: store, today });
   assert.deepEqual(servedHistory, currentHistory, 'served localLedgerHistory equals readModel history');
+});
+
+test('equivalence with overlay and basePeriods: readModelHistory and readModelPeriods deep-equal store functions', () => {
+  const { db } = createFixtureLedger();
+  const store = createTokenLedgerStore({ database: db });
+  const today = '2026-10-23';
+
+  const readModel = buildLedgerReadModel(store, { today });
+
+  // Overlay containing:
+  // (i) today with MORE tokens than the ledger (e.g. codex 15000 > 7500)
+  // (ii) a new client today ('cline')
+  // (iii) a past day ('2026-10-20')
+  const overlay = [
+    {
+      date: today,
+      tokens: 33000,
+      cost: 0.35,
+      cacheReadTokens: 4000,
+      cacheWriteTokens: 1000,
+      outputTokens: 8000,
+      unclassifiedTokens: 0,
+      perClient: {
+        codex: {
+          tokens: 15000,
+          cost: 0.25,
+          cacheReadTokens: 2000,
+          cacheWriteTokens: 1000,
+          outputTokens: 4000,
+          unclassifiedTokens: 0
+        },
+        antigravity: {
+          tokens: 13000,
+          cost: 0.04,
+          cacheReadTokens: 2000,
+          cacheWriteTokens: 0,
+          outputTokens: 3000,
+          unclassifiedTokens: 0
+        },
+        cline: {
+          tokens: 5000,
+          cost: 0.06,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          outputTokens: 1000,
+          unclassifiedTokens: 0
+        }
+      },
+      perModel: {
+        'gpt-4o': {
+          tokens: 15000,
+          cost: 0.25,
+          cacheReadTokens: 2000,
+          cacheWriteTokens: 1000,
+          outputTokens: 4000,
+          unclassifiedTokens: 0
+        },
+        'gemini-3.8-flash': {
+          tokens: 13000,
+          cost: 0.04,
+          cacheReadTokens: 2000,
+          cacheWriteTokens: 0,
+          outputTokens: 3000,
+          unclassifiedTokens: 0
+        },
+        'claude-3-5-sonnet': {
+          tokens: 5000,
+          cost: 0.06,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          outputTokens: 1000,
+          unclassifiedTokens: 0
+        }
+      }
+    },
+    {
+      date: '2026-10-20',
+      tokens: 50000,
+      cost: 1.0,
+      perClient: {
+        codex: { tokens: 50000, cost: 1.0 }
+      }
+    }
+  ];
+
+  // basePeriods with basePeriods.today.totalTokens set above the ledger value (ledger was 20500)
+  const basePeriods = {
+    today: {
+      totalTokens: 45000,
+      costUsd: 0.50,
+      cacheReadTokens: 6000,
+      cacheWriteTokens: 1500,
+      outputTokens: 12000,
+      unclassifiedTokens: 0
+    },
+    month: {
+      totalTokens: 75000,
+      costUsd: 1.20
+    },
+    allTime: {
+      totalTokens: 150000,
+      costUsd: 2.50
+    }
+  };
+
+  // - readModelHistory(model, overlay, today) deep-equals sanitized store.readHistory({ overlayHistory: { daily: overlay }, today, sqlCoverageComplete: true }) on .daily
+  const expectedHistory = sanitizeHistoryAccounting(store.readHistory({
+    overlayHistory: { daily: overlay },
+    today,
+    sqlCoverageComplete: true
+  }));
+  const modelHistory = readModelHistory(readModel, overlay, today);
+  assert.deepEqual(modelHistory.daily, expectedHistory.daily, 'readModelHistory daily deep-equals store.readHistory daily');
+
+  // - readModelPeriods(model, { overlayHistory: { daily: overlay }, basePeriods, today }) deep-equals store.readPeriods({ same args }) for today/month/allTime
+  const periodsArgs = {
+    overlayHistory: { daily: overlay },
+    basePeriods,
+    today
+  };
+  const expectedPeriods = store.readPeriods(periodsArgs);
+  const modelPeriods = readModelPeriods(readModel, periodsArgs);
+  for (const name of ['today', 'month', 'allTime']) {
+    assert.deepEqual(modelPeriods[name], expectedPeriods[name], `readModelPeriods ${name} deep-equals store.readPeriods ${name}`);
+  }
+
+  // Also verify localLedgerHistory with overlay matches modelHistory
+  writeLedgerReadModel(db, readModel);
+  const servedHistory = localLedgerHistory({ daily: overlay }, { tokenLedgerStore: store, today });
+  assert.deepEqual(servedHistory.daily, modelHistory.daily, 'served localLedgerHistory equals modelHistory with overlay');
 });
 
 test('guard test: with read model present, main readers do not call queryDistinctSessionMap, canonicalFactDayRows, or computeSessionsByWindow', () => {
