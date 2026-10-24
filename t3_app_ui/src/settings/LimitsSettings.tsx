@@ -6,6 +6,11 @@ import { Button } from '~/components/ui/button';
 import { Input } from '~/components/ui/input';
 import { Spinner } from '~/components/ui/spinner';
 import type { TokenMonitorSettingsState, ManagedAccount } from './types';
+import { maskEmailIfNeeded } from '../adapters/presentationState';
+
+function accountLabel(account: { email?: string; name?: string; id?: string }, maskEmails: boolean): string {
+  return maskEmailIfNeeded(account.email || account.name || account.id, maskEmails) || account.id || '';
+}
 
 interface LimitsSettingsProps {
   settings: TokenMonitorSettingsState;
@@ -14,6 +19,7 @@ interface LimitsSettingsProps {
 }
 
 export function LimitsSettings({ settings, updateSettings, refreshSettings }: LimitsSettingsProps) {
+  const maskEmails = settings.maskLimitAccountEmails === true;
   // Codex state
   const [codexAccounts, setCodexAccounts] = useState<ManagedAccount[]>([]);
   const [codexLoggingIn, setCodexLoggingIn] = useState(false);
@@ -573,7 +579,7 @@ export function LimitsSettings({ settings, updateSettings, refreshSettings }: Li
           description="Obscure email addresses and organization IDs in quota headers."
           control={
             <Switch
-              checked={settings.maskLimitAccountEmails !== false}
+              checked={settings.maskLimitAccountEmails === true}
               onCheckedChange={(checked) => updateSettings({ maskLimitAccountEmails: checked })}
             />
           }
@@ -678,7 +684,7 @@ export function LimitsSettings({ settings, updateSettings, refreshSettings }: Li
             <div className="space-y-1.5">
               {codexAccounts.map((acc) => (
                 <div key={acc.id} className="flex items-center justify-between p-2 rounded-md bg-muted/20 border border-border/40 text-xs">
-                  <span className="font-medium text-foreground">{acc.email || acc.name || acc.id}</span>
+                  <span className="font-medium text-foreground">{accountLabel(acc, maskEmails)}</span>
                   <div className="flex items-center gap-2">
                     <Switch
                       size="sm"
@@ -731,7 +737,7 @@ export function LimitsSettings({ settings, updateSettings, refreshSettings }: Li
             <div className="space-y-1.5">
               {antigravityAccounts.map((acc) => (
                 <div key={acc.id} className="flex items-center justify-between p-2 rounded-md bg-muted/20 border border-border/40 text-xs">
-                  <span className="font-medium text-foreground">{acc.email || acc.name || acc.id}</span>
+                  <span className="font-medium text-foreground">{accountLabel(acc, maskEmails)}</span>
                   <div className="flex items-center gap-2">
                     <Switch
                       size="sm"
@@ -798,7 +804,7 @@ export function LimitsSettings({ settings, updateSettings, refreshSettings }: Li
                     <span className="font-semibold px-1 py-0.5 rounded bg-muted text-[10px] uppercase">
                       {acc.realm || 'CN'}
                     </span>
-                    <span className="font-medium text-foreground truncate">{acc.email || acc.name || acc.id}</span>
+                    <span className="font-medium text-foreground truncate">{accountLabel(acc, maskEmails)}</span>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <Switch
@@ -1003,7 +1009,7 @@ export function LimitsSettings({ settings, updateSettings, refreshSettings }: Li
             <div className="space-y-1.5 pb-2 border-b border-border/40">
               {cursorStatus.accounts.map((acc: any) => (
                 <div key={acc.id} className="flex items-center justify-between p-2 rounded-md bg-muted/20 border border-border/40 text-xs">
-                  <span className="font-medium text-foreground">{acc.email || acc.name || acc.id}</span>
+                  <span className="font-medium text-foreground">{accountLabel(acc, maskEmails)}</span>
                   <Button
                     size="sm"
                     variant="ghost"

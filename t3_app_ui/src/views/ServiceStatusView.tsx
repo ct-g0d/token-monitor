@@ -68,7 +68,14 @@ export function ServiceStatusView() {
     if (typeof window !== 'undefined' && window.tokenMonitor?.openExternalUrl) {
       window.tokenMonitor.openExternalUrl(url);
     } else {
-      window.open(url, '_blank');
+      try {
+        const parsed = new URL(url);
+        if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+          window.open(url, '_blank');
+        }
+      } catch {
+        return;
+      }
     }
   };
 

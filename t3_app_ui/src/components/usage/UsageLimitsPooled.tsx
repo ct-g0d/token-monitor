@@ -16,7 +16,6 @@ import {
 import { AlertTriangleIcon, ExternalLinkIcon, TicketIcon } from "lucide-react";
 import { Fragment, type ReactNode, useState } from "react";
 
-import { ensureLocalApi } from "~/localApi";
 import { usePrimarySettings } from "~/hooks/useSettings";
 import { cn } from "~/lib/utils";
 import { formatUpcomingTimestamp } from "~/timestampFormat";
@@ -34,6 +33,21 @@ import {
   resetCreditsSummary,
   useResetCredit,
 } from "~/components/usage/UsageLimits";
+
+function openExternalLink(url: string) {
+  if (typeof window !== "undefined" && window.tokenMonitor?.openExternalUrl) {
+    void window.tokenMonitor.openExternalUrl(url);
+    return;
+  }
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
+  } catch {
+    return;
+  }
+}
 
 function getProviderBarColor(driver: string): string {
   if (driver === "claude" || driver === "claudeAgent") return "#d97757";
@@ -699,7 +713,7 @@ export function UsageLimitsPooled({
           <Button
             variant="ghost-muted"
             size="xs"
-            onClick={() => void ensureLocalApi().shell.openExternal(link.url)}
+            onClick={() => openExternalLink(link.url)}
           >
             Manage usage
             <ExternalLinkIcon className="size-3.5" aria-hidden="true" />

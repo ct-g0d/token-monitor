@@ -24,7 +24,7 @@ export function extractStats(raw: any): TokenMonitorStats | null {
   return raw;
 }
 
-function maskEmailIfNeeded(email: string | undefined, mask: boolean): string | undefined {
+export function maskEmailIfNeeded(email: string | undefined, mask: boolean): string | undefined {
   if (!email || !mask) return email;
   const parts = email.split("@");
   if (parts.length !== 2) return email;
