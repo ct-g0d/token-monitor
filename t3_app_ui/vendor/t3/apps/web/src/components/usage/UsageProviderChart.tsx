@@ -1,6 +1,7 @@
 import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
 import type { UsageProviderKind } from "@t3tools/contracts";
-import { useLayoutEffect, useRef, useState } from "react";
+import * as React from "react";
+import { memo, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { DailyTotals, HourlyTotals } from "@t3tools/shared/usageMerge";
 import {
@@ -406,7 +407,7 @@ function UsageChartPlot({
   );
 }
 
-export function UsageProviderChart({
+export const UsageProviderChart = React.memo(function UsageProviderChart({
   providers,
   loadingProviders = NONE_LOADING,
   days,
@@ -420,16 +421,18 @@ export function UsageProviderChart({
 }: UsageProviderChartProps) {
   const periods = resolution === "hour" ? hours : days;
   const totals: readonly (DailyTotals | HourlyTotals)[] = resolution === "hour" ? hourly : daily;
-  const byPeriod = new Map(
-    totals.map((entry) => ["hourStart" in entry ? entry.hourStart : entry.day, entry]),
-  );
-  const { columns, scale, paths, stepX } = buildChart(
-    periods,
-    byPeriod,
-    metric,
-    providers,
-    loadingProviders,
-  );
+  const { columns, scale, paths, stepX } = useMemo(() => {
+    const byPeriod = new Map(
+      totals.map((entry) => ["hourStart" in entry ? entry.hourStart : entry.day, entry]),
+    );
+    return buildChart(
+      periods,
+      byPeriod,
+      metric,
+      providers,
+      loadingProviders,
+    );
+  }, [periods, totals, metric, providers, loadingProviders]);
 
   const toY = (value: number) => valueToY(value, scale.max);
   const seriesClassName = (loading: boolean) =>
@@ -524,4 +527,4 @@ export function UsageProviderChart({
       </div>
     </div>
   );
-}
+});

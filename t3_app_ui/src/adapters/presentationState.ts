@@ -34,6 +34,15 @@ export function maskEmailIfNeeded(email: string | undefined, mask: boolean): str
   return `${visible}@${domain}`;
 }
 
+import { cheapStableHash, getLimitsKey, createProviderIdentityCache } from "./renderPerfHelpers";
+export { cheapStableHash, getLimitsKey, createProviderIdentityCache };
+
+const providerCache = createProviderIdentityCache<ReadonlyArray<ServerProvider>>();
+
+export function clearPresentationCache(): void {
+  providerCache.clear();
+}
+
 function creditsMeterPercent(item: any, window: any): number | null {
   if (typeof window?.usedPercent === "number") return window.usedPercent;
   if (typeof window?.remainingPercent === "number") return 100 - window.remainingPercent;
@@ -62,6 +71,9 @@ export function transformStatsToProviders(
   maskEmails: boolean = false,
 ): ReadonlyArray<ServerProvider> {
   if (!stats?.limits) return [];
+
+  const limitsKey = getLimitsKey(stats.limits, maskEmails);
+  const cached = providerCache.getOrCompute(limitsKey, () => {
 
   const rawList = Array.isArray((stats.limits as any).providers)
     ? (stats.limits as any).providers
@@ -217,6 +229,8 @@ export function transformStatsToProviders(
   });
 
   return results;
+  });
+  return cached.result;
 }
 
 export const serverProvidersAtom = Atom.make<ReadonlyArray<ServerProvider>>([]).pipe(
@@ -292,7 +306,11 @@ export function syncStatsToPresentation(rawStats: any, maskEmails?: boolean) {
   if (maskEmails !== undefined) lastKnownMaskEmails = maskEmails;
   lastKnownStats = stats;
   const providers = transformStatsToProviders(stats, lastKnownMaskEmails);
-  if (providers.length > 0 || appAtomRegistry.get(serverProvidersAtom).length === 0) {
+  const current = appAtomRegistry.get(serverProvidersAtom);
+  if (providers === current) {
+    return;
+  }
+  if (providers.length > 0 || current.length === 0) {
     appAtomRegistry.set(serverProvidersAtom, providers);
   }
 }

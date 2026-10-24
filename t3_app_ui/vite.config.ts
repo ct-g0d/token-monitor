@@ -56,6 +56,7 @@ function getAllWorkspacePackageAliases(packagesDir: string) {
 }
 
 export default defineConfig({
+  root: __dirname,
   logLevel: 'warn',
   base: './',
   build: {

@@ -11,7 +11,7 @@ import {
   type UsageSummaryInput,
 } from "@t3tools/contracts";
 import { CircleAlertIcon, ChevronDownIcon, InfoIcon, SlidersHorizontalIcon } from "lucide-react";
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { settlePromise } from "@t3tools/client-runtime/state/runtime";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
 import * as Cause from "effect/Cause";
@@ -200,7 +200,7 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
   const [priceDialog, setPriceDialog] = useState<{ readonly model?: string } | null>(null);
   const [selectedEnvironmentIds, setSelectedEnvironmentIds] =
     useState<ReadonlySet<EnvironmentId> | null>(null);
-  const hiddenProviders = new Set(preferences.hiddenProviders);
+  const hiddenProviders = useMemo(() => new Set(preferences.hiddenProviders), [preferences.hiddenProviders]);
   const { days: windowDays, window } = windowSelection;
   const isPast24Hours = windowDays === 1;
   const {
@@ -222,9 +222,10 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
   const showingKept = shown !== null && shown.window !== window;
   const presentations = useAtomValue(environmentPresentations.presentationsAtom);
   const providersByEnvironment = useAtomValue(environmentPresentations.providersByEnvironmentAtom);
-  const cursorAccessEnvironments = hiddenProviders.has("cursor")
-    ? []
-    : cursorKeychainAccessEnvironments(selectedEnvironments);
+  const cursorAccessEnvironments = useMemo(
+    () => (hiddenProviders.has("cursor") ? [] : cursorKeychainAccessEnvironments(selectedEnvironments)),
+    [hiddenProviders, selectedEnvironments],
+  );
   const refreshProviders = useAtomCommand(serverEnvironment.refreshProviders, {
     reportFailure: false,
   });
@@ -323,16 +324,20 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
       setIsRefreshing(false);
     });
   };
-  const connectedLimitsEnvironments = [...presentations]
-    .filter(
-      ([environmentId, presentation]) =>
-        presentation.connection.phase === "connected" &&
-        presentation.serverConfig !== null &&
-        (selectedEnvironmentIds === null || selectedEnvironmentIds.has(environmentId)),
-    )
-    .map(([environmentId]) => environmentId)
-    .sort()
-    .join(",");
+  const connectedLimitsEnvironments = useMemo(
+    () =>
+      [...presentations]
+        .filter(
+          ([environmentId, presentation]) =>
+            presentation.connection.phase === "connected" &&
+            presentation.serverConfig !== null &&
+            (selectedEnvironmentIds === null || selectedEnvironmentIds.has(environmentId)),
+        )
+        .map(([environmentId]) => environmentId)
+        .sort()
+        .join(","),
+    [presentations, selectedEnvironmentIds],
+  );
   const autoRefreshLimits = useEffectEvent(() => {
     void refreshLimits(true);
   });
@@ -340,23 +345,42 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
     if (showingLimits && connectedLimitsEnvironments) autoRefreshLimits();
   }, [showingLimits, connectedLimitsEnvironments]);
 
-  const days = enumerateDays(shownWindow.sinceDay, shownWindow.untilDay);
-  const hours =
-    shownWindow.sinceTime === undefined || shownWindow.untilTime === undefined
-      ? []
-      : enumerateHourStarts(shownWindow.sinceTime, shownWindow.untilTime);
-  const showChatGptSharing =
-    !hiddenProviders.has("codex") &&
-    [...providersByEnvironment].some(
-      ([id, providers]) =>
-        (selectedEnvironmentIds === null || selectedEnvironmentIds.has(id)) &&
-        providers.some(usesChatGptSharing),
-    );
+  const days = useMemo(
+    () => enumerateDays(shownWindow.sinceDay, shownWindow.untilDay),
+    [shownWindow.sinceDay, shownWindow.untilDay],
+  );
+  const hours = useMemo(
+    () =>
+      shownWindow.sinceTime === undefined || shownWindow.untilTime === undefined
+        ? []
+        : enumerateHourStarts(shownWindow.sinceTime, shownWindow.untilTime),
+    [shownWindow.sinceTime, shownWindow.untilTime],
+  );
+  const showChatGptSharing = useMemo(
+    () =>
+      !hiddenProviders.has("codex") &&
+      [...providersByEnvironment].some(
+        ([id, providers]) =>
+          (selectedEnvironmentIds === null || selectedEnvironmentIds.has(id)) &&
+          providers.some(usesChatGptSharing),
+      ),
+    [hiddenProviders, providersByEnvironment, selectedEnvironmentIds],
+  );
 
-  const windowLabel =
-    shownHourly && shownWindow.sinceTime !== undefined && shownWindow.untilTime !== undefined
-      ? `${formatDateTimeShort(shownWindow.sinceTime, shownWindow.timeZone)} to ${formatDateTimeShort(shownWindow.untilTime, shownWindow.timeZone)}`
-      : `${formatDayShort(shownWindow.sinceDay)} to ${formatDayShort(shownWindow.untilDay)}`;
+  const windowLabel = useMemo(
+    () =>
+      shownHourly && shownWindow.sinceTime !== undefined && shownWindow.untilTime !== undefined
+        ? `${formatDateTimeShort(shownWindow.sinceTime, shownWindow.timeZone)} to ${formatDateTimeShort(shownWindow.untilTime, shownWindow.timeZone)}`
+        : `${formatDayShort(shownWindow.sinceDay)} to ${formatDayShort(shownWindow.untilDay)}`,
+    [
+      shownHourly,
+      shownWindow.sinceTime,
+      shownWindow.untilTime,
+      shownWindow.timeZone,
+      shownWindow.sinceDay,
+      shownWindow.untilDay,
+    ],
+  );
   const headerControls = (
     <>
       <div className="flex h-8 items-center gap-3 rounded-[3px] px-3.5 shadow-[inset_0_0_0_1px_var(--border)] [&_*]:font-mono [&_*]:text-[11px] [&_*]:tracking-[0.06em] [&_*]:uppercase">
@@ -562,66 +586,100 @@ function UsageOverview({
 }) {
   const [breakdown, setBreakdown] = useState<"model" | "time">("model");
   const shownHourly = shownWindow.resolution === "hour";
-  const loading = usageLoading(showingKept, selectedEnvironments, refreshingUsage, hiddenProviders);
+  const loading = useMemo(
+    () => usageLoading(showingKept, selectedEnvironments, refreshingUsage, hiddenProviders),
+    [showingKept, selectedEnvironments, refreshingUsage, hiddenProviders],
+  );
   // A primitive copy: reading `loading.partial` in the JSX would keep `loading` alive
   // across every derivation below and fold them into one cache scope.
   const loadingPartial = loading.partial === true;
-  const loadingProviders = new Set(
-    PROVIDER_ORDER.filter((provider) => loading.everyProvider || loading.providers.has(provider)),
-  );
-  const providersWithData = new Set(providersWithUsage(merged.providers));
-  // `everyProvider` marks shown providers as loading; only `loading.providers`, which excludes
-  // hidden ones, may add a provider that has no data yet.
-  // Filtering a fresh copy, not the shared module array, lets the compiler cache this on its own.
-  const activeProviders = [...PROVIDER_ORDER].filter(
-    (provider) => providersWithData.has(provider) || loading.providers.has(provider),
-  );
-  const chartLoadingProviders = new Set(
-    activeProviders.filter((provider) => loadingProviders.has(provider)),
-  );
-  const sourceMessages = [
-    ...new Set(
-      selectedEnvironments.flatMap(
-        (environment) =>
-          environment.summary?.sources.flatMap((source) =>
-            source.message &&
-            !source.action &&
-            !hiddenProviders.has(source.fingerprint.provider) &&
-            (source.status === "partial" ||
-              source.status === "failed" ||
-              source.fingerprint.provider === "cursor")
-              ? [source.message]
-              : [],
-          ) ?? [],
+  const loadingProviders = useMemo(
+    () =>
+      new Set(
+        PROVIDER_ORDER.filter((provider) => loading.everyProvider || loading.providers.has(provider)),
       ),
-    ),
-  ];
-  const breakdownPeriods: readonly (DailyTotals | HourlyTotals)[] = (
-    shownHourly ? merged.hourly : merged.daily
-  ).toReversed();
-  const breakdownModels =
-    breakdown === "model" && metric === "tokens"
-      ? sortModelsByTokens(merged.models)
-      : merged.models;
-  const breakdownPeak = breakdownModels.reduce(
-    (peak, model) => Math.max(peak, metric === "tokens" ? model.totalTokens : model.costUsd),
-    0,
+    [loading.everyProvider, loading.providers],
   );
-  const cursorInsertAt =
-    Math.max(activeProviders.indexOf("codex"), activeProviders.indexOf("claude")) + 1;
+  const providersWithData = useMemo(
+    () => new Set(providersWithUsage(merged.providers)),
+    [merged.providers],
+  );
+  const activeProviders = useMemo(
+    () =>
+      [...PROVIDER_ORDER].filter(
+        (provider) => providersWithData.has(provider) || loading.providers.has(provider),
+      ),
+    [providersWithData, loading.providers],
+  );
+  const chartLoadingProviders = useMemo(
+    () =>
+      new Set(
+        activeProviders.filter((provider) => loadingProviders.has(provider)),
+      ),
+    [activeProviders, loadingProviders],
+  );
+  const sourceMessages = useMemo(
+    () => [
+      ...new Set(
+        selectedEnvironments.flatMap(
+          (environment) =>
+            environment.summary?.sources.flatMap((source) =>
+              source.message &&
+              !source.action &&
+              !hiddenProviders.has(source.fingerprint.provider) &&
+              (source.status === "partial" ||
+                source.status === "failed" ||
+                source.fingerprint.provider === "cursor")
+                ? [source.message]
+                : [],
+            ) ?? [],
+        ),
+      ),
+    ],
+    [selectedEnvironments, hiddenProviders],
+  );
+  const breakdownPeriods: readonly (DailyTotals | HourlyTotals)[] = useMemo(
+    () => (shownHourly ? merged.hourly : merged.daily).toReversed(),
+    [shownHourly, merged.hourly, merged.daily],
+  );
+  const breakdownModels = useMemo(
+    () =>
+      breakdown === "model" && metric === "tokens"
+        ? sortModelsByTokens(merged.models)
+        : merged.models,
+    [breakdown, metric, merged.models],
+  );
+  const breakdownPeak = useMemo(
+    () =>
+      breakdownModels.reduce(
+        (peak, model) => Math.max(peak, metric === "tokens" ? model.totalTokens : model.costUsd),
+        0,
+      ),
+    [breakdownModels, metric],
+  );
+  const cursorInsertAt = useMemo(
+    () => Math.max(activeProviders.indexOf("codex"), activeProviders.indexOf("claude")) + 1,
+    [activeProviders],
+  );
   const summaryRows: ReadonlyArray<
     | { readonly kind: "usage"; readonly provider: UsageProviderKind }
     | { readonly kind: "enable"; readonly environment: EnvironmentUsageStatus }
-  > = [
-    ...activeProviders
-      .slice(0, cursorInsertAt)
-      .map((provider) => ({ kind: "usage" as const, provider })),
-    ...cursorAccessEnvironments.map((environment) => ({ kind: "enable" as const, environment })),
-    ...activeProviders
-      .slice(cursorInsertAt)
-      .map((provider) => ({ kind: "usage" as const, provider })),
-  ];
-  const timeValueColumnWidth = `${60 / (activeProviders.length + 2)}%`;
+  > = useMemo(
+    () => [
+      ...activeProviders
+        .slice(0, cursorInsertAt)
+        .map((provider) => ({ kind: "usage" as const, provider })),
+      ...cursorAccessEnvironments.map((environment) => ({ kind: "enable" as const, environment })),
+      ...activeProviders
+        .slice(cursorInsertAt)
+        .map((provider) => ({ kind: "usage" as const, provider })),
+    ],
+    [activeProviders, cursorInsertAt, cursorAccessEnvironments],
+  );
+  const timeValueColumnWidth = useMemo(
+    () => `${60 / (activeProviders.length + 2)}%`,
+    [activeProviders.length],
+  );
 
   return (
     <div aria-busy={loadingPartial} className="flex flex-col gap-10 pb-10">

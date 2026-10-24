@@ -8,7 +8,7 @@ import {
   type UsageBucket,
 } from "@t3tools/contracts";
 import { mergeUsage, type EnvironmentUsage, type MergedUsage } from "@t3tools/shared/usageMerge";
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import type {
   DashboardHistory,
   DashboardHistoryDay,
@@ -18,6 +18,7 @@ import type {
   SessionsByWindow,
 } from "../types/tokenMonitor";
 import { PRIMARY_ENV_ID, syncStatsToPresentation } from "./presentationState";
+import { syncSettingsToPricing } from "./serverState";
 
 export interface EnvironmentUsageStatus {
   readonly environmentId: EnvironmentId;
@@ -51,6 +52,23 @@ export interface UsageView {
 export interface ModelPricingRates {
   readonly inputCostPerToken: number;
   readonly cacheReadCostPerToken: number;
+}
+
+import { deriveStatsRevisionKey, isUsageAffectingSettingsChange } from "./renderPerfHelpers";
+export { deriveStatsRevisionKey, isUsageAffectingSettingsChange };
+
+interface CachedDayBuckets {
+  dayRow: DashboardHistoryDay;
+  pricingMap: Record<string, ModelPricingRates | null>;
+  buckets: UsageBucket[];
+}
+
+const dayBucketsCache = new Map<string, CachedDayBuckets>();
+let cachedHistoryRevision: string | null = null;
+
+export function invalidateDayBucketsCache(newHistoryRevision?: string | null) {
+  dayBucketsCache.clear();
+  cachedHistoryRevision = newHistoryRevision ?? null;
 }
 
 // Session memoization: lookup each distinct model id once per session via IPC
@@ -388,9 +406,24 @@ export function buildUsageSummaryFromData(
   const activeDays = relevantDays.filter((d) => nonNegative(d.tokens) > 0).length;
   const peakDayTokens = relevantDays.reduce((max, d) => Math.max(max, nonNegative(d.tokens)), 0);
 
+  const currentHistoryRevision = String(stats?.historyRevision || stats?.deviceHistoryRevision || '').trim();
+  if (cachedHistoryRevision !== null && currentHistoryRevision && currentHistoryRevision !== cachedHistoryRevision) {
+    dayBucketsCache.clear();
+  }
+  if (currentHistoryRevision) {
+    cachedHistoryRevision = currentHistoryRevision;
+  }
+
   const buckets: UsageBucket[] = [];
   for (const dayRow of relevantDays) {
-    buckets.push(...transformDayToBuckets(dayRow, pricingMap));
+    const cached = dayBucketsCache.get(dayRow.date);
+    if (cached && cached.dayRow === dayRow && cached.pricingMap === pricingMap) {
+      buckets.push(...cached.buckets);
+    } else {
+      const computed = transformDayToBuckets(dayRow, pricingMap);
+      dayBucketsCache.set(dayRow.date, { dayRow, pricingMap, buckets: computed });
+      buckets.push(...computed);
+    }
   }
 
   const distinctProviders = Array.from(new Set(buckets.map((b) => b.provider)));
@@ -550,6 +583,9 @@ export function useUsage(
   const [resolvedPricing, setResolvedPricing] = useState<Record<string, ModelPricingRates | null>>({});
   const [customOverrides, setCustomOverrides] = useState<Map<string, ModelPricingRates>>(new Map());
 
+  const lastKnownRevisionKey = useRef<string>('');
+  const lastKnownSettings = useRef<any>(null);
+
   const pricingMap = useMemo(() => {
     const combined: Record<string, ModelPricingRates | null> = { ...resolvedPricing };
     for (const [model, rates] of customOverrides.entries()) {
@@ -628,13 +664,17 @@ export function useUsage(
         const nextStats = sessions
           ? { ...actual, periods: { ...actual.periods, allTime: { ...actual.periods?.allTime, sessions } } }
           : actual;
+        lastKnownRevisionKey.current = deriveStatsRevisionKey(nextStats);
         setStats(nextStats);
         syncStatsToPresentation(nextStats);
       }
 
-      // Check for user-defined customModelPricing from settings
-      const customPricing = settingsData?.customModelPricing;
-      setCustomOverrides(parseCustomPricing(customPricing));
+      if (settingsData) {
+        lastKnownSettings.current = settingsData;
+        // Check for user-defined customModelPricing from settings
+        const customPricing = settingsData?.customModelPricing;
+        setCustomOverrides(parseCustomPricing(customPricing));
+      }
     } catch {
       // Keep previous data
     }
@@ -660,37 +700,52 @@ export function useUsage(
 
       if (typeof tm.onStatsPush === "function") {
         const u = tm.onStatsPush((nextStats: any) => {
-          if (nextStats) {
-            const actualStats = (nextStats as any)?.data?.stats || (nextStats as any)?.stats || nextStats;
-            setStats((previous) => {
-              const allTimeSessions =
-                previous?.periods?.allTime?.sessions && !actualStats?.periods?.allTime?.sessions
-                  ? previous.periods.allTime.sessions
-                  : actualStats?.periods?.allTime?.sessions;
-              const mergedPeriods = actualStats?.periods
-                ? (allTimeSessions
-                    ? { ...actualStats.periods, allTime: { ...actualStats.periods.allTime, sessions: allTimeSessions } }
-                    : actualStats.periods)
-                : previous?.periods;
-              const merged = {
-                ...previous,
-                ...actualStats,
-                periods: mergedPeriods,
-              };
-              syncStatsToPresentation(merged);
-              return merged;
-            });
+          if (!nextStats) return;
+          if (nextStats.event === 'session-activity' || nextStats.event === 'status') {
+            return;
           }
+          const actualStats = (nextStats as any)?.data?.stats || (nextStats as any)?.stats || (nextStats?.periods ? nextStats : null);
+          if (!actualStats) return;
+
+          const key = deriveStatsRevisionKey(actualStats);
+          if (key && key === lastKnownRevisionKey.current) {
+            return;
+          }
+          lastKnownRevisionKey.current = key;
+
+          setStats((previous) => {
+            const allTimeSessions =
+              previous?.periods?.allTime?.sessions && !actualStats?.periods?.allTime?.sessions
+                ? previous.periods.allTime.sessions
+                : actualStats?.periods?.allTime?.sessions;
+            const mergedPeriods = actualStats?.periods
+              ? (allTimeSessions
+                  ? { ...actualStats.periods, allTime: { ...actualStats.periods.allTime, sessions: allTimeSessions } }
+                  : actualStats.periods)
+              : previous?.periods;
+            const merged = {
+              ...previous,
+              ...actualStats,
+              periods: mergedPeriods,
+            };
+            syncStatsToPresentation(merged);
+            return merged;
+          });
         });
         if (typeof u === "function") unsubs.push(u);
       }
 
       if (typeof tm.onSettingsPush === "function") {
         const u = tm.onSettingsPush((newSettings: any) => {
+          syncSettingsToPricing(newSettings);
           if (newSettings?.customModelPricing) {
             setCustomOverrides(parseCustomPricing(newSettings.customModelPricing));
           }
-          fetchRealData();
+          const prev = lastKnownSettings.current;
+          lastKnownSettings.current = newSettings;
+          if (isUsageAffectingSettingsChange(prev, newSettings)) {
+            fetchRealData();
+          }
         });
         if (typeof u === "function") unsubs.push(u);
       }
