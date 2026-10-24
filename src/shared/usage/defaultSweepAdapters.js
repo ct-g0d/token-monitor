@@ -56,6 +56,8 @@ function buildDefaultSweepAdapters(options = {}) {
         if (watermark && (watermark.lastSuccessRunId || watermark.last_success_run_id)) {
           return [];
         }
+        const hasDaily = Boolean(conn.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'daily_usage'").get());
+        if (!hasDaily) return [];
         return conn.prepare(`
           SELECT date_bucket, provider, model_codename,
             total_uncached_in, total_cached_in, total_cache_write,

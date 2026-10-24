@@ -1133,6 +1133,18 @@ async function collectUsageOnce(options) {
             if (typeof options.onSweepCompleted === 'function') {
               options.onSweepCompleted(sweepResult);
             }
+            try {
+              const { buildLedgerReadModel, writeLedgerReadModel } = require('./usage/ledgerReadModel');
+              const model = buildLedgerReadModel(store || db, {
+                today: localDayKey(collectedAt),
+                now: collectedAt.getTime()
+              });
+              writeLedgerReadModel(store || db, model);
+            } catch (readModelError) {
+              if (typeof options.logger === 'function') {
+                options.logger('building ledger read model failed: ' + (readModelError?.message || readModelError));
+              }
+            }
           } finally {
             if (createdStore) {
               try { store?.close(); } catch (_) {}
@@ -3798,6 +3810,46 @@ function startCollector(options) {
       ...(codexLocalSource ? { codexLocalUsage: codexLocalSource.getDiagnostics() } : {}),
       wslStatus: cloneDiagnosticValue(wslStatusAnchor)
     };
+  }
+
+  if (options.sweepEnabled !== false && (options.tokenLedgerStore || options.tokenLedgerDatabase || options.tokenLedgerPath)) {
+    try {
+      const ledgerExists = options.tokenLedgerPath ? fs.existsSync(options.tokenLedgerPath) : true;
+      if (ledgerExists) {
+        let store = options.tokenLedgerStore || null;
+        let db = options.tokenLedgerDatabase || (typeof store?.database === 'function' ? store.database() : (store?.prepare ? store : null));
+        let createdStore = false;
+        if (!store && !db && options.tokenLedgerPath) {
+          try {
+            const { createTokenLedgerStore } = require('./usage/tokenLedger');
+            store = createTokenLedgerStore(options.tokenLedgerPath ? { ...options, path: options.tokenLedgerPath } : options);
+            createdStore = true;
+            db = store?.database?.();
+          } catch (_) {}
+        }
+        if (store || db) {
+          try {
+            const { readLedgerReadModel, buildLedgerReadModel, writeLedgerReadModel } = require('./usage/ledgerReadModel');
+            const targetStore = store || db;
+            const targetDb = db || (typeof store?.database === 'function' ? store.database() : store);
+            const existing = readLedgerReadModel(targetDb);
+            const today = localTodayKey();
+            if (!existing || existing.localDay !== today) {
+              const model = buildLedgerReadModel(targetStore, { today });
+              writeLedgerReadModel(targetDb, model);
+            }
+          } catch (err) {
+            if (typeof options.logger === 'function') {
+              options.logger('collector start read model build failed: ' + (err?.message || err));
+            }
+          } finally {
+            if (createdStore) {
+              try { store?.close(); } catch (_) {}
+            }
+          }
+        }
+      }
+    } catch (_) {}
   }
 
   setupWatchers();

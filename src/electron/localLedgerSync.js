@@ -6,6 +6,10 @@ const {
   createTokenLedgerStore,
   checkFactCoverage
 } = require('../shared/usage/tokenLedger');
+const {
+  readLedgerReadModel,
+  clonePeriods
+} = require('../shared/usage/ledgerReadModel');
 
 let defaultStoreInstance = null;
 
@@ -48,11 +52,43 @@ function sanitizeHistoryAccounting(history) {
 
 function localLedgerHistory(overlayHistory, options = {}) {
   const store = resolveLedgerStore(options);
-  if (!store || typeof store.readHistory !== 'function') return null;
+  if (!store) return null;
+
+  const readModel = typeof store.readModel === 'function' ? store.readModel() : readLedgerReadModel(store);
+  if (readModel?.history) {
+    return JSON.parse(JSON.stringify(readModel.history));
+  }
+
+  if (typeof store.readHistory !== 'function') return null;
 
   const overlayDaily = Array.isArray(overlayHistory?.daily) ? overlayHistory.daily : [];
   const coverage = checkSqlCoverage(store, overlayDaily, options);
 
+  // If store is a real token ledger store with readModel capability, row 1 is missing:
+  // use existing non-SQL fallback path and NEVER scan usage_events on main.
+  if (typeof store.readModel === 'function') {
+    const history = sanitizeHistoryAccounting(store.readHistory({
+      ...options,
+      overlayHistory,
+      sqlCoverageComplete: false,
+      useFacts: false
+    }));
+    const diagnosticReason = coverage.reason || 'sql-coverage-incomplete';
+    if (history) {
+      history.sqlCoverageComplete = false;
+      history.diagnosticReason = diagnosticReason;
+    }
+    if (typeof options.onDiagnosticEvent === 'function') {
+      options.onDiagnosticEvent({
+        subsystem: 'ledger',
+        code: 'sql-coverage-incomplete',
+        reason: diagnosticReason
+      });
+    }
+    return history;
+  }
+
+  // Fallback for tests/mocks where mockStore has no readModel
   if (coverage.complete) {
     const todayKey = String(options.today || options.todayKey || localDayKey()).slice(0, 10);
     const liveTodayRow = overlayDaily.find((d) => d.date === todayKey)
@@ -76,7 +112,8 @@ function localLedgerHistory(overlayHistory, options = {}) {
   const history = sanitizeHistoryAccounting(store.readHistory({
     ...options,
     overlayHistory,
-    sqlCoverageComplete: false
+    sqlCoverageComplete: false,
+    useFacts: false
   }));
   const diagnosticReason = coverage.reason || 'sql-coverage-incomplete';
   if (history) {
@@ -133,13 +170,17 @@ function withLocalLedgerHistory(stats, overlayHistory, options = {}) {
   }
 
   const basePeriods = stats.periods || targetDevice?.periods;
-  const periods = store?.readPeriods?.({
-    overlayHistory: overlayHistory || stats.history,
-    basePeriods,
-    basePeriod: basePeriods?.allTime,
-    sqlCoverageComplete: history?.sqlCoverageComplete,
-    today: options.today || options.todayKey
-  });
+  const readModel = typeof store?.readModel === 'function' ? store.readModel() : readLedgerReadModel(store);
+  const periods = readModel?.periods
+    ? clonePeriods(readModel.periods)
+    : store?.readPeriods?.({
+      overlayHistory: overlayHistory || stats.history,
+      basePeriods,
+      basePeriod: basePeriods?.allTime,
+      sqlCoverageComplete: history?.sqlCoverageComplete,
+      useFacts: false,
+      today: options.today || options.todayKey
+    });
   if (!periods) {
     return {
       ...stats,
@@ -266,7 +307,8 @@ function withLocalLedgerHistory(stats, overlayHistory, options = {}) {
     ? stats.devices.map((d, i) => (i === targetIndex ? updatedTargetDevice : d))
     : stats.devices;
 
-  const sessionsByWindow = store?.sessionsByWindow?.(options) || null;
+  const sessionsByWindow = (readModel?.sessionsByWindow ? JSON.parse(JSON.stringify(readModel.sessionsByWindow)) : null)
+    || (readModel ? null : (store?.sessionsByWindow?.(options) || null));
   return {
     ...stats,
     history: {

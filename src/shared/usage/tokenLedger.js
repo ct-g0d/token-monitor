@@ -165,6 +165,14 @@ function ensureFactSchema(database, options = {}) {
       created_at_ms INTEGER NOT NULL,
       PRIMARY KEY (canonical_natural_key, source_natural_key)
     );
+    CREATE INDEX IF NOT EXISTS idx_usage_events_active_day ON usage_events(state, date_bucket, client_id, source_kind, session_id);
+    CREATE TABLE IF NOT EXISTS ledger_read_model (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      sweep_id INTEGER NOT NULL,
+      local_day TEXT NOT NULL,
+      built_at_ms INTEGER NOT NULL,
+      payload_json TEXT NOT NULL
+    );
   `);
 }
 
@@ -325,6 +333,16 @@ function ensureSchema(database, options = {}) {
     CREATE INDEX IF NOT EXISTS idx_runtime_history_date ON runtime_history(date_bucket);
   `);
   ensureFactSchema(database, { maintenance });
+  database.exec(`
+    CREATE INDEX IF NOT EXISTS idx_usage_events_active_day ON usage_events(state, date_bucket, client_id, source_kind, session_id);
+    CREATE TABLE IF NOT EXISTS ledger_read_model (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      sweep_id INTEGER NOT NULL,
+      local_day TEXT NOT NULL,
+      built_at_ms INTEGER NOT NULL,
+      payload_json TEXT NOT NULL
+    );
+  `);
   const version = Number(database.prepare('PRAGMA user_version').get().user_version || 0);
   if (version < TOKEN_LEDGER_SCHEMA_VERSION) {
     backfillLegacyFacts(database);
@@ -1612,8 +1630,8 @@ function createTokenLedgerStore(storeOptions = {}) {
     ? repoLedgerPath()
     : null;
   const seedPath = explicitSeed || fallbackSeed;
-  let database = null;
-  let available = false;
+  let database = options.database || options.db || null;
+  let available = Boolean(database);
 
   function cleanStaleWal() {
     try { fs.rmSync(`${databasePath}-wal`, { force: true }); } catch (_) {}
@@ -1630,7 +1648,10 @@ function createTokenLedgerStore(storeOptions = {}) {
   }
 
   function open() {
-    if (database) return database;
+    if (database) {
+      available = true;
+      return database;
+    }
     try {
       fs.mkdirSync(path.dirname(databasePath), { recursive: true });
 
@@ -1984,6 +2005,18 @@ function createTokenLedgerStore(storeOptions = {}) {
     readPeriods,
     canonicalFactDayRows: (opts) => canonicalFactDayRows(open(), opts),
     sessionsByWindow: (opts) => computeSessionsByWindow(open(), opts),
+    readModel: () => {
+      const { readLedgerReadModel } = require('./ledgerReadModel');
+      return readLedgerReadModel(open());
+    },
+    readLedgerReadModel: () => {
+      const { readLedgerReadModel } = require('./ledgerReadModel');
+      return readLedgerReadModel(open());
+    },
+    writeLedgerReadModel: (model) => {
+      const { writeLedgerReadModel } = require('./ledgerReadModel');
+      return writeLedgerReadModel(open(), model);
+    },
     writeHistory,
     status,
     database: () => open(),

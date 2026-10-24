@@ -290,6 +290,7 @@ const { deviceHistoryRevision, historyPreview, historyRevision } = require('../s
 const { completeHistorySource, resolveCompleteHistory, resolveCompleteHistoryWithDevices } = require('./historySource');
 const { createTokenLedgerStore } = require('../shared/usage/tokenLedger');
 const { withLocalLedgerHistory: withLocalLedgerHistorySync, localLedgerHistory: localLedgerHistorySync } = require('./localLedgerSync');
+const { readLedgerReadModel, clonePeriods } = require('../shared/usage/ledgerReadModel');
 const { fixedPeriodHistoryMeta } = require('./fixedPeriodHistory');
 const { readSessionDetailForPlatform } = require('../shared/sessionDetailResolver');
 const { startDiscordRpc, stopDiscordRpc, updateDiscordRpc } = require('./discordRpc');
@@ -4671,14 +4672,18 @@ function historyResolverOptions() {
   const rawDevice = ownsUsageRuntime() ? (lastCollectedDevice || localDevice) : null;
   const ledgerHistory = localLedgerHistory(rawDevice?.history);
   if (ledgerHistory) {
-    const periods = tokenLedgerStore?.readPeriods?.({
-      overlayHistory: ledgerHistory,
-      basePeriods: rawDevice?.periods || {
-        today: rawDevice?.today,
-        month: rawDevice?.month,
-        allTime: rawDevice?.allTime
-      }
-    }) || null;
+    const readModel = typeof tokenLedgerStore?.readModel === 'function' ? tokenLedgerStore.readModel() : readLedgerReadModel(tokenLedgerStore);
+    const periods = readModel?.periods
+      ? clonePeriods(readModel.periods)
+      : (tokenLedgerStore?.readPeriods?.({
+        overlayHistory: ledgerHistory,
+        basePeriods: rawDevice?.periods || {
+          today: rawDevice?.today,
+          month: rawDevice?.month,
+          allTime: rawDevice?.allTime
+        },
+        useFacts: false
+      }) || null);
     if (rawDevice) {
       if (periods && rawDevice.periods) {
         for (const name of ['today', 'month', 'allTime']) {
@@ -7455,10 +7460,14 @@ function createDashboardWindow() {
   return mainWindow;
 }
 
-function getSessionsByWindow(options = {}) {
+function getSessionsByWindow(_options = {}) {
   try {
     tokenLedgerStore ||= createTokenLedgerStore({ maintenance: false });
-    return tokenLedgerStore?.sessionsByWindow?.(options) || null;
+    const readModel = typeof tokenLedgerStore?.readModel === 'function' ? tokenLedgerStore.readModel() : readLedgerReadModel(tokenLedgerStore);
+    if (readModel?.sessionsByWindow) {
+      return JSON.parse(JSON.stringify(readModel.sessionsByWindow));
+    }
+    return null;
   } catch (_) {
     return null;
   }
