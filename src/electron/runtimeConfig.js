@@ -121,7 +121,7 @@ function usageConfigFromSettings(settings = {}, context = {}) {
     watchDebounceMs: Number(context.watchDebounceMs || 1500),
     wslScanEnabled: settings.wslScanEnabled !== false,
     tokenLedgerStore: context.tokenLedgerStore,
-    tokenLedgerPath: context.tokenLedgerPath,
+    tokenLedgerPath: context.tokenLedgerPath || context.tokenLedgerStore?.databasePath,
     onError: context.onError,
     logger: context.logger
   };
