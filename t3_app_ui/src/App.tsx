@@ -66,20 +66,22 @@ export function App() {
       <div className="relative h-screen w-screen overflow-hidden bg-background text-foreground select-none">
         <Sidebar active={activeView} onSelect={setActiveView} />
 
-        {/* Window controls own the top-right corner; the strip beside them drags the window */}
-        <div
-          className="absolute top-0 right-0 left-[216px] z-30 flex h-10 justify-end [-webkit-app-region:drag]"
-          onDoubleClick={handleHeaderDoubleClick}
-        >
-          <WindowControls />
-        </div>
-
         <main key={activeView} className="tm-view-in absolute inset-y-0 right-0 left-[216px] flex flex-col overflow-hidden">
           {(activeView === 'usage' || activeView === 'limits') && <UsagePage mode={activeView} />}
           {activeView === 'projects' && <ProjectsView />}
           {activeView === 'status' && <ServiceStatusView />}
           {activeView === 'settings' && <SettingsPage />}
         </main>
+
+        {/* Window controls own the top-right corner; the strip beside them drags the window.
+            Must stay last: Chromium applies drag regions in DOM order, so a page's drag
+            header rendered later would override this overlay's no-drag buttons. */}
+        <div
+          className="absolute top-0 right-0 left-[216px] z-30 flex h-10 justify-end [-webkit-app-region:drag]"
+          onDoubleClick={handleHeaderDoubleClick}
+        >
+          <WindowControls />
+        </div>
       </div>
     </SettingsScopeProvider>
   );
