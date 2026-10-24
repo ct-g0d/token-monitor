@@ -209,6 +209,14 @@ export function makeWindow(
     });
   }
   const untilDay = format.format(now);
+  if (days <= 0) {
+    return {
+      sinceDay: UsageDay.make("1970-01-01"),
+      untilDay: UsageDay.make(untilDay),
+      timeZone,
+      resolution: "day",
+    };
+  }
   if (resolution === "hour") {
     const untilTimeMs = Math.floor(now.getTime() / 60_000) * 60_000;
     const sinceTimeMs = untilTimeMs - 24 * HOUR_MS;

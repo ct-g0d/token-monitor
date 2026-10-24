@@ -63,7 +63,7 @@ export interface DashboardHistorySummary {
   unpricedTokens?: number;
 }
 
-export type WindowKey = "1" | "7" | "30" | "90";
+export type WindowKey = "1" | "7" | "30" | "90" | "all";
 
 export type WindowSessions = {
   total?: number;
