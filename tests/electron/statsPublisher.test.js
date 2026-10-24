@@ -142,13 +142,18 @@ test('cancel drops the pending batch', () => {
 function syncModeStats() {
   const localToday = { totalTokens: 10, clients: { claude: 10 }, sessions: { 'claude:a': { totalTokens: 10 } }, projects: { p: { totalTokens: 10 } } };
   const localAllTime = { totalTokens: 90, clients: { claude: 90 }, sessions: { 'claude:a': { totalTokens: 90 } }, projects: { p: { totalTokens: 90 } } };
+  const history = { daily: [{ date: '2026-10-23', tokens: 5 }], monthly: [], summary: { totalTokens: 90 } };
   return {
+    history,
+    historyPreview: { daily: [{ date: '2026-10-23', tokens: 5 }], monthly: [], summary: { totalTokens: 90 } },
+    historyRevision: 'revision-1',
+    deviceHistoryRevision: 'device-revision-1',
     periods: {
       today: { totalTokens: 10, sessions: { 'claude:a': { totalTokens: 10 } } },
       allTime: { totalTokens: 90, sessions: { 'claude:month-only': { totalTokens: 5 } } }
     },
     devices: [
-      { deviceId: 'local', history: { daily: [] }, periods: { today: localToday, allTime: localAllTime } },
+      { deviceId: 'local', history, periods: { today: localToday, allTime: localAllTime } },
       { deviceId: 'legacy', today: { totalTokens: 1 } }
     ],
     limits: { providers: [] }
@@ -163,10 +168,34 @@ test('the renderer copy drops device sessions and projects but keeps their total
   const local = result.devices[0];
   assert.deepEqual(local.periods.today, { totalTokens: 10, clients: { claude: 10 } });
   assert.deepEqual(local.periods.allTime, { totalTokens: 90, clients: { claude: 90 } });
-  assert.equal(local.history, stats.devices[0].history);
-  assert.equal(result.devices[1], stats.devices[1], 'a record without periods passes through');
+  assert.equal(result.devices[1], stats.devices[1], 'a record without periods or history passes through');
   assert.equal(result.limits, stats.limits);
   assert.deepEqual(stats, snapshot, 'the published snapshot main keeps is not mutated');
+});
+
+test('the renderer copy drops ledger history but keeps the revision that triggers a pull', () => {
+  const stats = syncModeStats();
+  const result = rendererStats(stats);
+
+  assert.equal(Object.hasOwn(result, 'history'), false, 'the aggregate history stays in main');
+  assert.equal(Object.hasOwn(result.devices[0], 'history'), false, 'the local device history stays in main');
+  assert.equal(result.historyRevision, 'revision-1');
+  assert.equal(result.deviceHistoryRevision, 'device-revision-1');
+  assert.deepEqual(result.historyPreview, stats.historyPreview);
+  assert.equal(result.periods.today, stats.periods.today);
+  // Main's copy, read by the exporter, tray, edge dock and Widget, is intact.
+  assert.deepEqual(stats.history, syncModeStats().history);
+  assert.equal(stats.devices[0].history, stats.history);
+});
+
+test('a device record without periods still loses only its history', () => {
+  const stats = {
+    devices: [{ deviceId: 'remote', history: { daily: [] }, stale: true }]
+  };
+  const result = rendererStats(stats);
+
+  assert.deepEqual(result.devices[0], { deviceId: 'remote', stale: true });
+  assert.deepEqual(stats.devices[0].history, { daily: [] }, 'main keeps the device history');
 });
 
 test('the all-time session list stays out of the renderer copy in every mode', () => {

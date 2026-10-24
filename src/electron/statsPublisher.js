@@ -86,6 +86,12 @@ function withoutSessionDetail(period) {
   return summary;
 }
 
+function withoutHistory(record) {
+  if (!record || typeof record !== 'object' || !('history' in record)) return record;
+  const { history: _history, ...summary } = record;
+  return summary;
+}
+
 // The shape the renderer receives, cut at the IPC boundary because structured
 // clone copies every byte on the main thread. Main keeps the full snapshot: the
 // exporter, tray, edge dock and Widget read it there.
@@ -96,9 +102,14 @@ function withoutSessionDetail(period) {
 // - The all-time session list is pulled, not pushed (`stats:allTimeSessions`).
 //   It is most of the payload and only one view shows it, so shipping it on
 //   every publish would clone it for nothing nearly every time.
+// - Ledger history is pulled, not pushed (`dashboard:getHistory` on the
+//   `dashboard:historyChanged` signal). The full `history` rides every local
+//   and Hub snapshot on the aggregate and on the local device record, so both
+//   copies are cut here; the revision fields stay so the renderer knows when
+//   to refetch.
 function rendererStats(stats) {
   if (!stats || typeof stats !== 'object') return stats;
-  const result = { ...stats };
+  const { history: _history, ...result } = stats;
   const allTime = stats.periods?.allTime;
   if (allTime && typeof allTime === 'object' && 'sessions' in allTime) {
     const { sessions: _sessions, ...summary } = allTime;
@@ -106,10 +117,11 @@ function rendererStats(stats) {
   }
   if (Array.isArray(stats.devices)) {
     result.devices = stats.devices.map((device) => {
-      if (!device?.periods || typeof device.periods !== 'object') return device;
+      const record = withoutHistory(device);
+      if (!device?.periods || typeof device.periods !== 'object') return record;
       const periods = {};
       for (const [name, period] of Object.entries(device.periods)) periods[name] = withoutSessionDetail(period);
-      return { ...device, periods };
+      return { ...record, periods };
     });
   }
   return result;
