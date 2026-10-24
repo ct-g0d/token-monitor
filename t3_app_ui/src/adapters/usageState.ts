@@ -363,6 +363,9 @@ export function resolveWindowKey(
   input?: UsageSummaryInput | { days?: number; windowDays?: number },
 ): WindowKey {
   if (!input) return "90";
+  if (("days" in input && input.days === 0) || ("windowDays" in input && input.windowDays === 0)) {
+    return "all";
+  }
   if ("days" in input && (input.days === 1 || input.days === 7 || input.days === 30 || input.days === 90)) {
     return String(input.days) as WindowKey;
   }
@@ -380,6 +383,7 @@ export function resolveWindowKey(
     if (diff <= 2) return "1";
     if (diff <= 10) return "7";
     if (diff <= 45) return "30";
+    if (diff > 365) return "all";
     return "90";
   }
   return "90";
@@ -395,8 +399,42 @@ export function buildUsageSummaryFromData(
   const daily = Array.isArray(history?.daily) ? history.daily : [];
   const sinceDay = input?.sinceDay ? String(input.sinceDay) : undefined;
   const untilDay = input?.untilDay ? String(input.untilDay) : undefined;
+  const allTime = stats?.periods?.allTime;
+  const allTimeRequested = resolveWindowKey(input) === "all";
 
-  const relevantDays = daily.filter((d) => {
+  const allTimeDay: DashboardHistoryDay | null = allTime && typeof allTime === "object"
+    ? {
+        date: untilDay || new Date().toISOString().slice(0, 10),
+        tokens: nonNegative(allTime.totalTokens),
+        cost: nonNegative(allTime.costUsd),
+        messages: nonNegative(allTime.messages),
+        cacheReadTokens: nonNegative(allTime.cacheReadTokens),
+        cacheWriteTokens: nonNegative(allTime.cacheWriteTokens),
+        outputTokens: nonNegative(allTime.outputTokens),
+        unclassifiedTokens: nonNegative(allTime.unclassifiedTokens),
+        tokenComponentsAvailable: allTime.capabilities?.tokenComponents === true,
+        perClient: Object.fromEntries(Object.entries(allTime.clients || {}).map(([client, tokens]) => [client, {
+          tokens: nonNegative(tokens),
+          cost: nonNegative(allTime.clientCosts?.[client]),
+          messages: 0,
+          cacheReadTokens: nonNegative(allTime.clientCacheReads?.[client]),
+          cacheWriteTokens: nonNegative(allTime.clientCacheWrites?.[client]),
+          outputTokens: nonNegative(allTime.clientOutputs?.[client]),
+          unclassifiedTokens: nonNegative(allTime.clientUnclassifiedTokens?.[client]),
+        }])),
+        perModel: Object.fromEntries(Object.entries(allTime.models || {}).map(([model, tokens]) => [model, {
+          tokens: nonNegative(tokens),
+          cost: nonNegative(allTime.modelCosts?.[model]),
+          messages: 0,
+          cacheReadTokens: nonNegative(allTime.modelCacheReads?.[model]),
+          cacheWriteTokens: nonNegative(allTime.modelCacheWrites?.[model]),
+          outputTokens: nonNegative(allTime.modelOutputs?.[model]),
+          unclassifiedTokens: nonNegative(allTime.modelUnclassifiedTokens?.[model]),
+        }])),
+      }
+    : null;
+
+  const relevantDays = allTimeRequested && allTimeDay ? [allTimeDay] : daily.filter((d) => {
     if (sinceDay && d.date < sinceDay) return false;
     if (untilDay && d.date > untilDay) return false;
     return true;
