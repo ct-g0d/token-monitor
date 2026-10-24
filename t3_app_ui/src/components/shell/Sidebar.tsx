@@ -25,42 +25,56 @@ const compact = (n: number) =>
 // Today's totals, live stream rate and synced devices, refreshed in the background
 function useLive() {
   const [live, setLive] = useState({ tokens: 0, cost: 0, rate: 0, devices: [] as Device[] });
+
   useEffect(() => {
     const tm = window.tokenMonitor;
     if (!tm) return;
-    const read = async () => {
-      const [stats, stream] = await Promise.all([
-        tm.getStats?.().catch(() => null),
-        tm.getStreamStatus?.().catch(() => null),
-      ]);
-      const today = stats?.periods?.today ?? stats?.today;
-      const localId = stats?.localDeviceId || stats?.settings?.deviceId || '';
-      const devices: Device[] = (Array.isArray(stats?.devices) ? stats.devices : [])
-        .map((d: any) => ({
-          id: String(d.deviceId || ''),
-          name: getDeviceLabel(d),
-          tokens: Number(d.periods?.today?.totalTokens ?? d.today?.totalTokens ?? d.todayTokens ?? 0),
-          local: Boolean((localId && d.deviceId === localId) || d.local),
-          stale: Boolean(d.stale),
-        }))
-        .sort((a: Device, b: Device) => Number(b.local) - Number(a.local) || b.tokens - a.tokens);
-      setLive({
-        tokens: Number(today?.totalTokens ?? today?.tokens ?? 0),
-        cost: Number(today?.costUsd ?? today?.cost ?? 0),
-        rate: Number(stream?.ratePerSecond ?? 0),
-        devices,
-      });
+
+    const refreshStreamStatus = async () => {
+      try {
+        const stream = await tm.getStreamStatus?.();
+        setLive((prev) => ({
+          ...prev,
+          rate: Number(stream?.ratePerSecond ?? 0),
+        }));
+      } catch {}
     };
-    void read();
-    const timer = setInterval(read, 2000);
-    const off = tm.onStatsPush?.(() => void read());
-    const offHist = tm.onDashboardHistoryChanged?.(() => void read());
+
+    void refreshStreamStatus();
+
+    const off = tm.onStatsPush?.((payload: any) => {
+      if (!payload) return;
+      if (payload.event === 'status') {
+        void refreshStreamStatus();
+        return;
+      }
+      const stats = payload?.data?.stats ?? payload?.stats ?? (payload?.periods ? payload : null);
+      if (stats) {
+        const today = stats?.periods?.today ?? stats?.today;
+        const localId = stats?.localDeviceId || stats?.settings?.deviceId || '';
+        const devices: Device[] = (Array.isArray(stats?.devices) ? stats.devices : [])
+          .map((d: any) => ({
+            id: String(d.deviceId || ''),
+            name: getDeviceLabel(d),
+            tokens: Number(d.periods?.today?.totalTokens ?? d.today?.totalTokens ?? d.todayTokens ?? 0),
+            local: Boolean((localId && d.deviceId === localId) || d.local),
+            stale: Boolean(d.stale),
+          }))
+          .sort((a: Device, b: Device) => Number(b.local) - Number(a.local) || b.tokens - a.tokens);
+        setLive((prev) => ({
+          ...prev,
+          tokens: Number(today?.totalTokens ?? today?.tokens ?? 0),
+          cost: Number(today?.costUsd ?? today?.cost ?? 0),
+          devices,
+        }));
+      }
+    });
+
     return () => {
-      clearInterval(timer);
       off?.();
-      offHist?.();
     };
   }, []);
+
   return live;
 }
 
