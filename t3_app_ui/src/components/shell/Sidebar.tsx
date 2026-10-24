@@ -40,7 +40,30 @@ function useLive() {
       } catch {}
     };
 
+    const applyStats = (raw: any) => {
+      const stats = raw?.data?.stats ?? raw?.stats ?? (raw?.periods ? raw : null);
+      if (!stats) return;
+      const today = stats?.periods?.today ?? stats?.today;
+      const localId = stats?.localDeviceId || stats?.settings?.deviceId || '';
+      const devices: Device[] = (Array.isArray(stats?.devices) ? stats.devices : [])
+        .map((d: any) => ({
+          id: String(d.deviceId || ''),
+          name: getDeviceLabel(d),
+          tokens: Number(d.periods?.today?.totalTokens ?? d.today?.totalTokens ?? d.todayTokens ?? 0),
+          local: Boolean((localId && d.deviceId === localId) || d.local),
+          stale: Boolean(d.stale),
+        }))
+        .sort((a: Device, b: Device) => Number(b.local) - Number(a.local) || b.tokens - a.tokens);
+      setLive((prev) => ({
+        ...prev,
+        tokens: Number(today?.totalTokens ?? today?.tokens ?? 0),
+        cost: Number(today?.costUsd ?? today?.cost ?? 0),
+        devices,
+      }));
+    };
+
     void refreshStreamStatus();
+    tm.getStats?.().then((s: any) => s && applyStats(s)).catch(() => {});
 
     const off = tm.onStatsPush?.((payload: any) => {
       if (!payload) return;
@@ -48,26 +71,7 @@ function useLive() {
         void refreshStreamStatus();
         return;
       }
-      const stats = payload?.data?.stats ?? payload?.stats ?? (payload?.periods ? payload : null);
-      if (stats) {
-        const today = stats?.periods?.today ?? stats?.today;
-        const localId = stats?.localDeviceId || stats?.settings?.deviceId || '';
-        const devices: Device[] = (Array.isArray(stats?.devices) ? stats.devices : [])
-          .map((d: any) => ({
-            id: String(d.deviceId || ''),
-            name: getDeviceLabel(d),
-            tokens: Number(d.periods?.today?.totalTokens ?? d.today?.totalTokens ?? d.todayTokens ?? 0),
-            local: Boolean((localId && d.deviceId === localId) || d.local),
-            stale: Boolean(d.stale),
-          }))
-          .sort((a: Device, b: Device) => Number(b.local) - Number(a.local) || b.tokens - a.tokens);
-        setLive((prev) => ({
-          ...prev,
-          tokens: Number(today?.totalTokens ?? today?.tokens ?? 0),
-          cost: Number(today?.costUsd ?? today?.cost ?? 0),
-          devices,
-        }));
-      }
+      applyStats(payload);
     });
 
     return () => {

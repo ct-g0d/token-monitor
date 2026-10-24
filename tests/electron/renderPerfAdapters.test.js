@@ -7,6 +7,7 @@ const {
   deriveStatsRevisionKey,
   isUsageAffectingSettingsChange,
   getLimitsKey,
+  cheapStableHash,
   createProviderIdentityCache,
 } = require('../../t3_app_ui/src/adapters/renderPerfHelpers.ts');
 
@@ -16,8 +17,9 @@ test('deriveStatsRevisionKey returns stable key from updatedAt and historyRevisi
     historyRevision: 42,
     periods: { today: { totalTokens: 100 } }
   };
+  const nullHash = cheapStableHash(JSON.stringify(null));
   const key1 = deriveStatsRevisionKey(stats1);
-  assert.equal(key1, '2026-10-24T12:00:00.000Z:42');
+  assert.equal(key1, `2026-10-24T12:00:00.000Z:42:${nullHash}`);
 
   // Session activity pushes leave updatedAt and historyRevision unchanged
   const sessionActivityPush = {
@@ -41,6 +43,37 @@ test('deriveStatsRevisionKey returns stable key from updatedAt and historyRevisi
   assert.notEqual(deriveStatsRevisionKey(historyUpdated), key1);
 });
 
+test('deriveStatsRevisionKey differentiates limits-only updates with same updatedAt/historyRevision', () => {
+  const statsBase = {
+    updatedAt: '2026-10-24T12:00:00.000Z',
+    historyRevision: 42,
+    limits: {
+      providers: [{ provider: 'claude', status: 'ok' }]
+    }
+  };
+  const statsIdentical = {
+    updatedAt: '2026-10-24T12:00:00.000Z',
+    historyRevision: 42,
+    limits: {
+      providers: [{ provider: 'claude', status: 'ok' }]
+    }
+  };
+  const statsLimitsChanged = {
+    updatedAt: '2026-10-24T12:00:00.000Z',
+    historyRevision: 42,
+    limits: {
+      providers: [{ provider: 'claude', status: 'rateLimited' }]
+    }
+  };
+
+  const keyBase = deriveStatsRevisionKey(statsBase);
+  const keyIdentical = deriveStatsRevisionKey(statsIdentical);
+  const keyLimitsChanged = deriveStatsRevisionKey(statsLimitsChanged);
+
+  assert.equal(keyBase, keyIdentical);
+  assert.notEqual(keyBase, keyLimitsChanged);
+});
+
 test('deriveStatsRevisionKey falls back to period tokens when updatedAt/historyRevision missing', () => {
   const statsWithoutHeader = {
     periods: {
@@ -49,8 +82,9 @@ test('deriveStatsRevisionKey falls back to period tokens when updatedAt/historyR
       allTime: { totalTokens: 10000 }
     }
   };
+  const nullHash = cheapStableHash(JSON.stringify(null));
   const key1 = deriveStatsRevisionKey(statsWithoutHeader);
-  assert.equal(key1, '500:2000:10000:none');
+  assert.equal(key1, `500:2000:10000:none:${nullHash}`);
 
   const unchanged = { ...statsWithoutHeader };
   assert.equal(deriveStatsRevisionKey(unchanged), key1);

@@ -430,7 +430,7 @@ export function buildUsageSummaryFromData(
 
   // Sessions by window support:
   // Expected shape from backend: sessionsByWindow: {"1","7","30","90": {<client>: n, total: n}}
-  // Guard against missing field: keep "�? (0) when absent.
+  // Guard against missing field: keep "—" (0) when absent.
   const rawSessionsByWindow: SessionsByWindow | undefined =
     history?.sessionsByWindow ?? stats?.sessionsByWindow;
   const windowKey = resolveWindowKey(input);
