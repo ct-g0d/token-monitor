@@ -101,6 +101,7 @@ const {
   visibleDiagnosticRoots
 } = require('../shared/collector');
 const { PricingEngine } = require('../shared/pricing/engine');
+const { createPricingLookupCache } = require('./pricingLookupCache');
 const {
   antigravitySyncLockPath,
   repairAntigravitySyncLock
@@ -537,6 +538,9 @@ const recoverMacWidgetLaunchServicesRegistration = createMacWidgetLaunchServices
 let standalonePricingEngine = new PricingEngine({
   customModelPricing: null,
   lookupModelPricing
+});
+const pricingLookupCache = createPricingLookupCache({
+  lookup: (id) => lookupModelPricing(id)
 });
 
 app.setName(APP_NAME);
@@ -7711,7 +7715,8 @@ app.whenReady().then(() => {
           }
         };
       }
-      return { ok: true, result: await lookupModelPricing(modelId) };
+      const result = await pricingLookupCache.get(modelId);
+      return { ok: true, result: result ?? null };
     } catch (error) {
       return { ok: false, error: error.message };
     }
