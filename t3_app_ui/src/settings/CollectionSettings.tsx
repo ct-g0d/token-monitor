@@ -66,8 +66,13 @@ export function CollectionSettings({ settings, updateSettings }: CollectionSetti
   const [pricingOutput, setPricingOutput] = useState('');
 
   // Tracked clients list
+  const trackedClientsValue = Array.isArray(settings.clients)
+    ? settings.clients.join(',')
+    : typeof settings.clients === 'string'
+      ? settings.clients
+      : '';
   const trackedClientsSet = new Set(
-    (settings.clients || CLIENT_CATALOG.map((c) => c.id).join(','))
+    (trackedClientsValue || CLIENT_CATALOG.map((c) => c.id).join(','))
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean)
@@ -75,7 +80,7 @@ export function CollectionSettings({ settings, updateSettings }: CollectionSetti
 
   // Hidden clients list
   const hiddenClientsSet = new Set(
-    (settings.hiddenClients || '')
+    (typeof settings.hiddenClients === 'string' ? settings.hiddenClients : '')
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean)
@@ -83,7 +88,7 @@ export function CollectionSettings({ settings, updateSettings }: CollectionSetti
 
   // Pinned clients list
   const pinnedClientsSet = new Set(
-    (settings.pinnedClients || '')
+    (typeof settings.pinnedClients === 'string' ? settings.pinnedClients : '')
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean)
