@@ -1087,6 +1087,62 @@ async function collectUsageOnce(options) {
       throwIfAborted(options.signal);
       allTime = extractUsageFromTokscale(allTimeJson);
     }
+    if (!anchorUsed && options.sweepEnabled !== false && (options.tokenLedgerStore || options.tokenLedgerDatabase || typeof options.sweepUsage === 'function')) {
+      let sweepFn = typeof options.sweepUsage === 'function' ? options.sweepUsage : null;
+      if (!sweepFn) {
+        try {
+          sweepFn = require('./usage/tokenLedgerSweep').sweepUsage;
+        } catch (_) {}
+      }
+      if (typeof sweepFn === 'function') {
+        try {
+          let adapters = options.sweepAdapters;
+          if (!adapters) {
+            try {
+              const { buildDefaultSweepAdapters } = require('./usage/defaultSweepAdapters');
+              adapters = buildDefaultSweepAdapters({
+                homeDir: options.homeDir,
+                env: options.env,
+                liveLedgerPath: options.tokenLedgerPath,
+                roots: options.sweepRoots || options.customScanPaths,
+                now: collectedAt.getTime()
+              });
+            } catch (_) {}
+          }
+          let store = options.tokenLedgerStore || null;
+          let db = options.tokenLedgerDatabase || (typeof store?.database === 'function' ? store.database() : null);
+          if (!store && !db) {
+            try {
+              const { createTokenLedgerStore } = require('./usage/tokenLedger');
+              store = createTokenLedgerStore(options);
+            } catch (_) {}
+          }
+          const sweepResult = sweepFn({
+            store,
+            db,
+            roots: options.sweepRoots || options.customScanPaths,
+            adapters,
+            discoverNativeSources: true,
+            now: collectedAt.getTime(),
+            mode: 'full'
+          });
+          if (typeof options.onSweepCompleted === 'function') {
+            options.onSweepCompleted(sweepResult);
+          }
+        } catch (error) {
+          if (typeof options.logger === 'function') {
+            options.logger('usage sweep failed: ' + (error?.message || error));
+          }
+          if (typeof options.onDiagnosticEvent === 'function') {
+            options.onDiagnosticEvent({
+              subsystem: 'collector',
+              code: 'usage-sweep-failed',
+              error: error?.message || String(error)
+            });
+          }
+        }
+      }
+    }
     // Always decorate: session timestamps drive the recency sort regardless of the
     // Projects opt-out (issue #182). decorateLocalPeriods gates only project identity
     // on projectsEnabled, so opting out still costs the timestamp backfill and nothing

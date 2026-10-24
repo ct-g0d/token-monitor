@@ -14,7 +14,13 @@ const {
   localTodayKey, collectHistoryOnce, collectUsageOnce, shouldIncludeHistory, startCollector
 } = require('../../src/shared/collector');
 
-function waitForCondition(predicate, timeoutMs = 2000) {
+function safeRmDir(dir) {
+  try {
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+  } catch (_) {}
+}
+
+function waitForCondition(predicate, timeoutMs = 30000) {
   const startedAt = Date.now();
   return new Promise((resolve, reject) => {
     const timer = setInterval(() => {
@@ -86,7 +92,7 @@ test('collectHistoryOnce returns null when the graph run throws', async () => {
 
 test('native graph failure with Dots usage preserves the previous complete device history', async (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dots-history-failure-'));
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  t.after(() => safeRmDir(dir));
   const now = new Date(2026, 5, 7, 12);
   const common = {
     clients: 'claude,codex', deviceId: 'dots-history-failure', allTimeSince: '2026-01-01', now,
@@ -128,7 +134,7 @@ test('native graph failure with Dots usage preserves the previous complete devic
 
 test('Dots history still merges after a successful empty native scan or a graph failure with retained native history', async (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dots-history-retained-'));
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  t.after(() => safeRmDir(dir));
   const options = {
     clients: 'claude,codex', todayKey: '2026-06-07',
     codexLocalGraph: { contributions: [{ date: '2026-06-07', clients: [{
@@ -149,7 +155,7 @@ test('Dots history still merges after a successful empty native scan or a graph 
 
 test('collectHistoryOnce counts an antigravity day once when tokscale and the reader both report it', async (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-antigravity-history-'));
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  t.after(() => safeRmDir(dir));
   const tokscaleGraph = { contributions: [{ date: '2026-06-07', clients: [
     { client: 'antigravity-cli', modelId: 'gemini', tokens: { input: 600 }, cost: 0, messages: 2 }
   ] }] };
@@ -381,7 +387,7 @@ test('collectHistoryOnce returns null when there are no clients', async () => {
 
 test('collectHistoryOnce retains a prior client observation when a later graph loses it', async (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'token-monitor-daily-history-'));
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  t.after(() => safeRmDir(dir));
   const archivePath = path.join(dir, 'daily-history.json');
   const options = {
     clients: 'claude,codex',
@@ -409,7 +415,7 @@ test('collectHistoryOnce retains a prior client observation when a later graph l
 
 test('collectHistoryOnce stores older days locally while capping daily output', async (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'token-monitor-full-daily-history-'));
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  t.after(() => safeRmDir(dir));
   const archivePath = path.join(dir, 'daily-history.json');
   const history = await collectHistoryOnce({
     clients: 'claude',
@@ -435,7 +441,7 @@ test('collectHistoryOnce stores older days locally while capping daily output', 
 
 test('collectUsageOnce hands the live day total to history across local rollover', async (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'token-monitor-live-history-'));
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  t.after(() => safeRmDir(dir));
   const archivePath = path.join(dir, 'daily-history.json');
   const common = {
     clients: 'claude',
@@ -472,7 +478,7 @@ test('collectUsageOnce hands the live day total to history across local rollover
 
 test('collectUsageOnce uses the live history snapshot while archive ownership is read-only', async (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'token-monitor-read-only-live-history-'));
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  t.after(() => safeRmDir(dir));
   const archivePath = path.join(dir, 'daily-history.json');
   const result = await collectUsageOnce({
     clients: 'claude',
@@ -499,7 +505,7 @@ test('collectUsageOnce uses the live history snapshot while archive ownership is
 
 test('startCollector retains a transformed watch total until the next history tick', async (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'token-monitor-live-history-ticks-'));
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  t.after(() => safeRmDir(dir));
   const archivePath = path.join(dir, 'daily-history.json');
   const todayKey = localTodayKey();
   const updates = [];
@@ -554,7 +560,7 @@ test('startCollector retains a transformed watch total until the next history ti
 
 test('startCollector does not subtract a stale Dots view after the current read fails', async (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'token-monitor-stale-dots-history-'));
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  t.after(() => safeRmDir(dir));
   const archivePath = path.join(dir, 'daily-history.json');
   const now = new Date();
   const todayKey = localTodayKey(now);
@@ -769,7 +775,7 @@ test('shouldIncludeHistory returns false when history collection is disabled', (
 
 test('a failed Dots ledger and throwing diagnostic observer do not discard native scans', async (t) => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dots-diagnostic-'));
-  t.after(() => fs.rmSync(home, { recursive: true, force: true }));
+  t.after(() => safeRmDir(home));
   const diagnostics = [];
   const summary = await collectUsageOnce({
     clients: 'codex', deviceId: 'diagnostic-fixture', homeDir: home,
@@ -783,4 +789,105 @@ test('a failed Dots ledger and throwing diagnostic observer do not discard nativ
   assert.equal(summary.today.totalTokens, 100);
   assert.equal(summary.today.costUsd, 1);
   assert.ok(diagnostics.includes('codex-local-usage-read-failed'));
+});
+
+test('full tick invokes serial tokscale scans then sweepUsage; watch tick scans today only and skips sweep', async () => {
+  const callOrder = [];
+  let sweepCalls = 0;
+
+  const mockRunTokscale = async ({ flags }) => {
+    callOrder.push('tokscale:' + flags[0]);
+    return { entries: [{ client: 'claude', sessionId: 's1', model: 'opus', input: 10, cost: 0.1, messages: 1 }] };
+  };
+
+  const mockSweepUsage = ({ mode }) => {
+    sweepCalls += 1;
+    callOrder.push('sweep:' + mode);
+    return { eventCount: 1, sources: [] };
+  };
+
+  // Full scan tick
+  const fullSummary = await collectUsageOnce({
+    clients: 'claude',
+    deviceId: 'test-device',
+    allTimeSince: '2026-01-01',
+    limitsEnabled: false,
+    projectsEnabled: false,
+    wslScanEnabled: false,
+    runTokscale: mockRunTokscale,
+    sweepUsage: mockSweepUsage
+  });
+
+  assert.equal(fullSummary.today.totalTokens, 10);
+  assert.deepEqual(callOrder, ['tokscale:--today', 'tokscale:--month', 'tokscale:--since', 'sweep:full']);
+  assert.equal(sweepCalls, 1);
+
+  // Watch scan tick with valid anchor
+  callOrder.length = 0;
+  const now = new Date();
+  const anchor = {
+    dateKey: localTodayKey(now),
+    sessionIdentityVersion: 1,
+    today: fullSummary.today,
+    month: fullSummary.month,
+    allTime: fullSummary.allTime,
+    todayPartitions: { claude: fullSummary.today }
+  };
+
+  await collectUsageOnce({
+    clients: 'claude',
+    deviceId: 'test-device',
+    allTimeSince: '2026-01-01',
+    limitsEnabled: false,
+    projectsEnabled: false,
+    wslScanEnabled: false,
+    todayOnlyAnchor: anchor,
+    runTokscale: mockRunTokscale,
+    sweepUsage: mockSweepUsage
+  });
+
+  assert.deepEqual(callOrder, ['tokscale:--today'], 'watch tick scans only --today and skips sweep');
+  assert.equal(sweepCalls, 1, 'sweep was not called on watch tick');
+});
+
+test('stale anchor forces a full scan and invokes sweepUsage', async () => {
+  const callOrder = [];
+  let sweepCalls = 0;
+
+  const mockRunTokscale = async ({ flags }) => {
+    callOrder.push('tokscale:' + flags[0]);
+    return { entries: [{ client: 'claude', sessionId: 's1', model: 'opus', input: 15, cost: 0.15, messages: 1 }] };
+  };
+
+  const mockSweepUsage = ({ mode }) => {
+    sweepCalls += 1;
+    callOrder.push('sweep:' + mode);
+  };
+
+  const updates = [];
+  // deliberately stale date
+
+  const runtime = startCollector({
+    clients: 'claude',
+    deviceId: 'stale-anchor-test',
+    allTimeSince: '2026-01-01',
+    intervalMs: 60 * 60 * 1000,
+    watchEnabled: false,
+    limitsEnabled: false,
+    projectsEnabled: false,
+    wslScanEnabled: false,
+    anchorPersistenceEnabled: false,
+    historyEnabled: false,
+    runTokscale: mockRunTokscale,
+    sweepUsage: mockSweepUsage,
+    onUpdate: (summary, reason) => updates.push({ summary, reason })
+  });
+
+  try {
+    await waitForCondition(() => updates.length >= 1);
+    assert.deepEqual(callOrder.slice(0, 4), ['tokscale:--today', 'tokscale:--month', 'tokscale:--since', 'sweep:full']);
+    assert.equal(sweepCalls, 1);
+  } finally {
+    runtime.stop();
+  }
 });

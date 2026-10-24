@@ -1,28 +1,110 @@
 'use strict';
 
-const { historyPreview, historyRevision } = require('../shared/history');
+const { historyPreview, historyRevision, localDayKey } = require('../shared/history');
 const { isAccountingExcludedClient } = require('../shared/clientTracking');
+const {
+  createTokenLedgerStore,
+  checkFactCoverage
+} = require('../shared/usage/tokenLedger');
 
 let defaultStoreInstance = null;
 
 function resolveLedgerStore(options = {}) {
   if (options.tokenLedgerStore) return options.tokenLedgerStore;
   if (options.path) {
-    const { createTokenLedgerStore } = require('../shared/usage/tokenLedger');
     return createTokenLedgerStore(options);
   }
   if (!defaultStoreInstance) {
-    const { createTokenLedgerStore } = require('../shared/usage/tokenLedger');
     defaultStoreInstance = createTokenLedgerStore(options);
   }
   return defaultStoreInstance;
 }
 
+function checkSqlCoverage(store, overlayDaily = [], options = {}) {
+  const opts = typeof overlayDaily === 'object' && !Array.isArray(overlayDaily) ? overlayDaily : options;
+  return checkFactCoverage(store, opts);
+}
+
+function sanitizeHistoryAccounting(history) {
+  if (!history || !Array.isArray(history.daily)) return history;
+  for (const day of history.daily) {
+    if (day?.perClient && typeof day.perClient === 'object') {
+      for (const client of Object.keys(day.perClient)) {
+        if (isAccountingExcludedClient(client)) {
+          delete day.perClient[client];
+        }
+      }
+    }
+    if (day?.clientModels && typeof day.clientModels === 'object') {
+      for (const client of Object.keys(day.clientModels)) {
+        if (isAccountingExcludedClient(client)) {
+          delete day.clientModels[client];
+        }
+      }
+    }
+  }
+  return history;
+}
+
+function localLedgerHistory(overlayHistory, options = {}) {
+  const store = resolveLedgerStore(options);
+  if (!store || typeof store.readHistory !== 'function') return null;
+
+  const overlayDaily = Array.isArray(overlayHistory?.daily) ? overlayHistory.daily : [];
+  const coverage = checkSqlCoverage(store, overlayDaily, options);
+
+  if (coverage.complete) {
+    const todayKey = String(options.today || options.todayKey || localDayKey()).slice(0, 10);
+    const liveTodayRow = overlayDaily.find((d) => d.date === todayKey)
+      || options.stats?.history?.daily?.find?.((d) => d.date === todayKey)
+      || null;
+    const todayOverlay = liveTodayRow ? { daily: [liveTodayRow] } : { daily: [] };
+    const history = sanitizeHistoryAccounting(store.readHistory({
+      ...options,
+      overlayHistory: todayOverlay,
+      sqlCoverageComplete: true,
+      today: todayKey
+    }));
+    if (history) {
+      history.sqlCoverageComplete = true;
+      const sessionsByWindow = store?.sessionsByWindow?.(options);
+      if (sessionsByWindow) history.sessionsByWindow = sessionsByWindow;
+    }
+    return history;
+  }
+
+  const history = sanitizeHistoryAccounting(store.readHistory({
+    ...options,
+    overlayHistory,
+    sqlCoverageComplete: false
+  }));
+  const diagnosticReason = coverage.reason || 'sql-coverage-incomplete';
+  if (history) {
+    history.sqlCoverageComplete = false;
+    history.diagnosticReason = diagnosticReason;
+  }
+  if (typeof options.onDiagnosticEvent === 'function') {
+    options.onDiagnosticEvent({
+      subsystem: 'ledger',
+      code: 'sql-coverage-incomplete',
+      reason: diagnosticReason
+    });
+  }
+  return history;
+}
+
 function withLocalLedgerHistory(stats, overlayHistory, options = {}) {
+  const store = resolveLedgerStore(options);
+  const isWatchTick = options.isWatchTick === true
+    || options.reason === 'watch'
+    || options.reason === 'watch-delta'
+    || options.reason === 'activity'
+    || (typeof options.reason === 'string' && options.reason.startsWith('watch'));
+
   const getLedgerHistory = options.localLedgerHistory;
   const history = typeof getLedgerHistory === 'function'
     ? getLedgerHistory(overlayHistory || stats?.history)
-    : (resolveLedgerStore(options)?.readHistory?.({ overlayHistory: overlayHistory || stats?.history }) || null);
+    : localLedgerHistory(overlayHistory || stats?.history, { ...options, tokenLedgerStore: store, stats });
   if (!history || !stats || typeof stats !== 'object') return stats;
 
   const targetDeviceId = String(
@@ -40,13 +122,6 @@ function withLocalLedgerHistory(stats, overlayHistory, options = {}) {
 
   const targetDevice = targetIndex >= 0 ? stats.devices[targetIndex] : null;
 
-  const store = resolveLedgerStore(options);
-  const isWatchTick = options.isWatchTick === true
-    || options.reason === 'watch'
-    || options.reason === 'watch-delta'
-    || options.reason === 'activity'
-    || (typeof options.reason === 'string' && options.reason.startsWith('watch'));
-
   const shouldWriteHistory = !isWatchTick && options.writeHistory === true;
 
   if (shouldWriteHistory && typeof store?.writeHistory === 'function' && Array.isArray(history.daily) && history.daily.length > 0) {
@@ -56,25 +131,32 @@ function withLocalLedgerHistory(stats, overlayHistory, options = {}) {
       console.warn('Could not persist runtime history to token ledger:', error?.message || error);
     }
   }
+
   const basePeriods = stats.periods || targetDevice?.periods;
   const periods = store?.readPeriods?.({
     overlayHistory: overlayHistory || stats.history,
-    basePeriods
+    basePeriods,
+    basePeriod: basePeriods?.allTime,
+    sqlCoverageComplete: history?.sqlCoverageComplete,
+    today: options.today || options.todayKey
   });
   if (!periods) {
     return {
       ...stats,
       history,
       historyPreview: historyPreview(history),
-      historyRevision: historyRevision(history)
+      historyRevision: historyRevision(history),
+      ...(history?.diagnosticReason ? { diagnosticReason: history.diagnosticReason } : {})
     };
   }
 
   for (const name of ['today', 'month', 'allTime']) {
-    periods[name].sessions = stats.periods?.[name]?.sessions
-      || targetDevice?.periods?.[name]?.sessions
-      || targetDevice?.[name]?.sessions
-      || {};
+    periods[name].sessions = (periods[name].sessions && Object.keys(periods[name].sessions).length > 0)
+      ? periods[name].sessions
+      : (stats.periods?.[name]?.sessions
+        || targetDevice?.periods?.[name]?.sessions
+        || targetDevice?.[name]?.sessions
+        || {});
     periods[name].projects = stats.periods?.[name]?.projects
       || targetDevice?.periods?.[name]?.projects
       || targetDevice?.[name]?.projects
@@ -108,6 +190,36 @@ function withLocalLedgerHistory(stats, overlayHistory, options = {}) {
       }
     }
 
+    // Explicitly clean any excluded accounting clients from periods
+    if (periods[name].clientModels && typeof periods[name].clientModels === 'object') {
+      for (const client of Object.keys(periods[name].clientModels)) {
+        if (isAccountingExcludedClient(client)) {
+          delete periods[name].clientModels[client];
+        }
+      }
+    }
+    if (periods[name].clientModelCosts && typeof periods[name].clientModelCosts === 'object') {
+      for (const client of Object.keys(periods[name].clientModelCosts)) {
+        if (isAccountingExcludedClient(client)) {
+          delete periods[name].clientModelCosts[client];
+        }
+      }
+    }
+    if (periods[name].clients && typeof periods[name].clients === 'object') {
+      for (const client of Object.keys(periods[name].clients)) {
+        if (isAccountingExcludedClient(client)) {
+          delete periods[name].clients[client];
+        }
+      }
+    }
+    if (periods[name].clientCosts && typeof periods[name].clientCosts === 'object') {
+      for (const client of Object.keys(periods[name].clientCosts)) {
+        if (isAccountingExcludedClient(client)) {
+          delete periods[name].clientCosts[client];
+        }
+      }
+    }
+
     const existingUnpriced = Number(
       stats.periods?.[name]?.unpricedTokens
       ?? targetDevice?.periods?.[name]?.unpricedTokens
@@ -134,34 +246,44 @@ function withLocalLedgerHistory(stats, overlayHistory, options = {}) {
     }
   }
 
-  const devices = Array.isArray(stats.devices) && stats.devices.length > 0 && targetIndex >= 0
-    ? stats.devices.map((device, idx) => {
-        if (idx !== targetIndex) return device;
-        return {
-          ...device,
-          periods: {
-            ...device.periods,
-            today: { ...periods.today },
-            month: { ...periods.month },
-            allTime: { ...periods.allTime }
-          },
+  const updatedTargetDevice = targetDevice
+    ? {
+        ...targetDevice,
+        history,
+        periods: {
+          ...targetDevice.periods,
           today: { ...periods.today },
           month: { ...periods.month },
           allTime: { ...periods.allTime }
-        };
-      })
+        },
+        today: { ...periods.today },
+        month: { ...periods.month },
+        allTime: { ...periods.allTime }
+      }
+    : null;
+
+  const updatedDevices = Array.isArray(stats.devices)
+    ? stats.devices.map((d, i) => (i === targetIndex ? updatedTargetDevice : d))
     : stats.devices;
 
+  const sessionsByWindow = store?.sessionsByWindow?.(options) || null;
   return {
     ...stats,
-    periods,
-    history,
-    devices,
+    history: {
+      ...history,
+      ...(sessionsByWindow ? { sessionsByWindow } : {})
+    },
     historyPreview: historyPreview(history),
-    historyRevision: historyRevision(history)
+    historyRevision: historyRevision(history),
+    periods,
+    ...(sessionsByWindow ? { sessionsByWindow } : {}),
+    ...(history?.diagnosticReason ? { diagnosticReason: history.diagnosticReason } : {}),
+    ...(updatedDevices ? { devices: updatedDevices } : {})
   };
 }
 
 module.exports = {
+  checkSqlCoverage,
+  localLedgerHistory,
   withLocalLedgerHistory
 };

@@ -300,3 +300,196 @@ test('withLocalLedgerHistory does not invoke store.writeHistory without explicit
   withLocalLedgerHistory(stats, null, { tokenLedgerStore: mockStore, deviceId: 'dev-1', writeHistory: true });
   assert.equal(writeCalled, true, 'writeHistory should be called when writeHistory: true');
 });
+
+test('SQL reader precedence selects SQL rollups when coverage is complete', () => {
+  const sqlDaily = [
+    {
+      date: '2026-10-15',
+      tokens: 5000,
+      cost: 0.5,
+      messages: 5,
+      cacheReadTokens: 1000,
+      cacheWriteTokens: 0,
+      outputTokens: 4000,
+      unclassifiedTokens: 0,
+      perClient: { codex: { tokens: 5000, cost: 0.5, messages: 5 } },
+      perModel: { 'gpt-4o': { tokens: 5000, cost: 0.5 } }
+    }
+  ];
+
+  // Archive has a lower or equal observation
+  const archiveOverlay = {
+    daily: [
+      {
+        date: '2026-10-15',
+        tokens: 3000,
+        perClient: { codex: { tokens: 3000 } }
+      }
+    ]
+  };
+
+  const mockDb = {
+    prepare: (sql) => ({
+      get: () => (sql.includes('dirty = 1') ? null : { count: 1 }),
+      all: () => [{ date_bucket: '2026-10-15', provider: 'codex', tokens: 5000 }]
+    })
+  };
+
+  let capturedOverlay = null;
+  const mockStore = {
+    database: () => mockDb,
+    readHistory: (opts) => {
+      capturedOverlay = opts.overlayHistory;
+      return { daily: sqlDaily, monthly: [], summary: { totalTokens: 5000 } };
+    },
+    readPeriods: () => samplePeriods({ allTime: { ...emptyPeriod(), totalTokens: 5000 } })
+  };
+
+  const stats = {
+    mode: 'local',
+    periods: samplePeriods(),
+    devices: [{ deviceId: 'dev-sql', periods: samplePeriods(), allTime: emptyPeriod() }]
+  };
+
+  const synced = withLocalLedgerHistory(stats, archiveOverlay, {
+    tokenLedgerStore: mockStore,
+    deviceId: 'dev-sql',
+    today: '2026-10-23'
+  });
+
+  assert.equal(synced.history.summary.totalTokens, 5000);
+  assert.equal(synced.history.sqlCoverageComplete, true);
+  // Past archive overlay was not forwarded because SQL coverage was complete
+  assert.equal(capturedOverlay?.daily?.length || 0, 0);
+});
+
+test('archive fallback retains max overlay and exposes diagnostic reason when SQL coverage is incomplete', () => {
+  const diagnostics = [];
+  const archiveOverlay = {
+    daily: [
+      {
+        date: '2026-10-10',
+        tokens: 10000,
+        perClient: { codex: { tokens: 10000 } }
+      }
+    ]
+  };
+
+  // Mock DB where watermark is dirty
+  const mockDb = {
+    prepare: (sql) => ({
+      get: () => (sql.includes('dirty = 1') ? { dirty: 1 } : { count: 1 }),
+      all: () => []
+    })
+  };
+
+  let capturedOverlay = null;
+  const mockStore = {
+    database: () => mockDb,
+    readHistory: (opts) => {
+      capturedOverlay = opts.overlayHistory;
+      return {
+        daily: [{ date: '2026-10-10', tokens: 10000, perClient: { codex: { tokens: 10000 } } }],
+        monthly: [],
+        summary: { totalTokens: 10000 }
+      };
+    },
+    readPeriods: () => samplePeriods({ allTime: { ...emptyPeriod(), totalTokens: 10000 } })
+  };
+
+  const stats = {
+    mode: 'local',
+    periods: samplePeriods(),
+    devices: [{ deviceId: 'dev-fallback', periods: samplePeriods(), allTime: emptyPeriod() }]
+  };
+
+  const synced = withLocalLedgerHistory(stats, archiveOverlay, {
+    tokenLedgerStore: mockStore,
+    deviceId: 'dev-fallback',
+    today: '2026-10-23',
+    onDiagnosticEvent: (event) => diagnostics.push(event)
+  });
+
+  assert.equal(synced.history.sqlCoverageComplete, false);
+  assert.ok(synced.history.diagnosticReason);
+  assert.equal(capturedOverlay, archiveOverlay, 'full archive overlay was forwarded for max merge');
+  assert.equal(diagnostics.length, 1);
+  assert.equal(diagnostics[0].code, 'sql-coverage-incomplete');
+  assert.equal(diagnostics[0].reason, 'watermark-dirty');
+});
+
+test('DSH observations in archive are filtered out and do not cause incomplete SQL coverage', () => {
+  // Archive has DSH client with 999B tokens, but no other client
+  const archiveOverlay = {
+    daily: [
+      {
+        date: '2026-10-10',
+        tokens: 999_000_000,
+        perClient: { dsh: { tokens: 999_000_000 } }
+      }
+    ]
+  };
+
+  const mockDb = {
+    prepare: (sql) => ({
+      get: () => (sql.includes('dirty = 1') ? null : { count: 1 }),
+      all: () => []
+    })
+  };
+
+  const mockStore = {
+    database: () => mockDb,
+    readHistory: () => ({ daily: [], monthly: [], summary: { totalTokens: 0 } }),
+    readPeriods: () => samplePeriods()
+  };
+
+  const stats = {
+    mode: 'local',
+    periods: samplePeriods(),
+    devices: [{ deviceId: 'dev-dsh', periods: samplePeriods(), allTime: emptyPeriod() }]
+  };
+
+  const synced = withLocalLedgerHistory(stats, archiveOverlay, {
+    tokenLedgerStore: mockStore,
+    deviceId: 'dev-dsh',
+    today: '2026-10-23'
+  });
+
+  // DSH was filtered out, so SQL coverage is considered complete
+  assert.equal(synced.history.sqlCoverageComplete, true);
+  assert.equal(synced.history.diagnosticReason, undefined);
+});
+
+test('withLocalLedgerHistory does not invoke sweepUsage (sweep is owned by collector)', () => {
+  let sweepCalls = 0;
+  const mockSweepUsage = () => { sweepCalls += 1; };
+
+  const mockStore = {
+    readHistory: () => ({ daily: [], monthly: [], summary: { totalTokens: 0 } }),
+    readPeriods: () => samplePeriods()
+  };
+
+  const stats = {
+    mode: 'local',
+    periods: samplePeriods(),
+    devices: [{ deviceId: 'dev-sweep', periods: samplePeriods(), allTime: emptyPeriod() }]
+  };
+
+  // Full tick
+  withLocalLedgerHistory(stats, null, {
+    tokenLedgerStore: mockStore,
+    deviceId: 'dev-sweep',
+    isWatchTick: false,
+    sweepUsage: mockSweepUsage
+  });
+  assert.equal(sweepCalls, 0, 'sweepUsage should not be invoked by withLocalLedgerHistory on full tick');
+
+  // Watch tick
+  withLocalLedgerHistory(stats, null, {
+    tokenLedgerStore: mockStore,
+    deviceId: 'dev-sweep',
+    isWatchTick: true,
+    sweepUsage: mockSweepUsage
+  });
+  assert.equal(sweepCalls, 0, 'sweepUsage should not be invoked by withLocalLedgerHistory on watch tick');
+});

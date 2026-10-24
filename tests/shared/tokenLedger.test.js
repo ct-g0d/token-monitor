@@ -7,7 +7,20 @@ const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
 const test = require('node:test');
 
-const { createTokenLedgerStore, periodFromDays, resolveTokenLedgerPath } = require('../../src/shared/usage/tokenLedger');
+const {
+  createTokenLedgerStore,
+  periodFromDays,
+  resolveTokenLedgerPath,
+  ensureFactSchema,
+  upsertUsageEvent,
+  beginSweepRun,
+  finishSweepRun,
+  writeSourceWatermark,
+  canonicalFactDayRows,
+  checkFactCoverage,
+  isFactCoverageComplete
+} = require('../../src/shared/usage/tokenLedger');
+const { rebuildUsageRollups } = require('../../src/shared/usage/tokenLedgerSweep');
 
 function tempLedger() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'token-ledger-'));
@@ -59,6 +72,79 @@ test('ledger history overlays a live day without double counting the base rollup
   const periods = store.readPeriods({ overlayHistory: overlay });
   assert.equal(periods.allTime.totalTokens, 17);
   assert.equal(periods.month.totalTokens, 17);
+  store.close();
+  fs.rmSync(fixture.dir, { recursive: true, force: true });
+});
+
+test('fresh ledger migration creates schema version 2 and fact tables', () => {
+  const fixture = tempLedger();
+  const store = createTokenLedgerStore({ path: fixture.file, homeDir: fixture.dir });
+  const status = store.status();
+  assert.equal(status.schemaVersion, 2);
+  const tables = store.database().prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((row) => row.name);
+  for (const table of ['usage_events', 'source_watermarks', 'usage_sweep_runs', 'source_event_equivalence']) assert.ok(tables.includes(table));
+  store.close();
+  fs.rmSync(fixture.dir, { recursive: true, force: true });
+});
+
+test('legacy token ledger backfills once and remains idempotent across reopen', () => {
+  const fixture = tempLedger();
+  const legacy = new DatabaseSync(fixture.file);
+  legacy.exec(fs.readFileSync(path.join(__dirname, '..', 'fixtures', 'token-ledger', 'legacy.sql'), 'utf8'));
+  legacy.close();
+  const first = createTokenLedgerStore({ path: fixture.file, homeDir: fixture.dir });
+  const firstRow = first.database().prepare('SELECT natural_key, client_id, total_tokens FROM usage_events').get();
+  assert.deepEqual({ ...firstRow }, { natural_key: 'legacy:codex:fixture-turn-1', client_id: 'codex', total_tokens: 42 });
+  assert.equal(first.database().prepare('SELECT COUNT(*) AS count FROM usage_events').get().count, 1);
+  first.close();
+  const second = createTokenLedgerStore({ path: fixture.file, homeDir: fixture.dir });
+  assert.equal(second.database().prepare('SELECT COUNT(*) AS count FROM usage_events').get().count, 1);
+  second.close();
+  fs.rmSync(fixture.dir, { recursive: true, force: true });
+});
+
+test('fact rewrite replaces the existing natural key instead of adding a duplicate', () => {
+  const fixture = tempLedger();
+  const store = createTokenLedgerStore({ path: fixture.file, homeDir: fixture.dir });
+  const db = store.database();
+  const { upsertUsageEvent } = require('../../src/shared/usage/tokenLedger');
+  upsertUsageEvent(db, { naturalKey: 'rewrite-1', clientId: 'codex', sourceKind: 'fixture', sourceId: 'file', occurredAtMs: 1790000000000, modelId: 'gpt', totalTokens: 10 });
+  upsertUsageEvent(db, { naturalKey: 'rewrite-1', clientId: 'codex', sourceKind: 'fixture', sourceId: 'file', occurredAtMs: 1790000000000, modelId: 'gpt', totalTokens: 25 });
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM usage_events WHERE natural_key = ?').get('rewrite-1').count, 1);
+  assert.equal(db.prepare('SELECT total_tokens FROM usage_events WHERE natural_key = ?').get('rewrite-1').total_tokens, 25);
+  store.close();
+  fs.rmSync(fixture.dir, { recursive: true, force: true });
+});
+
+test('accounting rollups keep DSH facts auditable while excluding them from projections', () => {
+  const fixture = tempLedger();
+  const store = createTokenLedgerStore({ path: fixture.file, homeDir: fixture.dir });
+  const db = store.database();
+  const { upsertUsageEvent } = require('../../src/shared/usage/tokenLedger');
+  for (const [client, tokens] of [['codex', 40], ['dsh', 60]]) {
+    upsertUsageEvent(db, { naturalKey: `dsh-${client}`, clientId: client, sourceKind: 'fixture', sourceId: 'dsh', occurredAtMs: 1790000000000, modelId: 'gpt', totalTokens: tokens });
+  }
+  rebuildUsageRollups(db);
+  assert.equal(db.prepare('SELECT SUM(total_tokens) AS total FROM usage_events').get().total, 100);
+  assert.equal(db.prepare('SELECT SUM(total_processed) AS total FROM daily_usage').get().total, 40);
+  assert.equal(store.readHistory().summary.totalTokens, 40);
+  store.close();
+  fs.rmSync(fixture.dir, { recursive: true, force: true });
+});
+
+test('legacy readHistory and readPeriods preserve the same accounting totals after migration', () => {
+  const fixture = tempLedger();
+  const db = new DatabaseSync(fixture.file);
+  db.exec(`CREATE TABLE daily_usage (\n    date_bucket TEXT NOT NULL, provider TEXT NOT NULL, model_codename TEXT NOT NULL,\n    turn_count INTEGER NOT NULL DEFAULT 0, total_uncached_in INTEGER NOT NULL DEFAULT 0,\n    total_cached_in INTEGER NOT NULL DEFAULT 0, total_cache_write INTEGER NOT NULL DEFAULT 0,\n    total_output INTEGER NOT NULL DEFAULT 0, total_reasoning INTEGER NOT NULL DEFAULT 0,\n    total_processed INTEGER NOT NULL DEFAULT 0, total_known_cost_usd REAL NOT NULL DEFAULT 0,\n    unknown_pricing_turn_count INTEGER NOT NULL DEFAULT 0, cache_savings_pct REAL NOT NULL DEFAULT 0,\n    PRIMARY KEY (date_bucket, provider, model_codename));
+    INSERT INTO daily_usage VALUES ('2026-06-01', 'codex', 'gpt-5', 1, 0, 0, 0, 0, 0, 42, 0, 1, 0);`);
+  db.close();
+  const store = createTokenLedgerStore({ path: fixture.file, homeDir: fixture.dir });
+  const history = store.readHistory();
+  const periods = store.readPeriods();
+  assert.equal(history.summary.totalTokens, 42);
+  assert.equal(periods.allTime.totalTokens, 42);
+  assert.equal(periods.allTime.clients.codex, 42);
+  assert.equal(periods.allTime.clientModels.codex['gpt-5'], 42);
   store.close();
   fs.rmSync(fixture.dir, { recursive: true, force: true });
 });
@@ -416,24 +502,7 @@ test('ledger folds reasoning into output when reconstructing token components', 
   const fixture = tempLedger();
   const db = new DatabaseSync(fixture.file);
   db.exec(`
-    CREATE TABLE daily_usage (
-      date_bucket TEXT NOT NULL,
-      provider TEXT NOT NULL,
-      model_codename TEXT NOT NULL,
-      turn_count INTEGER NOT NULL DEFAULT 0,
-      total_uncached_in INTEGER NOT NULL DEFAULT 0,
-      total_cached_in INTEGER NOT NULL DEFAULT 0,
-      total_cache_write INTEGER NOT NULL DEFAULT 0,
-      total_output INTEGER NOT NULL DEFAULT 0,
-      total_reasoning INTEGER NOT NULL DEFAULT 0,
-      total_processed INTEGER NOT NULL DEFAULT 0,
-      total_known_cost_usd REAL NOT NULL DEFAULT 0,
-      unknown_pricing_turn_count INTEGER NOT NULL DEFAULT 0,
-      cache_savings_pct REAL NOT NULL DEFAULT 0,
-      PRIMARY KEY (date_bucket, provider, model_codename)
-    );
-    INSERT INTO daily_usage VALUES ('2026-08-01', 'codex', 'gpt-6.1-sol', 1, 100, 700, 0, 50, 25, 875, 1, 0, 0);
-  `);
+    CREATE TABLE daily_usage (\n      date_bucket TEXT NOT NULL,\n      provider TEXT NOT NULL,\n      model_codename TEXT NOT NULL,\n      turn_count INTEGER NOT NULL DEFAULT 0,\n      total_uncached_in INTEGER NOT NULL DEFAULT 0,\n      total_cached_in INTEGER NOT NULL DEFAULT 0,\n      total_cache_write INTEGER NOT NULL DEFAULT 0,\n      total_output INTEGER NOT NULL DEFAULT 0,\n      total_reasoning INTEGER NOT NULL DEFAULT 0,\n      total_processed INTEGER NOT NULL DEFAULT 0,\n      total_known_cost_usd REAL NOT NULL DEFAULT 0,\n      unknown_pricing_turn_count INTEGER NOT NULL DEFAULT 0,\n      cache_savings_pct REAL NOT NULL DEFAULT 0,\n      PRIMARY KEY (date_bucket, provider, model_codename)\n    );\n    INSERT INTO daily_usage VALUES ('2026-08-01', 'codex', 'gpt-6.1-sol', 1, 100, 700, 0, 50, 25, 875, 1, 0, 0);\n  `);
   db.close();
 
   const store = createTokenLedgerStore({ path: fixture.file, homeDir: fixture.dir });
@@ -952,7 +1021,7 @@ test('readHistory merges past-date archive overlay taking the larger client obse
             cost: 0.2,
             messages: 2
           },
-          // Case 3: client only in archive -> added (3,000)
+          // Case 3: client only in archive (claude) is added
           '["claude","claude-3-7-sonnet"]': {
             client: 'claude',
             modelId: 'claude-3-7-sonnet',
@@ -1014,4 +1083,273 @@ test('readHistory merges past-date archive overlay taking the larger client obse
 
   store.close();
   fs.rmSync(fixture.dir, { recursive: true, force: true });
+});
+
+test('readHistory and readPeriods return fact totals when coverage is complete and fall back when incomplete', () => {
+  const fixture = tempLedger();
+  const db = new DatabaseSync(fixture.file);
+  db.exec(`
+    CREATE TABLE daily_usage (
+      date_bucket TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      model_codename TEXT NOT NULL,
+      turn_count INTEGER NOT NULL DEFAULT 0,
+      total_uncached_in INTEGER NOT NULL DEFAULT 0,
+      total_cached_in INTEGER NOT NULL DEFAULT 0,
+      total_cache_write INTEGER NOT NULL DEFAULT 0,
+      total_output INTEGER NOT NULL DEFAULT 0,
+      total_reasoning INTEGER NOT NULL DEFAULT 0,
+      total_processed INTEGER NOT NULL DEFAULT 0,
+      total_known_cost_usd REAL NOT NULL DEFAULT 0,
+      unknown_pricing_turn_count INTEGER NOT NULL DEFAULT 0,
+      cache_savings_pct REAL NOT NULL DEFAULT 0,
+      PRIMARY KEY (date_bucket, provider, model_codename)
+    );
+    INSERT INTO daily_usage VALUES ('2026-10-15', 'codex', 'gpt-5', 1, 0, 0, 0, 0, 0, 50, 0.5, 0, 0);
+  `);
+  db.close();
+
+  const store = createTokenLedgerStore({ path: fixture.file, homeDir: fixture.dir });
+  const { upsertUsageEvent } = require('../../src/shared/usage/tokenLedger');
+
+  upsertUsageEvent(store.database(), {
+    naturalKey: 'fact:codex:2026-10-15:1',
+    clientId: 'codex',
+    sourceKind: 'codex',
+    sourceId: 'codex-sessions',
+    dateBucket: '2026-10-15',
+    occurredAtMs: 1792000000000,
+    modelId: 'gpt-5',
+    totalTokens: 1000,
+    costUsd: 1.0,
+    state: 'active'
+  });
+  upsertUsageEvent(store.database(), {
+    naturalKey: 'fact:antigravity:2026-10-15:1',
+    clientId: 'antigravity',
+    sourceKind: 'antigravity-disk',
+    sourceId: 'antigravity-disk',
+    dateBucket: '2026-10-15',
+    occurredAtMs: 1792000000000,
+    modelId: 'gemini-3.8-pro',
+    totalTokens: 2000,
+    costUsd: 2.0,
+    state: 'active'
+  });
+  upsertUsageEvent(store.database(), {
+    naturalKey: 'fact:dsh:2026-10-15:1',
+    clientId: 'dsh',
+    sourceKind: 'dsh',
+    sourceId: 'dsh-sessions',
+    dateBucket: '2026-10-15',
+    occurredAtMs: 1792000000000,
+    modelId: 'deepseek-v3',
+    totalTokens: 500,
+    costUsd: 0.1,
+    state: 'active'
+  });
+
+  const historyComplete = store.readHistory({ sqlCoverageComplete: true, today: '2026-10-16' });
+  assert.equal(historyComplete.summary.totalTokens, 3000);
+  assert.equal(historyComplete.daily.length, 1);
+  assert.equal(historyComplete.daily[0].perClient.codex.tokens, 1000);
+  assert.equal(historyComplete.daily[0].perClient.antigravity.tokens, 2000);
+  assert.equal(historyComplete.daily[0].perClient.dsh, undefined);
+
+  const periodsComplete = store.readPeriods({ sqlCoverageComplete: true, today: '2026-10-16' });
+  assert.equal(periodsComplete.allTime.totalTokens, 3000);
+  assert.equal(periodsComplete.allTime.clients.codex, 1000);
+  assert.equal(periodsComplete.allTime.clients.antigravity, 2000);
+  assert.equal(periodsComplete.allTime.clients.dsh, undefined);
+
+  const historyIncomplete = store.readHistory({ sqlCoverageComplete: false, today: '2026-10-16' });
+  assert.equal(historyIncomplete.summary.totalTokens, 50);
+  assert.equal(historyIncomplete.daily[0].perClient.codex.tokens, 50);
+
+  const periodsIncomplete = store.readPeriods({ sqlCoverageComplete: false, today: '2026-10-16' });
+  assert.equal(periodsIncomplete.allTime.totalTokens, 50);
+  assert.equal(periodsIncomplete.allTime.clients.codex, 50);
+
+  store.close();
+  fs.rmSync(fixture.dir, { recursive: true, force: true });
+});
+
+test('canonicalFactDayRows matches T3 definition for antigravity (authoritative disk on past days, archive on today)', () => {
+  const db = new DatabaseSync(':memory:');
+  ensureFactSchema(db);
+  const sweepId = beginSweepRun(db, { mode: 'full' });
+  finishSweepRun(db, sweepId, { status: 'completed' });
+
+  // 1. Past day with both disk and archive -> disk wins authoritatively
+  upsertUsageEvent(db, {
+    naturalKey: 'ag:disk:2026-08-15',
+    clientId: 'antigravity',
+    sourceKind: 'antigravity-disk',
+    sourceId: 'antigravity-disk',
+    occurredAtMs: Date.parse('2026-08-15T12:00:00Z'),
+    dateBucket: '2026-08-15',
+    modelId: 'gemini-3.8-flash',
+    totalTokens: 100000,
+    state: 'active'
+  }, { runId: sweepId });
+
+  upsertUsageEvent(db, {
+    naturalKey: 'ag:archive:2026-08-15',
+    clientId: 'antigravity',
+    sourceKind: 'daily-history-archive',
+    sourceId: 'daily-history-archive.json',
+    occurredAtMs: Date.parse('2026-08-15T12:00:00Z'),
+    dateBucket: '2026-08-15',
+    modelId: 'gemini-3.8-flash',
+    totalTokens: 500000,
+    state: 'active'
+  }, { runId: sweepId });
+
+  // 2. Today with archive -> archive chosen to match frozen screenshot window
+  upsertUsageEvent(db, {
+    naturalKey: 'ag:archive:2026-10-23',
+    clientId: 'antigravity',
+    sourceKind: 'daily-history-archive',
+    sourceId: 'daily-history-archive.json',
+    occurredAtMs: Date.parse('2026-10-23T12:00:00Z'),
+    dateBucket: '2026-10-23',
+    modelId: 'gemini-3.8-flash',
+    totalTokens: 250000,
+    state: 'active'
+  }, { runId: sweepId });
+
+  // 3. Past day with ONLY archive (purged disk) -> falls back to archive
+  upsertUsageEvent(db, {
+    naturalKey: 'ag:archive:2026-09-30',
+    clientId: 'antigravity',
+    sourceKind: 'daily-history-archive',
+    sourceId: 'daily-history-archive.json',
+    occurredAtMs: Date.parse('2026-09-30T12:00:00Z'),
+    dateBucket: '2026-09-30',
+    modelId: 'gemini-3.8-flash',
+    totalTokens: 57491193,
+    state: 'active'
+  }, { runId: sweepId });
+
+  // 4. Past day with ONLY legacy token-ledger -> falls back to token-ledger
+  upsertUsageEvent(db, {
+    naturalKey: 'ag:token-ledger:2026-10-15',
+    clientId: 'antigravity',
+    sourceKind: 'token-ledger',
+    sourceId: 'token_ledger.sqlite',
+    occurredAtMs: Date.parse('2026-10-15T12:00:00Z'),
+    dateBucket: '2026-10-15',
+    modelId: 'gemini-3.8-flash',
+    totalTokens: 147537626,
+    state: 'active'
+  }, { runId: sweepId });
+
+  const rows = canonicalFactDayRows(db, { today: '2026-10-23' });
+  const pastDay = rows.find((r) => r.date === '2026-08-15');
+  assert.ok(pastDay, 'past day exists in canonicalFactDayRows');
+  assert.equal(pastDay.perClient?.antigravity?.tokens, 100000, 'past day uses authoritative disk source (100000), not archive (500000)');
+
+  const purgedDay1 = rows.find((r) => r.date === '2026-09-30');
+  assert.ok(purgedDay1, 'purged day 2026-09-30 exists in canonicalFactDayRows');
+  assert.equal(purgedDay1.perClient?.antigravity?.tokens, 57491193, 'falls back to archive on purged day');
+
+  const purgedDay2 = rows.find((r) => r.date === '2026-10-15');
+  assert.ok(purgedDay2, 'purged day 2026-10-15 exists in canonicalFactDayRows');
+  assert.equal(purgedDay2.perClient?.antigravity?.tokens, 147537626, 'falls back to token-ledger on purged day');
+
+  const todayRow = rows.find((r) => r.date === '2026-10-23');
+  assert.ok(todayRow, 'today exists in canonicalFactDayRows');
+  assert.equal(todayRow.perClient?.antigravity?.tokens, 250000, 'today uses archive observation (250000)');
+
+  db.close();
+});
+
+test('checkFactCoverage and isFactCoverageComplete require completed sweep, no dirty watermarks, and latest not failed', () => {
+  const db = new DatabaseSync(':memory:');
+  ensureFactSchema(db);
+
+  // 1. No sweeps yet
+  assert.equal(isFactCoverageComplete(db), false);
+  assert.equal(checkFactCoverage(db).reason, 'no-completed-sweep');
+
+  // 2. Completed sweep run
+  const sweep1 = beginSweepRun(db, { mode: 'full' });
+  finishSweepRun(db, sweep1, { status: 'completed' });
+  assert.equal(isFactCoverageComplete(db), true);
+  assert.equal(checkFactCoverage(db).reason, null);
+
+  // 3. Dirty watermark makes coverage incomplete
+  writeSourceWatermark(db, {
+    sourceKind: 'test-kind',
+    sourceId: 'test-id',
+    dirty: 1
+  });
+  assert.equal(isFactCoverageComplete(db), false);
+  assert.equal(checkFactCoverage(db).reason, 'watermark-dirty');
+
+  // Clean the watermark
+  writeSourceWatermark(db, {
+    sourceKind: 'test-kind',
+    sourceId: 'test-id',
+    dirty: 0
+  });
+  assert.equal(isFactCoverageComplete(db), true);
+
+  // 4. Latest sweep failed makes coverage incomplete even if previous sweep completed
+  const sweep2 = beginSweepRun(db, { mode: 'incremental' });
+  finishSweepRun(db, sweep2, { status: 'failed', error: new Error('test-failure') });
+  assert.equal(isFactCoverageComplete(db), false);
+  assert.equal(checkFactCoverage(db).reason, 'latest-sweep-failed');
+
+  db.close();
+});
+
+test('canonicalFactDayRows caches results by (sweepId, today) and invalidates properly', () => {
+  const db = new DatabaseSync(':memory:');
+  ensureFactSchema(db);
+  const sweep1 = beginSweepRun(db, { mode: 'full' });
+  finishSweepRun(db, sweep1, { status: 'completed' });
+
+  upsertUsageEvent(db, {
+    naturalKey: 'test:1',
+    clientId: 'codex',
+    sourceKind: 'test-source',
+    sourceId: 'src-1',
+    occurredAtMs: Date.parse('2026-10-10T12:00:00Z'),
+    dateBucket: '2026-10-10',
+    modelId: 'gpt-4o',
+    totalTokens: 1000,
+    state: 'active'
+  }, { runId: sweep1 });
+
+  const r1 = canonicalFactDayRows(db, { today: '2026-10-23' });
+  assert.equal(r1[0].tokens, 1000);
+
+  // Cache hit
+  const r2 = canonicalFactDayRows(db, { today: '2026-10-23' });
+  assert.deepEqual(r1, r2);
+
+  // Day rollover causes cache invalidation / re-eval
+  const r3 = canonicalFactDayRows(db, { today: '2026-10-24' });
+  assert.deepEqual(r1, r3);
+
+  // Sweep completion invalidates cache
+  const sweep2 = beginSweepRun(db, { mode: 'full' });
+  upsertUsageEvent(db, {
+    naturalKey: 'test:2',
+    clientId: 'codex',
+    sourceKind: 'test-source',
+    sourceId: 'src-1',
+    occurredAtMs: Date.parse('2026-10-10T13:00:00Z'),
+    dateBucket: '2026-10-10',
+    modelId: 'gpt-4o',
+    totalTokens: 2000,
+    state: 'active'
+  }, { runId: sweep2 });
+  finishSweepRun(db, sweep2, { status: 'completed' });
+
+  const r4 = canonicalFactDayRows(db, { today: '2026-10-23' });
+  assert.equal(r4[0].tokens, 3000);
+
+  db.close();
 });
