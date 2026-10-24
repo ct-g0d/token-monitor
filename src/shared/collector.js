@@ -1105,7 +1105,8 @@ async function collectUsageOnce(options) {
                 env: options.env,
                 liveLedgerPath: options.tokenLedgerPath,
                 roots: options.sweepRoots || options.customScanPaths,
-                now: collectedAt.getTime()
+                now: collectedAt.getTime(),
+                antigravityUsageCache: options.antigravityUsageCache
               });
             } catch (_) {}
           }

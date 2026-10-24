@@ -179,8 +179,28 @@ function createAppendFileAdapter(options = {}) {
     const generation = Math.max(1, Number(watermark?.generation || old.generation || 1) + (rewrite ? 1 : 0));
     const offset = rewrite ? 0 : Math.max(0, Number(old.offset ?? old.byteOffset ?? 0));
     const previousTail = rewrite ? '' : String(old.tail || '');
-    const bytes = fs.readFileSync(filePath);
-    const chunk = Buffer.concat([Buffer.from(previousTail), bytes.subarray(offset)]);
+
+    if (!rewrite && (watermark?.lastSuccessRunId || watermark?.last_success_run_id) && oldSize === fp.size && oldMtime === fp.mtimeMs && offset === fp.size && !previousTail) {
+      const nextCursor = { offset, byteOffset: offset, tail: '', generation, device: fp.device, inode: fp.inode, size: fp.size, mtimeMs: fp.mtimeMs, prefixHash: fp.prefixHash };
+      return makeAdapterResult([], nextCursor, fp.value, { rewrite: false, complete: true, unchanged: true });
+    }
+
+    let chunk;
+    if (offset === 0) {
+      const bytes = fs.readFileSync(filePath);
+      chunk = Buffer.concat([Buffer.from(previousTail), bytes]);
+    } else {
+      const bytesToRead = Math.max(0, fp.size - offset);
+      const buf = Buffer.alloc(bytesToRead);
+      let fd;
+      try {
+        fd = fs.openSync(filePath, 'r');
+        fs.readSync(fd, buf, 0, bytesToRead, offset);
+      } finally {
+        if (fd !== undefined) try { fs.closeSync(fd); } catch (_) {}
+      }
+      chunk = Buffer.concat([Buffer.from(previousTail), buf]);
+    }
     const text = chunk.toString('utf8');
     const lines = text.split(/\r?\n/);
     const incompleteTail = text.endsWith('\n') || text.endsWith('\r') ? '' : (lines.pop() || '');
@@ -200,7 +220,7 @@ function createAppendFileAdapter(options = {}) {
       }
       index += Buffer.byteLength(line) + 1;
     }
-    const nextOffset = rewrite ? bytes.length : offset + bytes.length - offset;
+    const nextOffset = rewrite ? fp.size : offset + (chunk.length - Buffer.from(previousTail).length);
     const nextCursor = { offset: nextOffset, byteOffset: nextOffset, tail: incompleteTail, generation, device: fp.device, inode: fp.inode, size: fp.size, mtimeMs: fp.mtimeMs, prefixHash: fp.prefixHash };
     return makeAdapterResult(events, nextCursor, fp.value, { rewrite, truncated, incompleteTail: Boolean(incompleteTail), fromOffset: offset, toOffset: nextOffset, complete: !incompleteTail });
   }
@@ -251,8 +271,16 @@ function createSnapshotAdapter(options = {}) {
     if (!fs.existsSync(filePath)) return makeAdapterResult([], { generation: watermark?.generation || 1 }, null, { missing: true });
     const fp = statFingerprint(filePath);
     const old = watermark?.cursor || watermark || {};
+    const oldMtime = Number(watermark?.source_mtime_ms ?? old.mtimeMs ?? old.sourceMtimeMs ?? 0);
+    const oldSize = Number(watermark?.source_size ?? old.size ?? old.sourceSize ?? 0);
+    const oldPrefix = watermark?.prefix_hash || old.prefixHash || '';
     const rewrite = false;
     const generation = Math.max(1, Number(watermark?.generation || old.generation || 1));
+
+    if ((watermark?.lastSuccessRunId || watermark?.last_success_run_id) && oldSize === fp.size && oldMtime === fp.mtimeMs && (!oldPrefix || oldPrefix === fp.prefixHash)) {
+      return makeAdapterResult([], { generation, size: fp.size, mtimeMs: fp.mtimeMs, prefixHash: fp.prefixHash }, fp.value, { rewrite: false, complete: true, unchanged: true });
+    }
+
     const value = readSnapshot(filePath);
     const mapped = mapSnapshot(value, { now, generation, sourceId });
     const values = Array.isArray(mapped) ? mapped : (Array.isArray(mapped?.events) ? mapped.events : [mapped]);
@@ -444,7 +472,14 @@ function createAntigravityAdapter(options = {}) {
         totalTokens: record.totalTokens ?? (number(totals.uncachedInputTokens) + number(totals.cachedInputTokens) + number(totals.cacheCreationTokens) + number(totals.outputTokens))
       }, { sourceKind, sourceId, clientId: 'antigravity', occurredAtMs: at }));
     }
-    return makeAdapterResult(events, { generation: Number(watermark?.generation || 1) }, hash(JSON.stringify(events)), { rewrite: false, complete: true });
+    const hashBuilder = crypto.createHash('sha256');
+    for (const ev of events) hashBuilder.update(ev.naturalKey);
+    const hash = hashBuilder.digest('hex');
+    const oldPrefix = watermark?.prefix_hash || watermark?.prefixHash || '';
+    if ((watermark?.lastSuccessRunId || watermark?.last_success_run_id) && oldPrefix === hash) {
+      return makeAdapterResult([], { generation: Number(watermark?.generation || 1), count: events.length, prefixHash: hash }, hash, { rewrite: false, complete: true, unchanged: true });
+    }
+    return makeAdapterResult(events, { generation: Number(watermark?.generation || 1), count: events.length, prefixHash: hash }, hash, { rewrite: false, complete: true });
   }
   return { sourceKind, sourceId, read };
 }
@@ -469,9 +504,22 @@ function createClaudeAdapter(options = {}) {
   function read({ watermark = null, now = Date.now() } = {}) {
     if (!fs.existsSync(dirPath)) return makeAdapterResult([], { generation: watermark?.generation || 1 }, null, { missing: true });
     const files = walk(dirPath);
+    const oldCursor = watermark?.cursor || {};
+    const oldFiles = oldCursor.files || {};
+    const newFilesCursor = { ...oldFiles };
     const seen = new Set();
     const events = [];
+    let hasNewData = false;
+
     for (const file of files) {
+      let stat;
+      try { stat = fs.statSync(file); } catch (_) { continue; }
+      const prev = oldFiles[file];
+      if (prev && prev.mtimeMs === stat.mtimeMs && prev.size === stat.size) {
+        continue;
+      }
+      hasNewData = true;
+      newFilesCursor[file] = { mtimeMs: stat.mtimeMs, size: stat.size };
       let content;
       try { content = fs.readFileSync(file, 'utf8'); } catch (_) { continue; }
       const lines = content.split(/\r?\n/);
@@ -498,8 +546,7 @@ function createClaudeAdapter(options = {}) {
           const outputTokens = number(u.output_tokens);
           const totalTokens = inputTokens + cachedInputTokens + cacheWriteTokens + outputTokens;
 
-          let fileMtimeMs = 0;
-          try { fileMtimeMs = fs.statSync(file).mtimeMs; } catch (_) {}
+          const fileMtimeMs = stat.mtimeMs || 0;
           const occurredAtMs = obj.timestamp ? Date.parse(obj.timestamp) : (fileMtimeMs || now);
           const date = localDayKey(new Date(Number.isFinite(occurredAtMs) ? occurredAtMs : now));
 
@@ -524,7 +571,12 @@ function createClaudeAdapter(options = {}) {
         } catch (_) {}
       }
     }
-    return makeAdapterResult(events, { generation: Number(watermark?.generation || 1), fileCount: files.length }, hash(JSON.stringify(events)), { complete: true });
+    const nextCursor = {
+      files: newFilesCursor,
+      generation: Number(watermark?.generation || 1),
+      fileCount: files.length
+    };
+    return makeAdapterResult(events, nextCursor, `${sourceKind}:${events.length}`, { complete: true, unchanged: !hasNewData });
   }
 
   return { sourceKind, sourceId, path: dirPath, read };
@@ -539,15 +591,31 @@ function createOpenCodeAdapter(options = {}) {
     if (!fs.existsSync(filePath)) return makeAdapterResult([], { generation: watermark?.generation || 1 }, null, { missing: true });
     const fp = statFingerprint(filePath, true);
     const old = watermark?.cursor || watermark || {};
-    const rewrite = false;
+    const oldMtime = Number(watermark?.source_mtime_ms ?? old.mtimeMs ?? 0);
+    const oldSize = Number(watermark?.source_size ?? old.size ?? 0);
     const generation = Math.max(1, Number(watermark?.generation || old.generation || 1));
+    const maxTimeCreated = Number(old.maxTimeCreated ?? 0);
+
+    if ((watermark?.lastSuccessRunId || watermark?.last_success_run_id) && oldSize === fp.size && oldMtime === fp.mtimeMs && maxTimeCreated > 0) {
+      return makeAdapterResult([], { generation, size: fp.size, mtimeMs: fp.mtimeMs, prefixHash: fp.prefixHash, maxTimeCreated }, fp.value, { rewrite: false, complete: true, unchanged: true });
+    }
+
     let db;
     try {
       db = new DatabaseSync(filePath, { readOnly: true });
-      const rows = db.prepare('SELECT id, session_id, data, time_created FROM message WHERE json_valid(data) ORDER BY time_created ASC, id ASC').all();
+      const query = maxTimeCreated > 0
+        ? 'SELECT id, session_id, data, time_created FROM message WHERE json_valid(data) AND time_created > ? ORDER BY time_created ASC, id ASC'
+        : 'SELECT id, session_id, data, time_created FROM message WHERE json_valid(data) ORDER BY time_created ASC, id ASC';
+      const rows = maxTimeCreated > 0
+        ? db.prepare(query).all(maxTimeCreated)
+        : db.prepare(query).all();
       const events = [];
       const seen = new Set();
+      let nextMaxTime = maxTimeCreated;
       for (const row of rows) {
+        if (typeof row.time_created === 'number' && row.time_created > nextMaxTime) {
+          nextMaxTime = row.time_created;
+        }
         let parsed;
         try { parsed = JSON.parse(row.data); } catch (_) { continue; }
         if (parsed.role !== undefined && parsed.role !== 'assistant') continue;
@@ -595,7 +663,7 @@ function createOpenCodeAdapter(options = {}) {
           costUsd: cost
         }, { sourceKind, sourceId, clientId: 'opencode', occurredAtMs: timestampMs }), sourceKind, sourceId));
       }
-      return makeAdapterResult(events, { generation, size: fp.size, mtimeMs: fp.mtimeMs, prefixHash: fp.prefixHash }, fp.value, { rewrite, complete: true });
+      return makeAdapterResult(events, { generation, size: fp.size, mtimeMs: fp.mtimeMs, prefixHash: fp.prefixHash, maxTimeCreated: nextMaxTime }, fp.value, { rewrite: false, complete: true });
     } finally {
       if (db) try { db.close(); } catch (_) {}
     }
@@ -807,6 +875,14 @@ function createCodexAdapter(options = {}) {
         if (first === undefined) firstFile.set(sessionId, index);
         else if (first !== index) shared.add(sessionId);
       }
+    }
+
+    if (fileList.length === 0) {
+      return makeAdapterResult([], {
+        files: newFilesCursor,
+        cacheLoaded: true,
+        generation: Number(watermark?.generation || 1)
+      }, `${sourceKind}:0`, { complete: true, rewrite: false, unchanged: true });
     }
 
     const seenDedupe = new Set();

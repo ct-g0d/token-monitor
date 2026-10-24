@@ -12,6 +12,17 @@ const { PricingEngine } = require('../pricing/engine');
 
 const defaultPricingEngine = new PricingEngine();
 
+function getStatement(database, key, sql) {
+  if (!database._stmts) database._stmts = new Map();
+  let stmt = database._stmts.get(key);
+  if (!stmt) {
+    stmt = database.prepare(sql);
+    database._stmts.set(key, stmt);
+  }
+  return stmt;
+}
+
+
 function canonicalModelKey(model) {
   const parsed = parseModelIdentifier(model);
   const raw = String(parsed?.model || model || '').trim();
@@ -195,7 +206,7 @@ function upsertUsageEvent(database, event, options = {}) {
     state: String(event.state || 'active')
   };
   if (!row.naturalKey) throw new Error('usage event natural_key is required');
-  const stmt = database.prepare(`
+  const stmt = getStatement(database, 'upsertUsageEvent', `
     INSERT INTO usage_events (natural_key, client_id, source_kind, source_id, session_id, request_id,
       occurred_at_ms, date_bucket, model_id, input_tokens, cached_input_tokens, cache_write_tokens,
       output_tokens, reasoning_tokens, total_tokens, cost_usd, payload_hash, first_seen_run_id, last_seen_run_id, state)
@@ -212,14 +223,25 @@ function upsertUsageEvent(database, event, options = {}) {
   stmt.run(row.naturalKey, row.clientId, row.sourceKind, row.sourceId, row.sessionId, row.requestId,
     row.occurredAtMs, row.dateBucket, row.modelId, row.inputTokens, row.cachedInputTokens, row.cacheWriteTokens,
     row.outputTokens, row.reasoningTokens, row.totalTokens, row.costUsd, row.payloadHash, row.runId, row.runId, row.state);
-  clearCanonicalFactCache(database);
-  return database.prepare('SELECT * FROM usage_events WHERE natural_key = ?').get(row.naturalKey);
+  return getStatement(database, 'selectUsageEvent', 'SELECT * FROM usage_events WHERE natural_key = ?').get(row.naturalKey);
 }
 
 function readSourceWatermark(database, sourceKind, sourceId) {
   const row = database.prepare('SELECT * FROM source_watermarks WHERE source_kind = ? AND source_id = ?').get(sourceKind, sourceId);
   if (!row) return null;
-  return { ...row, cursor: JSON.parse(row.cursor_json || '{}') };
+  return {
+    ...row,
+    sourceKind: row.source_kind,
+    sourceId: row.source_id,
+    cursorType: row.cursor_type,
+    fileId: row.file_id,
+    sourceMtimeMs: row.source_mtime_ms,
+    sourceSize: row.source_size,
+    prefixHash: row.prefix_hash,
+    lastSuccessRunId: row.last_success_run_id,
+    lastSuccessAtMs: row.last_success_at_ms,
+    cursor: JSON.parse(row.cursor_json || '{}')
+  };
 }
 
 function writeSourceWatermark(database, watermark) {
@@ -308,19 +330,122 @@ function ensureSchema(database) {
 
 function backfillLegacyFacts(database) {
   const has = (table) => Boolean(database.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table));
-  if (has('token_turns')) for (const row of database.prepare('SELECT * FROM token_turns').all()) {
-    try { upsertUsageEvent(database, { naturalKey: `legacy:${row.provider}:${row.natural_key}`, clientId: row.provider, sourceKind: 'legacy-token-ledger', sourceId: 'token_turns', sessionId: row.session_id, requestId: row.request_id, occurredAtMs: row.timestamp_ms, dateBucket: row.date_bucket, modelId: row.model_codename, inputTokens: row.uncached_input, cachedInputTokens: row.cached_input, cacheWriteTokens: row.cache_write, outputTokens: row.output_tokens, reasoningTokens: row.reasoning_tokens, totalTokens: row.processed_tokens, costUsd: row.cost_usd, payloadHash: payloadHash(row) }); } catch (_) {}
-  }
-  if (has('historical_threads')) for (const row of database.prepare('SELECT * FROM historical_threads').all()) {
-    try { upsertUsageEvent(database, { naturalKey: `legacy-thread:${row.provider}:${row.thread_id}`, clientId: row.provider, sourceKind: 'legacy-token-ledger', sourceId: 'historical_threads', sessionId: row.thread_id, occurredAtMs: row.created_at_ms, dateBucket: row.date_bucket, modelId: row.model_codename || 'unknown', totalTokens: row.total_tokens, payloadHash: payloadHash(row) }); } catch (_) {}
-  }
-  if (has('runtime_history')) for (const row of database.prepare('SELECT * FROM runtime_history').all()) {
-    let payload; try { payload = JSON.parse(row.payload_json); } catch (_) { continue; }
-    for (const [client, value] of Object.entries(payload.perClient || {})) {
-      const models = Object.entries(payload.clientModels?.[client] || {});
-      if (!models.length) models.push([Object.keys(payload.perModel || {})[0] || 'unknown', value?.tokens || payload.tokens || 0]);
-      for (const [model, tokens] of models) try { upsertUsageEvent(database, { naturalKey: `runtime-history:${row.date_bucket}:${client}:${model}`, clientId: client, sourceKind: 'runtime-history', sourceId: 'runtime_history', occurredAtMs: row.updated_at_ms, dateBucket: row.date_bucket, modelId: model, totalTokens: tokens, costUsd: value?.cost, payloadHash: payloadHash({ row, client, model, tokens }) }); } catch (_) {}
+  database.exec('BEGIN IMMEDIATE');
+  try {
+    if (has('token_turns')) {
+      database.exec(`
+        INSERT OR IGNORE INTO usage_events (
+          natural_key, client_id, source_kind, source_id, session_id, request_id,
+          occurred_at_ms, date_bucket, model_id, input_tokens, cached_input_tokens,
+          cache_write_tokens, output_tokens, reasoning_tokens, total_tokens,
+          cost_usd, payload_hash, state
+        )
+        SELECT
+          'legacy:' || provider || ':' || natural_key,
+          CASE provider
+            WHEN 'antigravity' THEN 'antigravity'
+            WHEN 'codex' THEN 'codex'
+            WHEN 'opencode' THEN 'opencode'
+            WHEN 'claude' THEN 'claude'
+            WHEN 'workbuddy' THEN 'workbuddy'
+            WHEN 'zcode' THEN 'zcode'
+            WHEN 'copilot' THEN 'copilot'
+            WHEN 'cline' THEN 'cline'
+            WHEN 'hermes' THEN 'hermes'
+            ELSE LOWER(TRIM(provider))
+          END,
+          'legacy-token-ledger',
+          'token_turns',
+          session_id,
+          request_id,
+          timestamp_ms,
+          date_bucket,
+          COALESCE(model_codename, 'unknown'),
+          COALESCE(uncached_input, 0),
+          COALESCE(cached_input, 0),
+          COALESCE(cache_write, 0),
+          COALESCE(output_tokens, 0),
+          COALESCE(reasoning_tokens, 0),
+          COALESCE(processed_tokens, 0),
+          cost_usd,
+          'legacy:' || provider || ':' || natural_key,
+          'active'
+        FROM token_turns;
+      `);
     }
+
+    if (has('historical_threads')) {
+      database.exec(`
+        INSERT OR IGNORE INTO usage_events (
+          natural_key, client_id, source_kind, source_id, session_id,
+          occurred_at_ms, date_bucket, model_id, total_tokens, payload_hash, state
+        )
+        SELECT
+          'legacy-thread:' || provider || ':' || thread_id,
+          CASE provider
+            WHEN 'antigravity' THEN 'antigravity'
+            WHEN 'codex' THEN 'codex'
+            WHEN 'opencode' THEN 'opencode'
+            WHEN 'claude' THEN 'claude'
+            WHEN 'workbuddy' THEN 'workbuddy'
+            WHEN 'zcode' THEN 'zcode'
+            WHEN 'copilot' THEN 'copilot'
+            WHEN 'cline' THEN 'cline'
+            WHEN 'hermes' THEN 'hermes'
+            ELSE LOWER(TRIM(provider))
+          END,
+          'legacy-token-ledger',
+          'historical_threads',
+          thread_id,
+          created_at_ms,
+          date_bucket,
+          COALESCE(model_codename, 'unknown'),
+          COALESCE(total_tokens, 0),
+          'legacy-thread:' || provider || ':' || thread_id,
+          'active'
+        FROM historical_threads;
+      `);
+    }
+
+    if (has('runtime_history')) {
+      const stmt = getStatement(database, 'insertLegacyRuntimeFact', `
+        INSERT INTO usage_events (
+          natural_key, client_id, source_kind, source_id,
+          occurred_at_ms, date_bucket, model_id, total_tokens, cost_usd, payload_hash, state
+        )
+        VALUES (?, ?, 'runtime-history', 'runtime_history', ?, ?, ?, ?, ?, ?, 'active')
+        ON CONFLICT(natural_key) DO UPDATE SET
+          client_id=excluded.client_id, occurred_at_ms=excluded.occurred_at_ms,
+          date_bucket=excluded.date_bucket, model_id=excluded.model_id,
+          total_tokens=excluded.total_tokens, cost_usd=excluded.cost_usd,
+          payload_hash=excluded.payload_hash, state=excluded.state
+      `);
+      for (const row of database.prepare('SELECT * FROM runtime_history').all()) {
+        let payload;
+        try { payload = JSON.parse(row.payload_json); } catch (_) { continue; }
+        for (const [client, value] of Object.entries(payload.perClient || {})) {
+          let normClient;
+          try { normClient = normalizedFactClient(client); } catch (_) { continue; }
+          const models = Object.entries(payload.clientModels?.[client] || {});
+          if (!models.length) models.push([Object.keys(payload.perModel || {})[0] || 'unknown', value?.tokens || payload.tokens || 0]);
+          for (const [model, tokens] of models) {
+            try {
+              const natKey = `runtime-history:${row.date_bucket}:${normClient}:${model}`;
+              stmt.run(
+                natKey, normClient, row.updated_at_ms, row.date_bucket,
+                model, tokens, value?.cost || null, natKey
+              );
+            } catch (_) {}
+          }
+        }
+      }
+    }
+
+    backfillUsageEventCosts(database);
+    database.exec('COMMIT');
+  } catch (err) {
+    try { database.exec('ROLLBACK'); } catch (_) {}
+    throw err;
   }
 }
 
@@ -735,15 +860,7 @@ function mergeOverlayDay(days, row) {
   enforceDayComponentInvariant(existingDay);
 }
 
-function getStatement(database, key, sql) {
-  if (!database._stmts) database._stmts = new Map();
-  let stmt = database._stmts.get(key);
-  if (!stmt) {
-    stmt = database.prepare(sql);
-    database._stmts.set(key, stmt);
-  }
-  return stmt;
-}
+// getStatement moved to top
 
 function parseRuntimeRows(database) {
   const stmt = getStatement(database, 'runtimeRows', `SELECT date_bucket, payload_json FROM ${RUNTIME_HISTORY_TABLE} ORDER BY date_bucket`);
@@ -774,11 +891,31 @@ function baseRows(database, coveredDates) {
 
 
 const factRowsCache = new WeakMap();
+const historyCache = new WeakMap();
+const periodsCache = new WeakMap();
+const sessionsCache = new WeakMap();
 
 function clearCanonicalFactCache(database) {
   if (database && typeof database === 'object') {
     factRowsCache.delete(database);
+    historyCache.delete(database);
+    periodsCache.delete(database);
+    sessionsCache.delete(database);
   }
+}
+
+function cloneHistory(h) {
+  if (!h || typeof h !== 'object') return null;
+  return {
+    ...h,
+    daily: cloneFactDayRows(h.daily),
+    summary: { ...h.summary }
+  };
+}
+
+function clonePeriods(p) {
+  if (!p || typeof p !== 'object') return null;
+  return JSON.parse(JSON.stringify(p));
 }
 
 function cloneFactDayRows(rows) {
@@ -1428,11 +1565,21 @@ function queryDistinctSessionMap(db, startDate, endDate) {
 function computeSessionsByWindow(database, options = {}) {
   const db = database?.database ? database.database() : database;
   if (!db || typeof db.prepare !== 'function') return undefined;
-  const hasEvents = getStatement(db, 'hasUsageEvents', "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'usage_events'").get();
-  if (!hasEvents) return undefined;
-
   const now = options.now ? new Date(options.now) : new Date();
   const today = options.today || localDayKey(now);
+  let sweepId = null;
+  try {
+    const sweepRow = db.prepare("SELECT sweep_id FROM usage_sweep_runs WHERE status = 'completed' ORDER BY sweep_id DESC LIMIT 1").get();
+    if (sweepRow) sweepId = Number(sweepRow.sweep_id);
+  } catch (_) {}
+  if (sweepId !== null && options.bypassCache !== true) {
+    const cached = sessionsCache.get(db);
+    if (cached && cached.sweepId === sweepId && cached.today === today) {
+      return JSON.parse(JSON.stringify(cached.result));
+    }
+  }
+  const hasEvents = getStatement(db, 'hasUsageEvents', "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'usage_events'").get();
+  if (!hasEvents) return undefined;
   const windows = ['1', '7', '30', '90'];
   const res = {};
   for (const w of windows) {
@@ -1445,6 +1592,9 @@ function computeSessionsByWindow(database, options = {}) {
     const total = Object.values(windowObj).reduce((a, b) => a + b, 0);
     windowObj.total = total;
     res[w] = windowObj;
+  }
+  if (sweepId !== null && options.bypassCache !== true) {
+    sessionsCache.set(db, { sweepId, today, result: JSON.parse(JSON.stringify(res)) });
   }
   return res;
 }
@@ -1524,8 +1674,27 @@ function createTokenLedgerStore(storeOptions = {}) {
     if (!fs.existsSync(databasePath) && !(seedPath && fs.existsSync(seedPath))) return null;
     const db = open();
     if (!db) return null;
-    const days = new Map();
+
+    const today = String(options.today || options.todayKey || localDayKey()).slice(0, 10);
+    let sweepId = null;
+    try {
+      const sweepRow = db.prepare("SELECT sweep_id FROM usage_sweep_runs WHERE status = 'completed' ORDER BY sweep_id DESC LIMIT 1").get();
+      if (sweepRow) sweepId = Number(sweepRow.sweep_id);
+    } catch (_) {}
+
     const useFacts = options.useFacts !== false && isFactCoverageComplete(db, options);
+    const overlayKey = Array.isArray(options.overlayHistory?.daily)
+      ? options.overlayHistory.daily.map((d) => `${d.date}:${d.tokens}`).join('|')
+      : (options.overlayHistory ? 'has-overlay' : 'no-overlay');
+
+    if (sweepId !== null && options.bypassCache !== true) {
+      const cached = historyCache.get(db);
+      if (cached && cached.sweepId === sweepId && cached.today === today && cached.useFacts === useFacts && cached.overlayKey === overlayKey) {
+        return cloneHistory(cached.history);
+      }
+    }
+
+    const days = new Map();
     let loadedFromFacts = false;
 
     if (useFacts) {
@@ -1548,8 +1717,6 @@ function createTokenLedgerStore(storeOptions = {}) {
       const collectorOverlay = readCollectorHistoryOverlay(options);
       overlay = Array.isArray(collectorOverlay?.daily) ? collectorOverlay.daily : [];
     }
-
-    const today = String(options.today || options.todayKey || localDayKey()).slice(0, 10);
 
     for (const row of overlay) {
       const date = String(row?.date || '').slice(0, 10);
@@ -1574,14 +1741,45 @@ function createTokenLedgerStore(storeOptions = {}) {
         }
       }
     }
-    return historyFromDays(days);
+    const resultHistory = historyFromDays(days);
+    if (sweepId !== null && options.bypassCache !== true) {
+      historyCache.set(db, {
+        sweepId,
+        today,
+        useFacts,
+        overlayKey,
+        history: cloneHistory(resultHistory)
+      });
+    }
+    return resultHistory;
   }
 
   function readPeriods(readOptions = {}) {
     const options = { ...storeOptions, ...readOptions };
+    const db = open();
+    if (!db) return null;
+
+    const today = String(options.today || options.todayKey || localDayKey()).slice(0, 10);
+    let sweepId = null;
+    try {
+      const sweepRow = db.prepare("SELECT sweep_id FROM usage_sweep_runs WHERE status = 'completed' ORDER BY sweep_id DESC LIMIT 1").get();
+      if (sweepRow) sweepId = Number(sweepRow.sweep_id);
+    } catch (_) {}
+
+    const overlayKey = Array.isArray(options.overlayHistory?.daily)
+      ? options.overlayHistory.daily.map((d) => `${d.date}:${d.tokens}`).join('|')
+      : (options.overlayHistory ? 'has-overlay' : 'no-overlay');
+    const baseKey = JSON.stringify(options.basePeriods || options.activePeriods || options.basePeriod || options.activePeriod || null);
+
+    if (sweepId !== null && options.bypassCache !== true) {
+      const cached = periodsCache.get(db);
+      if (cached && cached.sweepId === sweepId && cached.today === today && cached.overlayKey === overlayKey && cached.baseKey === baseKey) {
+        return clonePeriods(cached.periods);
+      }
+    }
+
     const history = readHistory(options);
     if (!history) return null;
-    const today = String(options.today || options.todayKey || localDayKey()).slice(0, 10);
     const month = today.slice(0, 7);
     const periods = {
       today: periodFromDays(history.daily.filter((day) => day.date === today)),
@@ -1709,6 +1907,15 @@ function createTokenLedgerStore(storeOptions = {}) {
       }
     } catch (_) {}
 
+    if (sweepId !== null && options.bypassCache !== true) {
+      periodsCache.set(db, {
+        sweepId,
+        today,
+        overlayKey,
+        baseKey,
+        periods: clonePeriods(periods)
+      });
+    }
     return periods;
   }
 
@@ -1813,7 +2020,7 @@ module.exports = {
   packagedSeedPath,
   periodFromDays,
   resolveTokenLedgerPath
-  ,ensureFactSchema, upsertUsageEvent, readSourceWatermark, writeSourceWatermark,
+  ,ensureSchema, ensureFactSchema, upsertUsageEvent, readSourceWatermark, writeSourceWatermark,
   recordSourceEquivalence, beginSweepRun, finishSweepRun,
   ninetyDayWindow,
   window90Days: ninetyDayWindow,

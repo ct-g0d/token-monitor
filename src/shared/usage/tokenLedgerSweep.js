@@ -168,47 +168,59 @@ function applyAdapterResult(database, adapter, result, watermark, sweepId, now) 
 
   const prefix = `${sourceKind}:${sourceId}:`;
   const seenPartitions = new Set();
-  for (const event of events) {
-    const rawKey = String(event.naturalKey || event.natural_key || '');
-    const naturalKey = rawKey.startsWith(prefix) ? rawKey : `${prefix}${rawKey}`;
-    const enriched = {
-      ...event,
-      naturalKey,
-      sourceKind,
-      sourceId,
-      firstSeenRunId: watermark?.lastSuccessRunId ? undefined : sweepId,
-      lastSeenRunId: sweepId
-    };
-    upsertUsageEvent(database, enriched, { sweepId, now });
-    const partition = normalizePartitionKey(event?.partitionKey || naturalKey, enriched.dateBucket);
-    seenPartitions.add(`${partition.dateBucket}::${partition.naturalKey}`);
-  }
+  if (events.length > 0) {
+    for (const event of events) {
+      const rawKey = String(event.naturalKey || event.natural_key || '');
+      const naturalKey = rawKey.startsWith(prefix) ? rawKey : `${prefix}${rawKey}`;
+      const enriched = {
+        ...event,
+        naturalKey,
+        sourceKind,
+        sourceId,
+        firstSeenRunId: watermark?.lastSuccessRunId ? undefined : sweepId,
+        lastSeenRunId: sweepId
+      };
+      upsertUsageEvent(database, enriched, { sweepId, now });
+      const partition = normalizePartitionKey(event?.partitionKey || naturalKey, enriched.dateBucket);
+      seenPartitions.add(`${partition.dateBucket}::${partition.naturalKey}`);
+    }
 
-  // If the adapter emitted granular session-level events, supersede legacy coarse daily rows
-  if (sourceKind === 'antigravity-disk') {
-    const hasGranularEvents = events.some((e) => e.sessionId && !String(e.sessionId).startsWith('disk-'));
-    if (hasGranularEvents) {
-      const dates = [...new Set(events.filter((e) => e.sessionId && !String(e.sessionId).startsWith('disk-')).map((e) => e.dateBucket))];
-      const BATCH_SIZE = 100;
-      for (let i = 0; i < dates.length; i += BATCH_SIZE) {
-        const chunk = dates.slice(i, i + BATCH_SIZE);
-        database.prepare(`
-          UPDATE usage_events
-          SET state = 'superseded', last_seen_run_id = ?
-          WHERE source_kind = ? AND source_id = ? AND state = 'active'
-            AND (session_id LIKE 'disk-%' OR natural_key LIKE '%:disk-%')
-            AND date_bucket IN (${chunk.map(() => '?').join(',')})
-        `).run(sweepId, sourceKind, sourceId, ...chunk);
+    // If the adapter emitted granular session-level events, supersede legacy coarse daily rows
+    if (sourceKind === 'antigravity-disk') {
+      const hasGranularEvents = events.some((e) => e.sessionId && !String(e.sessionId).startsWith('disk-'));
+      if (hasGranularEvents) {
+        const dates = [...new Set(events.filter((e) => e.sessionId && !String(e.sessionId).startsWith('disk-')).map((e) => e.dateBucket))];
+        const BATCH_SIZE = 100;
+        for (let i = 0; i < dates.length; i += BATCH_SIZE) {
+          const chunk = dates.slice(i, i + BATCH_SIZE);
+          database.prepare(`
+            UPDATE usage_events
+            SET state = 'superseded', last_seen_run_id = ?
+            WHERE source_kind = ? AND source_id = ? AND state = 'active'
+              AND (session_id LIKE 'disk-%' OR natural_key LIKE '%:disk-%')
+              AND date_bucket IN (${chunk.map(() => '?').join(',')})
+          `).run(sweepId, sourceKind, sourceId, ...chunk);
+        }
       }
     }
   }
 
   const cursor = result?.cursor || result?.nextCursor || null;
+  const fp = result?.sourceFingerprint;
+  const sourceMtimeMs = Number(fp?.mtimeMs ?? cursor?.sourceMtimeMs ?? cursor?.mtimeMs ?? watermark?.source_mtime_ms ?? null) || null;
+  const sourceSize = Number(fp?.size ?? cursor?.sourceSize ?? cursor?.size ?? watermark?.source_size ?? null) || null;
+  const prefixHash = (typeof fp?.prefixHash === 'string' ? fp.prefixHash : null)
+    || (typeof cursor?.prefixHash === 'string' ? cursor.prefixHash : null)
+    || watermark?.prefix_hash || null;
+
   const newWatermark = {
     sourceKind,
     sourceId,
     generation,
     cursor,
+    sourceMtimeMs,
+    sourceSize,
+    prefixHash,
     watermark: result?.watermark || null,
     lastSuccessRunId: sweepId,
     lastSuccessAtMs: now,
@@ -294,15 +306,22 @@ function sweepUsage({ db, store, roots = [], adapters, now = Date.now(), mode = 
       if (value && typeof value.then === 'function') throw new TypeError('sweep adapters must be synchronous');
       if (!value || !Array.isArray(value.events)) throw new TypeError(`adapter ${sourceKind}/${sourceId} returned an invalid result`);
       const applied = applyAdapterResult(database, adapter, value, watermark, sweepId, Number(now));
-      if (NATIVE_SOURCES.some((s) => s.sourceKind === sourceKind)) {
+      if (applied.eventCount > 0 && NATIVE_SOURCES.some((s) => s.sourceKind === sourceKind)) {
         supersedeLegacyByNative(database, sweepId);
       }
       eventCount += applied.eventCount;
       sources.push(applied);
     }
-    supersedeLegacyByNative(database, sweepId);
-    backfillUsageEventCosts(database);
-    rollupUsageEvents(database);
+    if (eventCount > 0) {
+      supersedeLegacyByNative(database, sweepId);
+      backfillUsageEventCosts(database);
+      rollupUsageEvents(database);
+    } else {
+      const hasDaily = Boolean(database.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'daily_usage'").get());
+      if (!hasDaily) {
+        rollupUsageEvents(database);
+      }
+    }
     return { eventCount, sources };
   });
   return result;

@@ -22,8 +22,11 @@ const {
 } = require('./sourceAdapters');
 const {
   discoverAntigravityRoots,
-  readAntigravityUsage
+  readAntigravityUsage,
+  makeAntigravityUsageCache
 } = require('../providers/antigravity/conversationReader');
+
+const defaultSharedAntigravityCache = makeAntigravityUsageCache();
 const { sharedDataDir } = require('../config');
 const { localDayKey } = require('../history');
 
@@ -127,12 +130,13 @@ function buildDefaultSweepAdapters(options = {}) {
   }
 
   // 3. Antigravity disk conversation reader adapter
+  const antigravityCache = options.antigravityUsageCache || defaultSharedAntigravityCache;
   adapters.push(createAntigravityAdapter({
     sourceKind: 'antigravity-disk',
     sourceId: 'antigravity-disk',
     readRecords: () => {
       const roots = discoverAntigravityRoots({ homeDir, env });
-      const { records } = readAntigravityUsage(roots, 0);
+      const { records } = readAntigravityUsage(roots, 0, antigravityCache);
       const groups = new Map();
       for (const r of records || []) {
         if (r.provider !== 'antigravity') continue;
