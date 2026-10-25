@@ -45,7 +45,8 @@ function formatHeatmapDate(day: string): string {
   if (!year || !month || !dayOfMonth) return day;
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const d = new Date(year, month - 1, dayOfMonth);
+  // Use noon (12:00) to remain immune to daylight saving time transitions
+  const d = new Date(year, month - 1, dayOfMonth, 12, 0, 0);
   const dayName = DAYS[d.getDay()] ?? '';
   return `${dayName}, ${MONTHS[month - 1] ?? ''} ${dayOfMonth}, ${year}`;
 }
@@ -86,7 +87,8 @@ export function ActivityHeatmap({
     const value = (r?: DailyRecord) => Number((metric === 'tokens' ? r?.tokens : r?.cost) || 0);
     const byDay = new Map(daily.map((r) => [r.date, r]));
     const start = new Date();
-    start.setHours(0, 0, 0, 0);
+    // Anchor to noon to prevent DST edge-case hour shifts
+    start.setHours(12, 0, 0, 0);
     start.setDate(start.getDate() - start.getDay() - (WEEKS - 1) * 7);
     const todayStr = dayKey(new Date());
     const cells: CellData[] = [];
@@ -152,7 +154,10 @@ export function ActivityHeatmap({
       ? spaceAbove
       : Math.min(window.innerHeight - pad - tooltipHeight, cellRect.bottom + gap);
 
-    setTooltipPos({ left, top });
+    // Functional update prevents unnecessary re-renders when coordinates have not changed
+    setTooltipPos((prev) =>
+      prev && Math.abs(prev.left - left) < 0.5 && Math.abs(prev.top - top) < 0.5 ? prev : { left, top }
+    );
   }, []);
 
   const showTooltip = useCallback((targetEl: HTMLElement, cell: CellData) => {
@@ -172,51 +177,71 @@ export function ActivityHeatmap({
     updateTooltipPosition(activeTargetRef.current);
   }, [activeCell, updateTooltipPosition]);
 
+  // Event listener lifecycle anchored to tooltip open state rather than every cell reference
+  const isTooltipOpen = activeCell !== null;
   useEffect(() => {
-    if (!activeCell) return;
+    if (!isTooltipOpen) return;
+    let rafId: number | null = null;
     const handleScrollOrResize = () => {
-      if (activeTargetRef.current) {
-        updateTooltipPosition(activeTargetRef.current);
-      }
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        if (activeTargetRef.current) {
+          updateTooltipPosition(activeTargetRef.current);
+        }
+      });
     };
     window.addEventListener('scroll', handleScrollOrResize, { capture: true, passive: true });
     window.addEventListener('resize', handleScrollOrResize, { passive: true });
     return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
       window.removeEventListener('scroll', handleScrollOrResize, { capture: true });
       window.removeEventListener('resize', handleScrollOrResize);
     };
-  }, [activeCell, updateTooltipPosition]);
+  }, [isTooltipOpen, updateTooltipPosition]);
 
   const handleKeyDown = (e: React.KeyboardEvent, index: number) => {
-    let nextIndex: number | null = null;
     const col = Math.floor(index / 7);
     const row = index % 7;
 
-    if (e.key === 'ArrowUp') {
-      nextIndex = row === 0 ? index : index - 1;
-    } else if (e.key === 'ArrowDown') {
-      nextIndex = row === 6 ? index : index + 1;
-    } else if (e.key === 'ArrowLeft') {
-      nextIndex = col === 0 ? index : index - 7;
-    } else if (e.key === 'ArrowRight') {
-      nextIndex = col === WEEKS - 1 ? index : index + 7;
-    } else if (e.key === 'Home') {
-      nextIndex = row;
-    } else if (e.key === 'End') {
-      let latest = (WEEKS - 1) * 7 + row;
-      while (latest >= 0 && (latest >= allCells.length || allCells[latest]?.future)) {
-        latest -= 7;
-      }
-      nextIndex = Math.max(0, latest);
-    } else if (e.key === 'Escape') {
+    if (e.key === 'Escape') {
+      e.preventDefault();
       hideTooltip();
       return;
+    }
+
+    let nextIndex: number | null = null;
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      nextIndex = row === 0 ? index : index - 1;
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      nextIndex = row === 6 ? index : index + 1;
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      nextIndex = col === 0 ? index : index - 7;
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      nextIndex = col === WEEKS - 1 ? index : index + 7;
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      nextIndex = (e.ctrlKey || e.metaKey) ? 0 : row;
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      if (e.ctrlKey || e.metaKey) {
+        nextIndex = latestNonFutureIndex;
+      } else {
+        let latest = (WEEKS - 1) * 7 + row;
+        while (latest >= 0 && (latest >= allCells.length || allCells[latest]?.future)) {
+          latest -= 7;
+        }
+        nextIndex = Math.max(0, latest);
+      }
     }
 
     if (nextIndex !== null && nextIndex !== index && nextIndex >= 0 && nextIndex < allCells.length) {
       const nextCell = allCells[nextIndex];
       if (nextCell && !nextCell.future) {
-        e.preventDefault();
         setFocusedIndex(nextIndex);
         const targetEl = cellRefs.current.get(nextIndex);
         if (targetEl) {
@@ -255,6 +280,24 @@ export function ActivityHeatmap({
           <div key={w} role="row" className="grid shrink-0 gap-[3px]">
             {week.map((c, d) => {
               const index = w * 7 + d;
+              if (c.future) {
+                return (
+                  <div
+                    key={c.key}
+                    aria-hidden="true"
+                    className="size-[11px] opacity-0 pointer-events-none"
+                  />
+                );
+              }
+              const isCellPeak = peak > 0 && Math.abs(c.value - peak) < 0.0001;
+              const isCellToday = c.key === today;
+              const cellDescriptor = [
+                formatHeatmapDate(c.key),
+                isCellToday ? '(Today)' : isCellPeak ? '(Peak day)' : undefined,
+                `${formatTokens(c.tokens)} tokens`,
+                formatUsd(c.cost),
+              ].filter(Boolean).join(': ');
+
               return (
                 <button
                   key={c.key}
@@ -263,27 +306,14 @@ export function ActivityHeatmap({
                     if (el) cellRefs.current.set(index, el);
                     else cellRefs.current.delete(index);
                   }}
-                  disabled={c.future}
-                  tabIndex={c.future ? -1 : currentFocusedIndex === index ? 0 : -1}
+                  tabIndex={currentFocusedIndex === index ? 0 : -1}
                   role="gridcell"
-                  aria-label={
-                    c.future
-                      ? undefined
-                      : `${formatHeatmapDate(c.key)}: ${formatTokens(c.tokens)} tokens, ${formatUsd(c.cost)}`
-                  }
-                  aria-selected={activeCell?.key === c.key}
+                  aria-label={cellDescriptor}
                   aria-describedby={activeCell?.key === c.key ? 'activity-heatmap-tooltip' : undefined}
                   onPointerEnter={(e) => {
-                    if (c.future) return;
                     showTooltip(e.currentTarget, c);
                   }}
-                  onPointerLeave={() => {
-                    if (document.activeElement !== cellRefs.current.get(index)) {
-                      hideTooltip();
-                    }
-                  }}
                   onFocus={(e) => {
-                    if (c.future) return;
                     setFocusedIndex(index);
                     showTooltip(e.currentTarget, c);
                   }}
@@ -294,9 +324,8 @@ export function ActivityHeatmap({
                   }}
                   onKeyDown={(e) => handleKeyDown(e, index)}
                   className={cn(
-                    "size-[11px] p-0 border-0 outline-none rounded-[1px] transition-all",
-                    c.future ? "opacity-0 pointer-events-none cursor-default" : "cursor-pointer",
-                    !c.future && (c.value > 0 ? "bg-primary" : "bg-muted"),
+                    "size-[11px] p-0 border-0 outline-none rounded-[1px] transition-all cursor-pointer",
+                    c.value > 0 ? "bg-primary" : "bg-muted",
                     activeCell?.key === c.key && "ring-1 ring-foreground ring-offset-1 ring-offset-background z-10",
                     "focus-visible:ring-1 focus-visible:ring-foreground focus-visible:ring-offset-1 focus-visible:ring-offset-background focus-visible:z-10"
                   )}
@@ -314,33 +343,35 @@ export function ActivityHeatmap({
               ref={tooltipRef}
               id="activity-heatmap-tooltip"
               role="tooltip"
-              aria-live="polite"
-              className="surface-glass pointer-events-none fixed z-50 min-w-44 rounded-xl border border-border/60 bg-popover/95 px-3 py-2 text-xs shadow-lg backdrop-blur-md"
+              className="surface-glass pointer-events-none fixed z-50 min-w-40 rounded-xl border border-border/50 px-2.5 py-2 text-xs shadow-lg"
               style={{
                 left: `${tooltipPos.left}px`,
                 top: `${tooltipPos.top}px`,
               }}
             >
               <div className="mb-1.5 flex items-center justify-between gap-2 border-b border-border/50 pb-1">
-                <span className="tm-label !text-muted-foreground">
+                <span className="tm-label">
                   {formatHeatmapDate(activeCell.key)}
                 </span>
-                {activeCell.key === today ? (
-                  <span className="rounded bg-primary/15 px-1.5 py-0.5 font-mono text-[10px] font-medium text-foreground">
-                    Today
-                  </span>
-                ) : activeCell.value === peak && peak > 0 ? (
-                  <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] font-medium text-muted-foreground">
-                    Peak
-                  </span>
-                ) : null}
+                <div className="flex items-center gap-1">
+                  {activeCell.key === today ? (
+                    <span className="rounded-sm bg-primary/15 px-1 py-0.5 font-mono text-3xs font-medium text-foreground">
+                      Today
+                    </span>
+                  ) : null}
+                  {peak > 0 && Math.abs(activeCell.value - peak) < 0.0001 ? (
+                    <span className="rounded-sm bg-muted px-1 py-0.5 font-mono text-3xs font-medium text-muted-foreground">
+                      Peak
+                    </span>
+                  ) : null}
+                </div>
               </div>
               <div className="flex items-center justify-between gap-4 py-0.5">
                 <span className="text-muted-foreground">Tokens</span>
                 <span
                   className={cn(
-                    "tabular-nums font-medium",
-                    metric === 'tokens' ? "text-foreground font-semibold" : "text-foreground",
+                    "tabular-nums text-foreground",
+                    metric === 'tokens' ? "font-semibold" : "font-medium",
                   )}
                 >
                   {formatTokens(activeCell.tokens)}
@@ -350,8 +381,8 @@ export function ActivityHeatmap({
                 <span className="text-muted-foreground">Cost</span>
                 <span
                   className={cn(
-                    "tabular-nums font-medium",
-                    metric === 'cost' ? "text-foreground font-semibold" : "text-foreground",
+                    "tabular-nums text-foreground",
+                    metric === 'cost' ? "font-semibold" : "font-medium",
                   )}
                 >
                   {formatUsd(activeCell.cost)}
