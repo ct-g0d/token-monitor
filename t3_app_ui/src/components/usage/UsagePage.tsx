@@ -331,7 +331,11 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
     }
     refreshingRef.current = true;
     setIsRefreshing(true);
-    void refresh(nextWindow).finally(() => {
+    const tm = typeof window !== "undefined" ? window.tokenMonitor : null;
+    const forcePromise = tm?.getStats
+      ? tm.getStats({ force: true, forceHistory: true, forceSelfSync: true, feedback: true }).catch(() => {})
+      : Promise.resolve();
+    void Promise.all([forcePromise, refresh(nextWindow)]).finally(() => {
       refreshingRef.current = false;
       setIsRefreshing(false);
     });
@@ -393,7 +397,7 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
       effectiveWindow.untilDay,
     ],
   );
-  const headerControls = (
+  const headerControls = showingLimits ? (
     <>
       <div className="flex h-8 items-center gap-3 rounded-[3px] px-3.5 shadow-[inset_0_0_0_1px_var(--border)] [&_*]:font-mono [&_*]:text-[11px] [&_*]:tracking-[0.06em] [&_*]:uppercase">
         <UsageProviderFilter
@@ -413,86 +417,82 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
         <RefreshIcon size="sm" refreshing={isRefreshing} />
       </Button>
     </>
+  ) : (
+    <div className="flex shrink-0 items-center gap-2 mr-28 mt-5 [-webkit-app-region:no-drag]">
+      <div className="flex h-8 items-center gap-3 rounded-[3px] px-3.5 shadow-[inset_0_0_0_1px_var(--border)] [&_*]:font-mono [&_*]:text-[11px] [&_*]:tracking-[0.06em] [&_*]:uppercase">
+        <UsageProviderFilter
+          availableProviders={selectableProviders}
+          hiddenProviders={hiddenProviders}
+          onChange={(next) => updatePreferences({ hiddenProviders: next })}
+        />
+        <Menu>
+          <MenuTrigger
+            render={<InlineButton />}
+            aria-label="Usage options"
+            className="group/usage-options"
+          >
+            <SlidersHorizontalIcon
+              className="size-3.5 text-muted-foreground opacity-70 transition-opacity group-hover/usage-options:opacity-100 group-focus-visible/usage-options:opacity-100"
+              aria-hidden
+            />
+          </MenuTrigger>
+          <MenuPopup align="end">
+            <MenuItem onClick={() => setPriceDialog({})}>
+              <SlidersHorizontalIcon aria-hidden />
+              Model prices
+            </MenuItem>
+          </MenuPopup>
+        </Menu>
+      </div>
+      <ToggleGroup
+        aria-label="Usage metric"
+        variant="segmented"
+        value={[metric]}
+        onValueChange={(next) => {
+          const value = next[0];
+          if (isUsageMetric(value)) selectMetric(value);
+        }}
+      >
+        {METRIC_OPTIONS.filter((option) => option.value !== "limits").map((option) => (
+          <Toggle key={option.value} value={option.value} title={shortcutTitle(option)}>
+            {option.label}
+          </Toggle>
+        ))}
+      </ToggleGroup>
+      <ToggleGroup
+        aria-label="Usage period"
+        variant="segmented"
+        value={[String(windowDays)]}
+        onValueChange={(next) => {
+          const value = next[0];
+          if (value) selectWindow(Number(value));
+        }}
+      >
+        {WINDOW_OPTIONS.map((option) => (
+          <Toggle key={option.days} value={String(option.days)} title={shortcutTitle(option)}>
+            {option.label}
+          </Toggle>
+        ))}
+      </ToggleGroup>
+      <Button
+        onClick={refreshWindow}
+        aria-label="Refresh usage"
+        aria-busy={isRefreshing}
+        disabled={isRefreshing}
+        size="icon-sm"
+        variant="ghost"
+      >
+        <RefreshIcon size="sm" refreshing={isRefreshing} />
+      </Button>
+    </div>
   );
 
   return (
     <SidebarInset className="h-full min-h-0 overflow-hidden overscroll-y-none isolate bg-transparent">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col text-foreground">
         <PageHeader title={showingLimits ? "Limits" : "Usage"} subtitle={showingLimits ? undefined : windowLabel}>
-          {showingLimits ? headerControls : null}
+          {headerControls}
         </PageHeader>
-
-        {showingLimits ? null : (
-          <div className="flex shrink-0 items-center justify-between gap-3 px-8 xl:px-10 pb-4 [-webkit-app-region:no-drag]">
-            <div className="flex h-8 items-center gap-3 rounded-[3px] px-3.5 shadow-[inset_0_0_0_1px_var(--border)] [&_*]:font-mono [&_*]:text-[11px] [&_*]:tracking-[0.06em] [&_*]:uppercase">
-              <UsageProviderFilter
-                availableProviders={selectableProviders}
-                hiddenProviders={hiddenProviders}
-                onChange={(next) => updatePreferences({ hiddenProviders: next })}
-              />
-              <Menu>
-                <MenuTrigger
-                  render={<InlineButton />}
-                  aria-label="Usage options"
-                  className="group/usage-options"
-                >
-                  <SlidersHorizontalIcon
-                    className="size-3.5 text-muted-foreground opacity-70 transition-opacity group-hover/usage-options:opacity-100 group-focus-visible/usage-options:opacity-100"
-                    aria-hidden
-                  />
-                </MenuTrigger>
-                <MenuPopup align="end">
-                  <MenuItem onClick={() => setPriceDialog({})}>
-                    <SlidersHorizontalIcon aria-hidden />
-                    Model prices
-                  </MenuItem>
-                </MenuPopup>
-              </Menu>
-            </div>
-            <div className="flex items-center gap-2">
-              <ToggleGroup
-                aria-label="Usage metric"
-                variant="segmented"
-                value={[metric]}
-                onValueChange={(next) => {
-                  const value = next[0];
-                  if (isUsageMetric(value)) selectMetric(value);
-                }}
-              >
-                {METRIC_OPTIONS.filter((option) => option.value !== "limits").map((option) => (
-                  <Toggle key={option.value} value={option.value} title={shortcutTitle(option)}>
-                    {option.label}
-                  </Toggle>
-                ))}
-              </ToggleGroup>
-              <ToggleGroup
-                aria-label="Usage period"
-                variant="segmented"
-                value={[String(windowDays)]}
-                onValueChange={(next) => {
-                  const value = next[0];
-                  if (value) selectWindow(Number(value));
-                }}
-              >
-                {WINDOW_OPTIONS.map((option) => (
-                  <Toggle key={option.days} value={String(option.days)} title={shortcutTitle(option)}>
-                    {option.label}
-                  </Toggle>
-                ))}
-              </ToggleGroup>
-              <Button
-                onClick={refreshWindow}
-                aria-label="Refresh usage"
-                aria-busy={isRefreshing}
-                disabled={isRefreshing || !canReadDiagnostics}
-                size="icon-sm"
-                variant="ghost"
-              >
-                <RefreshIcon size="sm" refreshing={isRefreshing} />
-              </Button>
-            </div>
-          </div>
-        )}
 
         <ScrollArea className="min-h-0 flex-1">
           <div className="flex w-full max-w-[1200px] flex-col gap-6 px-10 pt-4 pb-12">
