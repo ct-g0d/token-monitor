@@ -9,6 +9,10 @@ import React, {
 import { createPortal } from 'react-dom';
 import { formatTokens, formatUsd } from '@t3tools/shared/usageFormat';
 import { cn } from '~/lib/utils';
+import { useTokenMonitorSettings } from '~/settings/useSettings';
+import type { HeatmapHoverBehavior } from '~/settings/types';
+
+export type { HeatmapHoverBehavior };
 
 export interface DailyRecord {
   date: string;
@@ -31,6 +35,7 @@ export interface ActivityHeatmapProps {
   activeDays?: number | undefined;
   peakTokens?: number | undefined;
   daily?: DailyRecord[] | undefined;
+  hoverBehavior?: HeatmapHoverBehavior | undefined;
 }
 
 const WEEKS = 53;
@@ -59,7 +64,11 @@ export function ActivityHeatmap({
   activeDays,
   peakTokens,
   daily: dailyProp,
+  hoverBehavior: hoverBehaviorProp,
 }: ActivityHeatmapProps) {
+  const { settings } = useTokenMonitorSettings();
+  const hoverBehavior: HeatmapHoverBehavior = hoverBehaviorProp ?? settings.heatmapHoverBehavior ?? 'detailed';
+  const isHoverDisabled = hoverBehavior === 'off';
   const [dailyState, setDailyState] = useState<DailyRecord[]>([]);
   const [activeCell, setActiveCell] = useState<CellData | null>(null);
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
@@ -161,10 +170,11 @@ export function ActivityHeatmap({
   }, []);
 
   const showTooltip = useCallback((targetEl: HTMLElement, cell: CellData) => {
+    if (isHoverDisabled) return;
     activeTargetRef.current = targetEl;
     setActiveCell(cell);
     updateTooltipPosition(targetEl);
-  }, [updateTooltipPosition]);
+  }, [isHoverDisabled, updateTooltipPosition]);
 
   const hideTooltip = useCallback(() => {
     activeTargetRef.current = null;
@@ -246,7 +256,9 @@ export function ActivityHeatmap({
         const targetEl = cellRefs.current.get(nextIndex);
         if (targetEl) {
           targetEl.focus();
-          showTooltip(targetEl, nextCell);
+          if (!isHoverDisabled) {
+            showTooltip(targetEl, nextCell);
+          }
         }
       }
     }
@@ -309,7 +321,7 @@ export function ActivityHeatmap({
                   tabIndex={currentFocusedIndex === index ? 0 : -1}
                   role="gridcell"
                   aria-label={cellDescriptor}
-                  aria-describedby={activeCell?.key === c.key ? 'activity-heatmap-tooltip' : undefined}
+                  aria-describedby={!isHoverDisabled && activeCell?.key === c.key ? 'activity-heatmap-tooltip' : undefined}
                   onPointerEnter={(e) => {
                     showTooltip(e.currentTarget, c);
                   }}
@@ -326,7 +338,7 @@ export function ActivityHeatmap({
                   className={cn(
                     "size-[11px] p-0 border-0 outline-none rounded-[1px] transition-all cursor-pointer",
                     c.value > 0 ? "bg-primary" : "bg-muted",
-                    activeCell?.key === c.key && "ring-1 ring-foreground ring-offset-1 ring-offset-background z-10",
+                    activeCell?.key === c.key && !isHoverDisabled && "ring-1 ring-foreground ring-offset-1 ring-offset-background z-10",
                     "focus-visible:ring-1 focus-visible:ring-foreground focus-visible:ring-offset-1 focus-visible:ring-offset-background focus-visible:z-10"
                   )}
                   style={c.value > 0 && peak > 0 ? { opacity: 0.25 + 0.75 * Math.sqrt(c.value / peak) } : undefined}
@@ -337,7 +349,7 @@ export function ActivityHeatmap({
         ))}
       </div>
 
-      {typeof document !== 'undefined' && activeCell && tooltipPos
+      {!isHoverDisabled && typeof document !== 'undefined' && activeCell && tooltipPos
         ? createPortal(
             <div
               ref={tooltipRef}
@@ -366,28 +378,32 @@ export function ActivityHeatmap({
                   ) : null}
                 </div>
               </div>
-              <div className="flex items-center justify-between gap-4 py-0.5">
-                <span className="text-muted-foreground">Tokens</span>
-                <span
-                  className={cn(
-                    "tabular-nums text-foreground",
-                    metric === 'tokens' ? "font-semibold" : "font-medium",
-                  )}
-                >
-                  {formatTokens(activeCell.tokens)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-4 py-0.5">
-                <span className="text-muted-foreground">Cost</span>
-                <span
-                  className={cn(
-                    "tabular-nums text-foreground",
-                    metric === 'cost' ? "font-semibold" : "font-medium",
-                  )}
-                >
-                  {formatUsd(activeCell.cost)}
-                </span>
-              </div>
+              {hoverBehavior !== 'compact' || metric === 'tokens' ? (
+                <div className="flex items-center justify-between gap-4 py-0.5">
+                  <span className="text-muted-foreground">Tokens</span>
+                  <span
+                    className={cn(
+                      "tabular-nums text-foreground",
+                      metric === 'tokens' ? "font-semibold" : "font-medium",
+                    )}
+                  >
+                    {formatTokens(activeCell.tokens)}
+                  </span>
+                </div>
+              ) : null}
+              {hoverBehavior !== 'compact' || metric === 'cost' ? (
+                <div className="flex items-center justify-between gap-4 py-0.5">
+                  <span className="text-muted-foreground">Cost</span>
+                  <span
+                    className={cn(
+                      "tabular-nums text-foreground",
+                      metric === 'cost' ? "font-semibold" : "font-medium",
+                    )}
+                  >
+                    {formatUsd(activeCell.cost)}
+                  </span>
+                </div>
+              ) : null}
             </div>,
             document.body,
           )

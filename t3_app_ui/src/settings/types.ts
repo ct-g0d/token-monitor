@@ -61,6 +61,8 @@ export interface ManagedAccount {
   avatarUrl?: string;
 }
 
+export type HeatmapHoverBehavior = 'detailed' | 'compact' | 'off';
+
 export interface TokenMonitorSettingsState {
   // General
   language?: string;
@@ -168,6 +170,7 @@ export interface TokenMonitorSettingsState {
   hiddenViews?: string;
   viewDisplayOrder?: string;
   heatmapMetric?: 'cost' | 'tokens';
+  heatmapHoverBehavior?: HeatmapHoverBehavior;
   codexDotsEnabled?: boolean;
   codexDotsVisible?: boolean;
   sessionContextMetric?: 'used' | 'remaining';

@@ -270,6 +270,22 @@ export function GeneralSettings({ settings, updateSettings, refreshCurrencyRates
         />
 
         <SettingRow
+          title="Heatmap Hover Details"
+          description="Tooltip details shown when hovering over heatmap days."
+          control={
+            <select
+              value={settings.heatmapHoverBehavior || 'detailed'}
+              onChange={(e) => updateSettings({ heatmapHoverBehavior: e.target.value as any })}
+              className={selectClass}
+            >
+              <option value="detailed">All Details (Tokens & Cost)</option>
+              <option value="compact">Active Metric Only</option>
+              <option value="off">Disabled</option>
+            </select>
+          }
+        />
+
+        <SettingRow
           title="Active Days Window"
           description="Date range window for activity heatmap cells."
           control={
