@@ -225,3 +225,265 @@ export function providersWithUsage(
   }
   return ordered;
 }
+
+export function normalizeProviderKey(providerOrDriver: string): string {
+  const norm = String(providerOrDriver || "").trim().toLowerCase();
+  if (norm === "claudeagent") return "claude";
+  return norm;
+}
+
+export function getSelectableProviders(options: {
+  readonly mode: "usage" | "limits";
+  readonly presentations?: Iterable<any> | null;
+  readonly stats?: any;
+  readonly merged?: any;
+  readonly windowSessions?: any;
+  readonly hiddenProviders?: ReadonlySet<string> | null;
+  readonly selectedEnvironmentIds?: ReadonlySet<string> | null;
+}): readonly string[] {
+  const isLimits = options.mode === "limits";
+  const signedInProviders = new Set<string>();
+  const limitRecordProviders = new Set<string>();
+  const usageRecordProviders = new Set<string>();
+
+  // 1. Inspect presentations (serverConfig.providers & usageLimitSources)
+  if (options.presentations) {
+    for (const presentation of options.presentations) {
+      if (!presentation) continue;
+      const envId = presentation.serverConfig?.environmentId;
+      if (
+        options.selectedEnvironmentIds &&
+        envId &&
+        !options.selectedEnvironmentIds.has(envId)
+      ) {
+        continue;
+      }
+
+      const providers = presentation?.serverConfig?.providers ?? [];
+      for (const p of providers) {
+        if (!p) continue;
+        const key = normalizeProviderKey(p.driver);
+        const isUnconfigured =
+          p.status === "notConfigured" || p.auth?.status === "unauthenticated";
+        const hasEmail = Boolean(p.auth?.email && String(p.auth.email).trim());
+        const isAuthenticated = p.auth?.status === "authenticated";
+        const hasActiveAccount =
+          p.status !== "notConfigured" &&
+          p.status !== "disabled" &&
+          Boolean(p.auth?.workspaceId || p.auth?.label);
+
+        if (!isUnconfigured && (hasEmail || isAuthenticated || hasActiveAccount)) {
+          signedInProviders.add(key);
+        }
+
+        const hasWindows = Array.isArray(p.usageLimits?.windows) && p.usageLimits.windows.length > 0;
+        const hasResetCredits = Boolean(
+          p.usageLimits?.resetCredits &&
+            typeof p.usageLimits.resetCredits.availableCount === "number",
+        );
+        const hasBalance = Boolean(
+          p.usageLimits &&
+            (typeof p.usageLimits.balance?.amount === "number" ||
+              typeof p.usageLimits.balanceUsd === "number"),
+        );
+        const hasExternalUsage = Boolean(p.usageLimits?.externalUsage);
+        const isOk = p.status === "ready" || p.status === "ok";
+        if (hasWindows || hasResetCredits || hasBalance || hasExternalUsage || isOk) {
+          limitRecordProviders.add(key);
+        }
+      }
+
+      const sources = presentation?.serverConfig?.usageLimitSources ?? [];
+      for (const source of sources) {
+        for (const account of source?.accounts ?? []) {
+          if (!account) continue;
+          const key = normalizeProviderKey(account.driver);
+          signedInProviders.add(key);
+          const hasWindows =
+            Array.isArray(account.usageLimits?.windows) && account.usageLimits.windows.length > 0;
+          const hasResetCredits = Boolean(
+            account.usageLimits?.resetCredits &&
+              typeof account.usageLimits.resetCredits.availableCount === "number",
+          );
+          const hasBalance = Boolean(
+            account.usageLimits &&
+              (typeof account.usageLimits.balance?.amount === "number" ||
+                typeof account.usageLimits.balanceUsd === "number"),
+          );
+          const isOk = account.status === "ready" || account.status === "ok";
+          if (hasWindows || hasResetCredits || hasBalance || isOk) {
+            limitRecordProviders.add(key);
+          }
+        }
+      }
+    }
+  }
+
+  // 2. Inspect stats.limits
+  const statsLimits = options.stats?.limits;
+  if (statsLimits) {
+    const rawProviders = Array.isArray(statsLimits.providers)
+      ? statsLimits.providers
+      : Array.isArray(statsLimits)
+        ? statsLimits
+        : [];
+    for (const lp of rawProviders) {
+      if (!lp) continue;
+      const key = normalizeProviderKey(lp.provider);
+      const isUnconfigured = lp.status === "notConfigured" || lp.status === "unsupported";
+      const hasAccountInfo = Boolean(lp.accountKey || lp.email || lp.accountEmail);
+      const accountsList = Array.isArray(lp.accounts) ? lp.accounts : [];
+      const hasAccounts = accountsList.some(
+        (acc: any) =>
+          acc &&
+          acc.status !== "notConfigured" &&
+          (Boolean(acc.email || acc.accountEmail || acc.accountKey) || acc.status === "ok"),
+      );
+      if (!isUnconfigured && (hasAccountInfo || hasAccounts || lp.status === "ok")) {
+        signedInProviders.add(key);
+      }
+
+      const hasWindows = Array.isArray(lp.windows) && lp.windows.length > 0;
+      const hasBalance =
+        typeof lp.balance === "number" ||
+        typeof lp.balance?.amount === "number" ||
+        typeof lp.balanceUsd === "number";
+      const hasResetCredits = Boolean(
+        lp.resetCredits && typeof lp.resetCredits.availableCount === "number",
+      );
+      const isOk = lp.status === "ok";
+      const hasAccountsWithLimits = accountsList.some(
+        (acc: any) =>
+          acc &&
+          ((Array.isArray(acc.windows) && acc.windows.length > 0) ||
+            typeof acc.balance === "number" ||
+            typeof acc.balanceUsd === "number" ||
+            acc.status === "ok"),
+      );
+      if (!isUnconfigured && (hasWindows || hasBalance || hasResetCredits || isOk || hasAccountsWithLimits)) {
+        limitRecordProviders.add(key);
+      }
+    }
+  }
+
+  // 3. Inspect usage records
+  if (options.merged?.providers && Array.isArray(options.merged.providers)) {
+    for (const entry of options.merged.providers) {
+      if (
+        Number(entry.totalTokens || 0) > 0 ||
+        Number(entry.costUsd || 0) > 0 ||
+        Number(entry.records || 0) > 0 ||
+        Number(entry.sessions || 0) > 0
+      ) {
+        usageRecordProviders.add(normalizeProviderKey(entry.provider));
+      }
+    }
+  }
+
+  const periods = options.stats?.periods;
+  if (periods) {
+    for (const periodKey of ["today", "month", "allTime"] as const) {
+      const p = periods[periodKey];
+      if (!p) continue;
+      if (p.clients && typeof p.clients === "object") {
+        for (const [client, val] of Object.entries(p.clients)) {
+          if (typeof val === "number" && val > 0) {
+            usageRecordProviders.add(normalizeProviderKey(client));
+          } else if (
+            val &&
+            typeof val === "object" &&
+            (Number((val as any).tokens || 0) > 0 || Number((val as any).cost || 0) > 0)
+          ) {
+            usageRecordProviders.add(normalizeProviderKey(client));
+          }
+        }
+      }
+      if (p.clientTokens && typeof p.clientTokens === "object") {
+        for (const [client, tokens] of Object.entries(p.clientTokens)) {
+          if (Number(tokens || 0) > 0) {
+            usageRecordProviders.add(normalizeProviderKey(client));
+          }
+        }
+      }
+      if (p.clientCosts && typeof p.clientCosts === "object") {
+        for (const [client, cost] of Object.entries(p.clientCosts)) {
+          if (Number(cost || 0) > 0) {
+            usageRecordProviders.add(normalizeProviderKey(client));
+          }
+        }
+      }
+      if (p.sessions && typeof p.sessions === "object") {
+        for (const [client, count] of Object.entries(p.sessions)) {
+          if (client !== "total" && Number(count || 0) > 0) {
+            usageRecordProviders.add(normalizeProviderKey(client));
+          }
+        }
+      }
+    }
+  }
+
+  if (options.stats?.sessionsByWindow && typeof options.stats.sessionsByWindow === "object") {
+    for (const winObj of Object.values(options.stats.sessionsByWindow)) {
+      if (winObj && typeof winObj === "object") {
+        for (const [client, count] of Object.entries(winObj as Record<string, any>)) {
+          if (client !== "total" && Number(count || 0) > 0) {
+            usageRecordProviders.add(normalizeProviderKey(client));
+          }
+        }
+      }
+    }
+  }
+
+  if (options.windowSessions && typeof options.windowSessions === "object") {
+    for (const [client, count] of Object.entries(options.windowSessions)) {
+      if (client !== "total" && Number(count || 0) > 0) {
+        usageRecordProviders.add(normalizeProviderKey(client));
+      }
+    }
+  }
+
+  const selectableSet = new Set<string>();
+  for (const provider of PROVIDER_ORDER) {
+    const norm = normalizeProviderKey(provider);
+    const hasAccount = signedInProviders.has(norm);
+    const hasLimit = limitRecordProviders.has(norm);
+    const hasUsage = usageRecordProviders.has(norm);
+
+    if (isLimits) {
+      if (hasAccount || hasLimit) {
+        selectableSet.add(provider);
+      }
+    } else {
+      if (hasAccount || hasUsage || hasLimit) {
+        selectableSet.add(provider);
+      }
+    }
+  }
+
+  // Also include any extra active providers not in PROVIDER_ORDER
+  const allExtra = new Set([
+    ...signedInProviders,
+    ...limitRecordProviders,
+    ...(isLimits ? [] : usageRecordProviders),
+  ]);
+  for (const p of allExtra) {
+    if (p && !selectableSet.has(p)) {
+      selectableSet.add(p);
+    }
+  }
+
+  // Prevent filter lockout: preserve any provider currently hidden that has records or was known
+  if (options.hiddenProviders) {
+    for (const p of options.hiddenProviders) {
+      const norm = normalizeProviderKey(p);
+      if (signedInProviders.has(norm) || limitRecordProviders.has(norm) || usageRecordProviders.has(norm)) {
+        selectableSet.add(p);
+      }
+    }
+  }
+
+  return [
+    ...PROVIDER_ORDER.filter((p) => selectableSet.has(p)),
+    ...Array.from(selectableSet).filter((p) => !PROVIDER_ORDER.includes(p)),
+  ];
+}

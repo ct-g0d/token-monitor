@@ -95,7 +95,7 @@ import {
   type UsageMetric,
 } from "~/components/usage/usageShortcuts";
 import { useEscapeToGoBack } from "~/hooks/useNavigateBack";
-import { PROVIDER_ORDER, PROVIDER_PRESENTATION, providersWithUsage } from "~/components/usage/usageProviders";
+import { PROVIDER_ORDER, PROVIDER_PRESENTATION, providersWithUsage, getSelectableProviders } from "~/components/usage/usageProviders";
 import {
   readUsagePagePreferences,
   saveUsagePagePreferences,
@@ -214,14 +214,28 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
     peakDayTokens,
     hasWindowSessions,
     windowSessions,
+    stats,
   } = useUsage(window, selectedEnvironmentIds, hiddenProviders);
   const merged = shown?.merged ?? answeredUsage;
   const shownWindow = shown?.window ?? window;
   const shownHourly = shownWindow.resolution === "hour";
   const refreshingUsage = isRefreshing && !showingLimits;
   const showingKept = shown !== null && shown.window !== window;
-  const presentations = useAtomValue(environmentPresentations.presentationsAtom);
+  const presentations = useAtomValue(environmentPresentations.presentationsWithProvidersAtom);
   const providersByEnvironment = useAtomValue(environmentPresentations.providersByEnvironmentAtom);
+  const selectableProviders = useMemo(
+    () =>
+      getSelectableProviders({
+        mode,
+        presentations: presentations.values(),
+        stats,
+        merged,
+        windowSessions,
+        hiddenProviders,
+        selectedEnvironmentIds,
+      }) as readonly UsageProviderKind[],
+    [mode, presentations, stats, merged, windowSessions, hiddenProviders, selectedEnvironmentIds],
+  );
   const cursorAccessEnvironments = useMemo(
     () => (hiddenProviders.has("cursor") ? [] : cursorKeychainAccessEnvironments(selectedEnvironments)),
     [hiddenProviders, selectedEnvironments],
@@ -397,6 +411,7 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
         onOpenModelPrices={() => setPriceDialog({})}
       />
       <UsageProviderFilter
+        availableProviders={selectableProviders}
         hiddenProviders={hiddenProviders}
         onChange={(next) => updatePreferences({ hiddenProviders: next })}
       />
@@ -1361,21 +1376,26 @@ function UsageEnvironmentFilter({
 }
 
 function UsageProviderFilter({
+  availableProviders = PROVIDER_ORDER as readonly UsageProviderKind[],
   hiddenProviders,
   onChange,
 }: {
+  readonly availableProviders?: readonly UsageProviderKind[];
   readonly hiddenProviders: ReadonlySet<UsageProviderKind>;
   readonly onChange: (hiddenProviders: readonly UsageProviderKind[]) => void;
 }) {
-  const visible = PROVIDER_ORDER.filter((provider) => !hiddenProviders.has(provider));
+  const visible = availableProviders.filter((provider) => !hiddenProviders.has(provider));
+  const allChecked = availableProviders.length > 0 && visible.length === availableProviders.length;
   const label =
-    visible.length === PROVIDER_ORDER.length
-      ? "All providers"
-      : visible.length === 0
-        ? "No providers"
-        : visible.length === 1
-          ? PROVIDER_PRESENTATION[visible[0]!].label
-          : `${visible.length} providers`;
+    availableProviders.length === 0
+      ? "No providers"
+      : allChecked
+        ? "All providers"
+        : visible.length === 0
+          ? "No providers"
+          : visible.length === 1
+            ? PROVIDER_PRESENTATION[visible[0]!].label
+            : `${visible.length} providers`;
 
   return (
     <Menu>
@@ -1388,23 +1408,36 @@ function UsageProviderFilter({
       </MenuTrigger>
       <MenuPopup align="start">
         <MenuCheckboxItem
-          checked={hiddenProviders.size === 0}
+          checked={allChecked}
           closeOnClick={false}
-          onCheckedChange={(checked) => onChange(checked ? [] : PROVIDER_ORDER)}
+          onCheckedChange={(checked) =>
+            onChange(
+              checked
+                ? [...hiddenProviders].filter(
+                    (p) => !availableProviders.includes(p),
+                  )
+                : [
+                    ...new Set([
+                      ...hiddenProviders,
+                      ...availableProviders,
+                    ]),
+                  ],
+            )
+          }
         >
           All providers
         </MenuCheckboxItem>
         <MenuSeparator />
-        {PROVIDER_ORDER.map((provider) => (
+        {availableProviders.map((provider) => (
           <MenuCheckboxItem
             key={provider}
             checked={!hiddenProviders.has(provider)}
             closeOnClick={false}
             onCheckedChange={(checked) =>
               onChange(
-                PROVIDER_ORDER.filter((entry) =>
-                  entry === provider ? !checked : hiddenProviders.has(entry),
-                ),
+                checked
+                  ? [...hiddenProviders].filter((p) => p !== provider)
+                  : [...new Set([...hiddenProviders, provider])],
               )
             }
           >
