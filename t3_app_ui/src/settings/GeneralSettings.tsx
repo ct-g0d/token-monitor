@@ -10,6 +10,7 @@ import type { TokenMonitorSettingsState } from './types';
 interface GeneralSettingsProps {
   settings: TokenMonitorSettingsState;
   updateSettings: (patch: Partial<TokenMonitorSettingsState>) => Promise<void>;
+refreshCurrencyRates: () => Promise<void>;
 }
 
 export const selectClass =
@@ -30,12 +31,14 @@ const COMMON_CURRENCIES = [
   { code: 'CHF', symbol: 'CHF', name: 'Swiss Franc' },
 ];
 
-export function GeneralSettings({ settings, updateSettings }: GeneralSettingsProps) {
+export function GeneralSettings({ settings, updateSettings, refreshCurrencyRates }: GeneralSettingsProps) {
   const { theme, setTheme } = useTheme();
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateMessage, setUpdateMessage] = useState<string | null>(null);
   const [generatingReport, setGeneratingReport] = useState(false);
   const [reportResult, setReportResult] = useState<string | null>(null);
+  const [refreshingRates, setRefreshingRates] = useState(false);
+  const [rateMessage, setRateMessage] = useState<string | null>(null);
   const [tokscaleInfo, setTokscaleInfo] = useState<any>(null);
 
   const [customRates, setCustomRates] = useState<Record<string, string>>(() => {
@@ -102,6 +105,19 @@ export function GeneralSettings({ settings, updateSettings }: GeneralSettingsPro
       }
     }
     await updateSettings({ currencyRates: numericRates });
+  };
+
+  const handleRefreshRates = async () => {
+    setRefreshingRates(true);
+    setRateMessage(null);
+    try {
+      await refreshCurrencyRates();
+      setRateMessage('Exchange rates updated.');
+    } catch (err: any) {
+      setRateMessage(err?.message || 'Could not update exchange rates.');
+    } finally {
+      setRefreshingRates(false);
+    }
   };
 
   return (
@@ -381,9 +397,16 @@ export function GeneralSettings({ settings, updateSettings }: GeneralSettingsPro
             ))}
           </div>
           <div className="flex justify-end pt-1">
-            <Button size="sm" variant="outline" onClick={handleSaveRates}>
-              Save Rates
-            </Button>
+            <div className="flex items-center gap-2">
+              {rateMessage ? <span className="text-xs text-muted-foreground">{rateMessage}</span> : null}
+              <Button size="sm" variant="outline" onClick={handleRefreshRates} disabled={refreshingRates}>
+                {refreshingRates ? <Spinner className="mr-1.5 size-3" /> : null}
+                Fetch Current Rates
+              </Button>
+              <Button size="sm" variant="outline" onClick={handleSaveRates}>
+                Save Rates
+              </Button>
+            </div>
           </div>
         </div>
       </SettingSection>

@@ -12,6 +12,7 @@ import { ServiceStatusView } from './views/ServiceStatusView';
 // Main-process view names (tray, last view state, URL `breakdown`) folded onto the active views
 function viewFor(name: string | null | undefined): MainView {
   const target = String(name || '').toLowerCase();
+  if (target === 'settings') return 'settings';
   if (target === 'limits') return 'limits';
   if (target === 'status') return 'status';
   return 'usage';

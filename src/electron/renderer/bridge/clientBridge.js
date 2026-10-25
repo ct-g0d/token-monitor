@@ -49,6 +49,7 @@
       getSessionDetail: async () => ({ turns: [] }),
       clearSessionUsageArchive: async () => ({ ok: true }),
       getSettings: async () => JSON.parse(JSON.stringify(DEFAULT_MOCK_DATA.settings)),
+      refreshCurrencyRates: async () => JSON.parse(JSON.stringify(DEFAULT_MOCK_DATA.settings)),
       updateSettings: async (patch) => ({ ...DEFAULT_MOCK_DATA.settings, ...patch }),
       saveSubscriptions: async () => ({}),
       adoptOrphanedSubscriptions: async () => ({ ok: true }),
@@ -405,6 +406,10 @@
 
     async getSettings() {
       return this._backend.getSettings();
+    }
+
+    async refreshCurrencyRates() {
+      return this._backend.refreshCurrencyRates?.() || this._backend.getSettings();
     }
 
     async updateSettings(patch) {
@@ -803,6 +808,7 @@
       const self = this;
       return {
         getSettings: () => self.settings.getSettings(),
+        refreshCurrencyRates: () => self.settings.refreshCurrencyRates(),
         updateSettings: (patch) => self.settings.updateSettings(patch),
         saveSubscriptions: (subs, base) => self.settings.saveSubscriptions(subs, base),
         adoptOrphanedSubscriptions: () => self.settings.adoptOrphanedSubscriptions(),

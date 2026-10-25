@@ -73,7 +73,7 @@ export interface TokenMonitorSettingsState {
   alwaysOnTop?: boolean;
   keepAboveTaskbar?: boolean;
   windowToggleShortcut?: string;
-  windowToggleShortcutStatus?: string;
+  windowToggleShortcutStatus?: string | { shortcut?: string; state?: string };
 
   // Presence - Edge Dock
   edgeDockEnabled?: boolean;

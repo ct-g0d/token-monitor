@@ -11,8 +11,19 @@ export function useTokenMonitorSettings() {
     try {
       if (typeof window !== 'undefined' && window.tokenMonitor?.getSettings) {
         const data = await window.tokenMonitor.getSettings();
-        const { limitAccountForms, ...persistedSettings } = (data || {}) as TokenMonitorSettingsState & {
+        const { limitAccountForms, ...rawSettings } = (data || {}) as TokenMonitorSettingsState & {
           limitAccountForms?: LimitAccountForms;
+        };
+        const persistedSettings: TokenMonitorSettingsState = {
+          ...rawSettings,
+          customModelPricing: Array.isArray(rawSettings.customModelPricing) ? rawSettings.customModelPricing : [],
+          subscriptions: Array.isArray(rawSettings.subscriptions) ? rawSettings.subscriptions : [],
+          modelAliases: rawSettings.modelAliases && typeof rawSettings.modelAliases === 'object' && !Array.isArray(rawSettings.modelAliases)
+            ? rawSettings.modelAliases
+            : {},
+          currencyRates: rawSettings.currencyRates && typeof rawSettings.currencyRates === 'object' && !Array.isArray(rawSettings.currencyRates)
+            ? rawSettings.currencyRates
+            : {},
         };
         setSettings(persistedSettings);
         setAccountForms(limitAccountForms || []);
@@ -57,12 +68,24 @@ export function useTokenMonitorSettings() {
     }
   }, [loadSettings]);
 
+  const refreshCurrencyRates = useCallback(async () => {
+    const refreshed = await window.tokenMonitor?.refreshCurrencyRates?.();
+    if (refreshed) {
+      const { limitAccountForms, ...persistedSettings } = refreshed as TokenMonitorSettingsState & {
+        limitAccountForms?: LimitAccountForms;
+      };
+      if (limitAccountForms) setAccountForms(limitAccountForms);
+      setSettings((prev) => ({ ...prev, ...persistedSettings }));
+    }
+  }, []);
+
   return {
     settings,
     accountForms,
     loading,
     error,
     updateSettings,
+    refreshCurrencyRates,
     refreshSettings: loadSettings,
   };
 }

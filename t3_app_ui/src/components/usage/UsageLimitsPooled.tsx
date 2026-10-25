@@ -13,8 +13,8 @@ import {
   type LimitPoolWindow,
   remainingPercent,
 } from "@t3tools/shared/usageLimits";
-import { AlertTriangleIcon, ExternalLinkIcon, TicketIcon } from "lucide-react";
-import { Fragment, type ReactNode, useState } from "react";
+import { AlertTriangleIcon, ChevronDownIcon, ExternalLinkIcon, SlidersHorizontalIcon, TicketIcon } from "lucide-react";
+import { Fragment, type ReactNode, useEffect, useMemo, useState } from "react";
 
 import { usePrimarySettings } from "~/hooks/useSettings";
 import { cn } from "~/lib/utils";
@@ -25,6 +25,13 @@ import { RedactedSensitiveText } from "~/components/settings/RedactedSensitiveTe
 import { Button } from "~/components/ui/button";
 import { OpenAI } from "~/components/Icons";
 import { Alert, AlertTitle } from "~/components/ui/alert";
+import {
+  Menu,
+  MenuCheckboxItem,
+  MenuPopup,
+  MenuSeparator,
+  MenuTrigger,
+} from "~/components/ui/menu";
 import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
 import {
   PaceIcon,
@@ -543,10 +550,25 @@ function PoolWindowCard({
   );
 }
 
-function PoolSection({ pool, now }: { readonly pool: LimitPool; readonly now: number }) {
+function limitWindowKey(driver: string, window: LimitPoolWindow): string {
+  return `${driver}:${window.kind}:${window.id}`;
+}
+
+function PoolSection({
+  pool,
+  now,
+  visibleLimitKeys,
+}: {
+  readonly pool: LimitPool;
+  readonly now: number;
+  readonly visibleLimitKeys: ReadonlySet<string> | null;
+}) {
   const color = getProviderBarColor(String(pool.driver));
   const label = getProviderLabel(String(pool.driver));
-  const windows = displayLimitWindows(pool);
+  const windows = displayLimitWindows(pool).filter(
+    (window) => visibleLimitKeys === null || visibleLimitKeys.has(limitWindowKey(String(pool.driver), window)),
+  );
+  if (windows.length === 0) return null;
   const planSummary = pool.accounts.length > 1
     ? `${pool.accounts.length} / ${pool.accounts[0]?.plan || "Pro"}`
     : pool.accounts[0]?.plan;
@@ -596,6 +618,51 @@ export function UsageLimitsPooled({
 }) {
   const accounts = collectLimitAccounts(presentations);
   const pools = collectLimitPools(accounts, now);
+  const limitOptions = useMemo(() => {
+    const options = new Map<string, string>();
+    for (const pool of pools) {
+      for (const window of displayLimitWindows(pool)) {
+        options.set(
+          limitWindowKey(String(pool.driver), window),
+          `${getProviderLabel(String(pool.driver))} · ${window.label ?? pool.label}`,
+        );
+      }
+    }
+    return [...options.entries()].sort((left, right) => left[1].localeCompare(right[1]));
+  }, [pools]);
+  const [hiddenLimitKeys, setHiddenLimitKeys] = useState<ReadonlySet<string>>(() => {
+    try {
+      if (typeof window === "undefined") return new Set();
+      const stored = window.localStorage.getItem("t3code:limits-hidden:v1");
+      const parsed = stored ? JSON.parse(stored) : [];
+      return new Set(Array.isArray(parsed) ? parsed.filter((key): key is string => typeof key === "string") : []);
+    } catch {
+      return new Set();
+    }
+  });
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("t3code:limits-hidden:v1", JSON.stringify([...hiddenLimitKeys]));
+    } catch {
+      // Ignore unavailable storage.
+    }
+  }, [hiddenLimitKeys]);
+  const visibleLimitKeys = useMemo(
+    () =>
+      hiddenLimitKeys.size === 0
+        ? null
+        : new Set(limitOptions.map(([key]) => key).filter((key) => !hiddenLimitKeys.has(key))),
+    [hiddenLimitKeys, limitOptions],
+  );
+  const visibleLimitCount = visibleLimitKeys === null ? limitOptions.length : visibleLimitKeys.size;
+  const limitFilterLabel =
+    limitOptions.length === 0
+      ? "No limits"
+      : visibleLimitCount === limitOptions.length
+        ? "All limits"
+        : visibleLimitCount === 0
+          ? "No limits"
+          : `${visibleLimitCount} limits`;
   const rawNotices = collectLimitNotices(presentations);
   
   // Filter out spurious notices for notConfigured providers
@@ -643,6 +710,46 @@ export function UsageLimitsPooled({
 
   return (
     <div className="flex flex-col gap-8">
+      {limitOptions.length > 0 ? (
+        <div className="flex justify-end">
+          <Menu>
+            <MenuTrigger
+              render={<Button size="sm" variant="outline" />}
+              className="gap-2"
+              aria-label="Choose visible limits"
+            >
+              <SlidersHorizontalIcon className="size-3.5" aria-hidden />
+              <span>{limitFilterLabel}</span>
+              <ChevronDownIcon className="size-3.5 text-muted-foreground" aria-hidden />
+            </MenuTrigger>
+            <MenuPopup align="end" className="min-w-64">
+              <MenuCheckboxItem
+                checked={hiddenLimitKeys.size === 0}
+                closeOnClick={false}
+                onCheckedChange={(checked) => setHiddenLimitKeys(checked ? new Set() : new Set(limitOptions.map(([key]) => key)))}
+              >
+                All limits
+              </MenuCheckboxItem>
+              <MenuSeparator />
+              {limitOptions.map(([key, label]) => (
+                <MenuCheckboxItem
+                  key={key}
+                  checked={!hiddenLimitKeys.has(key)}
+                  closeOnClick={false}
+                  onCheckedChange={(checked) => {
+                    const next = new Set(hiddenLimitKeys);
+                    if (checked) next.delete(key);
+                    else next.add(key);
+                    setHiddenLimitKeys(next);
+                  }}
+                >
+                  {label}
+                </MenuCheckboxItem>
+              ))}
+            </MenuPopup>
+          </Menu>
+        </div>
+      ) : null}
       {pools.length === 0 && notices.length === 0 && !cursorPrompt && externalLinks.length === 0 && notConfiguredDrivers.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           No provider on the selected environments reports subscription limits.
@@ -652,7 +759,7 @@ export function UsageLimitsPooled({
       {pools.map((pool, index) => (
         <Fragment key={pool.driver}>
           {index === cursorPromptAt ? cursorPrompt : null}
-          <PoolSection pool={pool} now={now} />
+          <PoolSection pool={pool} now={now} visibleLimitKeys={visibleLimitKeys} />
         </Fragment>
       ))}
 

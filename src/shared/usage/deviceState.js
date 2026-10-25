@@ -86,12 +86,12 @@ function createDeviceState(options = {}) {
   const epoch = options.epoch ?? 0;
   const envelope = normalizedEnvelope(options.envelope);
   const onRecord = typeof options.onRecord === 'function' ? options.onRecord : null;
-  let usagePart = null;
+  let usagePart = options.initialUsage ? cloneValue(options.initialUsage) : null;
   let limitsPart = hasOwn(options, 'initialLimits') ? cloneValue(options.initialLimits) : undefined;
   // The parts as of the last publish. The parts are never mutated in place, so
   // holding them is enough to rebuild that record on demand.
   let published = null;
-  let hasCompleteUsageBaseline = false;
+  let hasCompleteUsageBaseline = Boolean(usagePart && hasOwn(usagePart, 'month') && hasOwn(usagePart, 'allTime'));
   let revision = 0;
   let stopped = false;
 

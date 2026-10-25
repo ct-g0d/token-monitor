@@ -48,6 +48,17 @@ export function WindowSettings({ settings, updateSettings }: WindowSettingsProps
     updateSettings({ windowToggleShortcut: '' });
   };
 
+  const shortcutStatusDescription =
+    typeof settings.windowToggleShortcutStatus === 'object' && settings.windowToggleShortcutStatus !== null
+      ? ((settings.windowToggleShortcutStatus as any).state === 'registered'
+          ? `Registered: ${(settings.windowToggleShortcutStatus as any).shortcut}`
+          : (settings.windowToggleShortcutStatus as any).shortcut
+            ? `Failed to register: ${(settings.windowToggleShortcutStatus as any).shortcut}`
+            : 'Global key combination to quickly show or hide Token Monitor.')
+      : (typeof settings.windowToggleShortcutStatus === 'string' && settings.windowToggleShortcutStatus
+          ? settings.windowToggleShortcutStatus
+          : 'Global key combination to quickly show or hide Token Monitor.');
+
   return (
     <div className="space-y-6">
       <SettingSection title="Window Placement" description="Configure positioning and system level behavior.">
@@ -83,7 +94,7 @@ export function WindowSettings({ settings, updateSettings }: WindowSettingsProps
 
         <SettingRow
           title="Global Toggle Shortcut"
-          description={settings.windowToggleShortcutStatus || "Global key combination to quickly show or hide Token Monitor."}
+          description={shortcutStatusDescription}
           control={
             <div className="flex items-center gap-2">
               <Input
@@ -260,7 +271,7 @@ export function WindowSettings({ settings, updateSettings }: WindowSettingsProps
         )}
       </SettingSection>
 
-            <SettingSection title="Floating Bubble" description="Collapse widget into a slim draggable mini-window; click to reopen.">
+      <SettingSection title="Floating Bubble" description="Collapse widget into a slim draggable mini-window; click to reopen.">
         <SettingRow
           title="Enable Floating Bubble"
           description="Minimal desktop floating token bubble."

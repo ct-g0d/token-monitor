@@ -2694,7 +2694,7 @@ test('main settings normalize collection cadence and replace only usage when it 
   assert.doesNotMatch(main, /COLLECTION_INTERVAL_OPTIONS = \[[^\]]*10 \* 60 \* 1000/);
 
   const defaults = main.slice(main.indexOf('function defaultSettings'), main.indexOf('function defaultLimitProviders'));
-  assert.match(defaults, /collectionMode: 'live'/);
+  assert.match(defaults, /collectionMode: 'smart'/);
   assert.match(defaults, /collectionIntervalMs: 5 \* 60 \* 1000/);
 
   const usageConfig = functionBody(main, 'electronUsageConfig', 'electronLimitsConfig');

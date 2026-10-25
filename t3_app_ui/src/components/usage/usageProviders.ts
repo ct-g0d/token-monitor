@@ -239,7 +239,6 @@ export function getSelectableProviders(options: {
   readonly merged?: any;
   readonly windowSessions?: any;
   readonly hiddenProviders?: ReadonlySet<string> | null;
-  readonly selectedEnvironmentIds?: ReadonlySet<string> | null;
 }): readonly string[] {
   const isLimits = options.mode === "limits";
   const signedInProviders = new Set<string>();
@@ -250,15 +249,6 @@ export function getSelectableProviders(options: {
   if (options.presentations) {
     for (const presentation of options.presentations) {
       if (!presentation) continue;
-      const envId = presentation.serverConfig?.environmentId;
-      if (
-        options.selectedEnvironmentIds &&
-        envId &&
-        !options.selectedEnvironmentIds.has(envId)
-      ) {
-        continue;
-      }
-
       const providers = presentation?.serverConfig?.providers ?? [];
       for (const p of providers) {
         if (!p) continue;
@@ -267,12 +257,8 @@ export function getSelectableProviders(options: {
           p.status === "notConfigured" || p.auth?.status === "unauthenticated";
         const hasEmail = Boolean(p.auth?.email && String(p.auth.email).trim());
         const isAuthenticated = p.auth?.status === "authenticated";
-        const hasActiveAccount =
-          p.status !== "notConfigured" &&
-          p.status !== "disabled" &&
-          Boolean(p.auth?.workspaceId || p.auth?.label);
 
-        if (!isUnconfigured && (hasEmail || isAuthenticated || hasActiveAccount)) {
+        if (!isUnconfigured && (hasEmail || isAuthenticated)) {
           signedInProviders.add(key);
         }
 
@@ -287,8 +273,7 @@ export function getSelectableProviders(options: {
               typeof p.usageLimits.balanceUsd === "number"),
         );
         const hasExternalUsage = Boolean(p.usageLimits?.externalUsage);
-        const isOk = p.status === "ready" || p.status === "ok";
-        if (hasWindows || hasResetCredits || hasBalance || hasExternalUsage || isOk) {
+        if (hasWindows || hasResetCredits || hasBalance || hasExternalUsage) {
           limitRecordProviders.add(key);
         }
       }
@@ -310,8 +295,7 @@ export function getSelectableProviders(options: {
               (typeof account.usageLimits.balance?.amount === "number" ||
                 typeof account.usageLimits.balanceUsd === "number"),
           );
-          const isOk = account.status === "ready" || account.status === "ok";
-          if (hasWindows || hasResetCredits || hasBalance || isOk) {
+          if (hasWindows || hasResetCredits || hasBalance) {
             limitRecordProviders.add(key);
           }
         }
@@ -337,9 +321,9 @@ export function getSelectableProviders(options: {
         (acc: any) =>
           acc &&
           acc.status !== "notConfigured" &&
-          (Boolean(acc.email || acc.accountEmail || acc.accountKey) || acc.status === "ok"),
+          Boolean(acc.email || acc.accountEmail || acc.accountKey),
       );
-      if (!isUnconfigured && (hasAccountInfo || hasAccounts || lp.status === "ok")) {
+      if (!isUnconfigured && (hasAccountInfo || hasAccounts)) {
         signedInProviders.add(key);
       }
 
@@ -351,16 +335,14 @@ export function getSelectableProviders(options: {
       const hasResetCredits = Boolean(
         lp.resetCredits && typeof lp.resetCredits.availableCount === "number",
       );
-      const isOk = lp.status === "ok";
       const hasAccountsWithLimits = accountsList.some(
         (acc: any) =>
           acc &&
           ((Array.isArray(acc.windows) && acc.windows.length > 0) ||
             typeof acc.balance === "number" ||
-            typeof acc.balanceUsd === "number" ||
-            acc.status === "ok"),
+            typeof acc.balanceUsd === "number"),
       );
-      if (!isUnconfigured && (hasWindows || hasBalance || hasResetCredits || isOk || hasAccountsWithLimits)) {
+      if (!isUnconfigured && (hasWindows || hasBalance || hasResetCredits || hasAccountsWithLimits)) {
         limitRecordProviders.add(key);
       }
     }

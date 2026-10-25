@@ -4,6 +4,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('tokenMonitor', {
   getSettings: () => ipcRenderer.invoke('settings:get'),
+  refreshCurrencyRates: () => ipcRenderer.invoke('currency:refresh'),
   updateSettings: (patch) => {
     // Membership is owned by the dedicated account commands, never generic settings.
     const { workbuddyManagedAccounts: _managedAccounts, ...safePatch } = patch || {};

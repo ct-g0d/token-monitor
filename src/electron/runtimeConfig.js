@@ -129,6 +129,12 @@ function usageConfigFromSettings(settings = {}, context = {}) {
 
 function limitsConfigFromSettings(settings = {}, context = {}) {
   const env = context.env || process.env;
+  const configuredLimitProviders = settings.limitProviders;
+  const limitProviders = configuredLimitProviders === undefined
+    || configuredLimitProviders === null
+    || String(configuredLimitProviders).trim() === ''
+    ? context.defaultLimitProviders
+    : configuredLimitProviders;
   // The Electron widget uses the WorkBuddy app's local sign-in state. Keep the
   // raw token fallback available to the headless agent, but never let a desktop
   // .env or legacy settings value silently bypass the app-owned session.
@@ -139,7 +145,7 @@ function limitsConfigFromSettings(settings = {}, context = {}) {
     : {};
   return {
     limitsEnabled: settings.limitsEnabled !== false,
-    limitProviders: settings.limitProviders ?? context.defaultLimitProviders,
+    limitProviders,
     limitsRefreshMode: normalizeLimitsRefreshMode(settings.limitsRefreshMode),
     limitsRefreshMs: normalizeLimitsRefreshMs(settings.limitsRefreshMs),
     claudePrepaidBalanceEnabled: settings.claudePrepaidBalanceEnabled !== false,

@@ -25,7 +25,7 @@ export function extractStats(raw: any): TokenMonitorStats | null {
 }
 
 export function maskEmailIfNeeded(email: string | undefined, mask: boolean): string | undefined {
-  if (!email || !mask) return email;
+  if (!email || !mask || typeof email !== "string") return email;
   const parts = email.split("@");
   if (parts.length !== 2) return email;
   const [name, domain] = parts;
@@ -56,7 +56,7 @@ function creditsMeterPercent(item: any, window: any): number | null {
 function makeInstanceId(rawDriver: string, accountIdentifier: string, idx: number): ProviderInstanceId {
   const safeDriver = rawDriver.replace(/[^a-zA-Z0-9_-]/g, "_") || "p";
   const safeId = accountIdentifier.replace(/[^a-zA-Z0-9_-]/g, "_") || String(idx);
-  let slug = `${safeDriver}_${safeId}`;
+  let slug = `${safeDriver}_${safeId}` as string;
   if (!/^[a-zA-Z]/.test(slug)) {
     slug = `p_${slug}`;
   }
@@ -351,9 +351,14 @@ if (typeof window !== "undefined" && window.tokenMonitor) {
     if (stats) syncStatsToPresentation(stats, maskEmails);
     // If limits aren't available yet in cached stats, trigger a live limits probe
     const actual = extractStats(stats);
-    const provs = (actual?.limits as any)?.providers;
+    const rawProvs = actual?.limits;
+    const provs = Array.isArray((rawProvs as any)?.providers)
+      ? (rawProvs as any).providers
+      : Array.isArray(rawProvs)
+        ? rawProvs
+        : [];
     if (!provs || provs.length === 0 || !provs.some((p: any) => p.status === "ok")) {
-      tokenMonitor.getStats({ force: true, feedback: true }).then((liveStats: any) => {
+      tokenMonitor.getStats({ force: true, awaitLimits: true }).then((liveStats: any) => {
         if (liveStats) syncStatsToPresentation(liveStats, maskEmails);
       }).catch(() => null);
     }

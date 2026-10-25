@@ -138,6 +138,7 @@ export interface TokenMonitorSettings {
 
 export interface TokenMonitorApi {
   getSettings: () => Promise<TokenMonitorSettings>;
+  refreshCurrencyRates?: () => Promise<TokenMonitorSettings>;
   updateSettings: (patch: Partial<TokenMonitorSettings>) => Promise<any>;
   lookupModelPricing: (modelId: string) => Promise<any>;
   getStats: (options?: any) => Promise<TokenMonitorStats>;

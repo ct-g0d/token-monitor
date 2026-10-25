@@ -658,7 +658,7 @@ function defaultSettings() {
     exportAutoEnabled: false,
     exportDir: '',
     exportIntervalMs: 60 * 1000,
-    collectionMode: 'live',
+    collectionMode: 'smart',
     collectionIntervalMs: 5 * 60 * 1000,
     syncUploadIntervalMs: normalizeSyncUploadIntervalMs(process.env.TOKEN_MONITOR_SYNC_UPLOAD_INTERVAL_MS),
     serviceProviderDisplayOrder: '',
@@ -671,7 +671,7 @@ function defaultSettings() {
     modelAliases: {},
     modelAliasGrouping: 'off',
     limitsEnabled: parseBoolean(process.env.TOKEN_MONITOR_LIMITS_ENABLED, true),
-    limitProviders: parseLimitProviders(process.env.TOKEN_MONITOR_LIMIT_PROVIDERS).join(','),
+    limitProviders: defaultLimitProviders() || defaultLimitProviderOrder(),
     limitProviderOrder: defaultLimitProviderOrder(),
     homeLimitProviderOrder: '',
     hiddenHomeLimitProviders: '',
@@ -4396,7 +4396,8 @@ async function startIcloudCollector() {
     const usageOptions = electronUsageConfig('icloud-collector');
     createdDeviceRuntime = createDeviceRuntime({
       envelope: electronDeviceEnvelope(),
-      initialLimits: lastCollectedDevice?.limits,
+      initialUsage: lastCollectedDevice || localDevice,
+    initialLimits: lastCollectedDevice?.limits || localDevice?.limits,
       limitsOptions: electronLimitsConfig(),
       transformUsage: usageTransform.transform,
       usageOptions,
@@ -4486,7 +4487,8 @@ function startSyncCollector() {
   const usageOptions = electronUsageConfig('sync-collector');
   deviceRuntimeHandle = createDeviceRuntime({
     envelope: electronDeviceEnvelope(),
-    initialLimits: lastCollectedDevice?.limits,
+    initialUsage: lastCollectedDevice || localDevice,
+    initialLimits: lastCollectedDevice?.limits || localDevice?.limits,
     limitsOptions: electronLimitsConfig(),
     transformUsage: usageTransform.transform,
     usageOptions,
@@ -4551,7 +4553,8 @@ function startHostCollector() {
   const usageOptions = electronUsageConfig('host-collector');
   deviceRuntimeHandle = createDeviceRuntime({
     envelope: electronDeviceEnvelope(),
-    initialLimits: lastCollectedDevice?.limits,
+    initialUsage: lastCollectedDevice || localDevice,
+    initialLimits: lastCollectedDevice?.limits || localDevice?.limits,
     limitsOptions: electronLimitsConfig(),
     transformUsage: usageTransform.transform,
     usageOptions,
@@ -5274,7 +5277,8 @@ function startLocalCollector() {
   primeLocalStatsFromAnchor(usageOptions, widgetProducerOwner);
   deviceRuntimeHandle = createDeviceRuntime({
     envelope: electronDeviceEnvelope(),
-    initialLimits: lastCollectedDevice?.limits,
+    initialUsage: lastCollectedDevice || localDevice,
+    initialLimits: lastCollectedDevice?.limits || localDevice?.limits,
     limitsOptions: electronLimitsConfig(),
     transformUsage: usageTransform.transform,
     usageOptions,
@@ -6703,6 +6707,7 @@ async function fetchStats(options = {}) {
   // refresh button opts in.
   if (force && ownsUsageRuntime()) {
     await runManualDeviceRefresh(deviceRuntimeHandle, {
+      awaitLimits: Boolean(options?.awaitLimits || options?.limits),
       forceHistory: Boolean(options?.forceHistory),
       forceSelfSync: Boolean(options?.forceSelfSync),
       onLimitsError: (error) => console.log(`[limits-runtime] manual refresh failed: ${error.message}`)
@@ -7639,6 +7644,10 @@ app.whenReady().then(() => {
   rateRefreshTimer = setInterval(() => { refreshExchangeRates(); }, 6 * 60 * 60 * 1000);
   syncEdgeDock();
   ipcMain.handle('settings:get', () => settingsForRenderer());
+  ipcMain.handle('currency:refresh', async () => {
+    await refreshExchangeRates({ force: true });
+    return settingsForRenderer();
+  });
   ipcMain.handle('appearance:getBackgroundImage', () => getBackgroundImage(app.getPath('userData')));
   ipcMain.handle('appearance:chooseBackgroundImage', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {

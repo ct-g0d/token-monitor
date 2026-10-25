@@ -1,5 +1,7 @@
 'use strict';
 
+const os = require('node:os');
+
 // Electron's documented Windows Acrylic uses DWMWA_SYSTEMBACKDROP_TYPE. The
 // alternate Accent mode deliberately uses the AccentBlurBehind recipe:
 // DwmEnableBlurBehindWindow plus the undocumented
@@ -113,6 +115,15 @@ function loadAccentApi() {
 function applyWindowsAccentBlur(win, options = {}) {
   if ((options.platform || process.platform) !== 'win32') return false;
   if (!win || win.isDestroyed?.()) return false;
+  // Windows 11 Build 22000+ (and especially 24H2 build 26100+) deprecates private
+  // SetWindowCompositionAttribute accent blur; calling it crashes dwmcore.dll (0xc00001ad).
+  // On Windows 11, fall back to official Electron backgroundMaterial ('acrylic' or 'mica').
+  if (!options.api) {
+    try {
+      const build = parseInt(os.release().split('.')[2] || '0', 10);
+      if (build >= 22000) return false;
+    } catch (_) {}
+  }
   const api = options.api || loadAccentApi();
   if (!api) return false;
   try {

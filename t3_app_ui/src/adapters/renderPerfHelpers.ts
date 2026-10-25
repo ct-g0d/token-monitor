@@ -51,14 +51,14 @@ export function isUsageAffectingSettingsChange(prev: any, next: any): boolean {
 
 export function getLimitsKey(limits: any, maskEmails: boolean = false): string {
   if (!limits) return `none:${maskEmails}`;
-  const rev = limits.updatedAt ?? limits.revision ?? limits.historyRevision;
-  if (rev !== undefined && rev !== null && rev !== '') {
-    return `${maskEmails ? 'm' : 'u'}:${rev}`;
+  const prefix = maskEmails ? 'm' : 'u';
+  if (typeof limits.updatedAt === 'string' && limits.updatedAt) {
+    return `${prefix}:${limits.updatedAt}`;
   }
   try {
-    return `${maskEmails ? 'm' : 'u'}:${cheapStableHash(JSON.stringify(limits))}`;
+    return `${prefix}:${cheapStableHash(JSON.stringify(limits))}`;
   } catch {
-    return `${maskEmails ? 'm' : 'u'}:fallback`;
+    return `${prefix}:fallback`;
   }
 }
 

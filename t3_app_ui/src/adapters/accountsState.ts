@@ -43,7 +43,27 @@ function resolveAccountLabel(
   account: { email?: string; name?: string; id?: string },
   maskEmails: boolean
 ): string {
-  return maskEmailIfNeeded(account.email || account.name || account.id, maskEmails) || account.id || '';
+  const target =
+    (typeof account?.email === 'string' && account.email) ||
+    (typeof account?.name === 'string' && account.name) ||
+    (typeof account?.id === 'string' && account.id) ||
+    '';
+  return maskEmailIfNeeded(target, maskEmails) || target || '';
+}
+
+function extractProfilesMap(raw: any): Record<string, any> {
+  if (!raw || typeof raw !== 'object') return {};
+  const map =
+    raw.profiles && typeof raw.profiles === 'object' && !Array.isArray(raw.profiles)
+      ? raw.profiles
+      : raw;
+  const result: Record<string, any> = {};
+  for (const [key, val] of Object.entries(map)) {
+    if (val && typeof val === 'object' && !Array.isArray(val)) {
+      result[key] = val;
+    }
+  }
+  return result;
 }
 
 export function useProviderAccounts(settings: TokenMonitorSettingsState): ProviderAccounts[] {
@@ -100,13 +120,13 @@ export function useProviderAccounts(settings: TokenMonitorSettingsState): Provid
       tm.mimo.accounts().then((accs: any) => setMimoAccounts(accs || [])).catch(() => {});
     }
     if (tm.opencode?.getProfiles) {
-      tm.opencode.getProfiles().then((p: any) => setOpencodeProfiles(p || {})).catch(() => {});
+      tm.opencode.getProfiles().then((p: any) => setOpencodeProfiles(extractProfilesMap(p))).catch(() => {});
     }
     if (tm.openrouter?.getProfiles) {
-      tm.openrouter.getProfiles().then((p: any) => setOpenrouterProfiles(p || {})).catch(() => {});
+      tm.openrouter.getProfiles().then((p: any) => setOpenrouterProfiles(extractProfilesMap(p))).catch(() => {});
     }
     if (tm.thirdparty?.getProfiles) {
-      tm.thirdparty.getProfiles().then((p: any) => setThirdpartyProfiles(p || {})).catch(() => {});
+      tm.thirdparty.getProfiles().then((p: any) => setThirdpartyProfiles(extractProfilesMap(p))).catch(() => {});
     }
     if (tm.cursor?.status) {
       tm.cursor.status().then((s: any) => setCursorStatus(s || null)).catch(() => {});
@@ -426,7 +446,7 @@ export function useProviderAccounts(settings: TokenMonitorSettingsState): Provid
       );
     }
     const p = await window.tokenMonitor?.opencode?.getProfiles();
-    setOpencodeProfiles(p || {});
+    setOpencodeProfiles(extractProfilesMap(p));
   }, []);
 
   const handleOpencodeDelete = useCallback(async (name?: string) => {
@@ -434,7 +454,7 @@ export function useProviderAccounts(settings: TokenMonitorSettingsState): Provid
     if (window.tokenMonitor?.opencode?.deleteProfile) {
       await window.tokenMonitor.opencode.deleteProfile(name);
       const p = await window.tokenMonitor.opencode.getProfiles();
-      setOpencodeProfiles(p || {});
+      setOpencodeProfiles(extractProfilesMap(p));
     }
   }, []);
 
@@ -442,7 +462,7 @@ export function useProviderAccounts(settings: TokenMonitorSettingsState): Provid
     if (window.tokenMonitor?.opencode?.setProfileEnabled) {
       await window.tokenMonitor.opencode.setProfileEnabled(name, on);
       const p = await window.tokenMonitor.opencode.getProfiles();
-      setOpencodeProfiles(p || {});
+      setOpencodeProfiles(extractProfilesMap(p));
     }
   }, []);
 
@@ -451,7 +471,7 @@ export function useProviderAccounts(settings: TokenMonitorSettingsState): Provid
     if (fields.name?.trim() && fields.apiKey?.trim() && window.tokenMonitor?.openrouter?.saveProfile) {
       await window.tokenMonitor.openrouter.saveProfile(fields.name.trim(), fields.apiKey.trim());
       const p = await window.tokenMonitor.openrouter.getProfiles();
-      setOpenrouterProfiles(p || {});
+      setOpenrouterProfiles(extractProfilesMap(p));
     }
   }, []);
 
@@ -460,7 +480,7 @@ export function useProviderAccounts(settings: TokenMonitorSettingsState): Provid
     if (window.tokenMonitor?.openrouter?.deleteProfile) {
       await window.tokenMonitor.openrouter.deleteProfile(name);
       const p = await window.tokenMonitor.openrouter.getProfiles();
-      setOpenrouterProfiles(p || {});
+      setOpenrouterProfiles(extractProfilesMap(p));
     }
   }, []);
 
@@ -468,7 +488,7 @@ export function useProviderAccounts(settings: TokenMonitorSettingsState): Provid
     if (window.tokenMonitor?.openrouter?.setProfileEnabled) {
       await window.tokenMonitor.openrouter.setProfileEnabled(name, on);
       const p = await window.tokenMonitor.openrouter.getProfiles();
-      setOpenrouterProfiles(p || {});
+      setOpenrouterProfiles(extractProfilesMap(p));
     }
   }, []);
 
@@ -483,7 +503,7 @@ export function useProviderAccounts(settings: TokenMonitorSettingsState): Provid
         enabled: true,
       });
       const p = await window.tokenMonitor.thirdparty.getProfiles();
-      setThirdpartyProfiles(p || {});
+      setThirdpartyProfiles(extractProfilesMap(p));
     }
   }, []);
 
@@ -492,7 +512,7 @@ export function useProviderAccounts(settings: TokenMonitorSettingsState): Provid
     if (window.tokenMonitor?.thirdparty?.deleteProfile) {
       await window.tokenMonitor.thirdparty.deleteProfile(name);
       const p = await window.tokenMonitor.thirdparty.getProfiles();
-      setThirdpartyProfiles(p || {});
+      setThirdpartyProfiles(extractProfilesMap(p));
     }
   }, []);
 
@@ -500,7 +520,7 @@ export function useProviderAccounts(settings: TokenMonitorSettingsState): Provid
     if (window.tokenMonitor?.thirdparty?.setProfileEnabled) {
       await window.tokenMonitor.thirdparty.setProfileEnabled(name, on);
       const p = await window.tokenMonitor.thirdparty.getProfiles();
-      setThirdpartyProfiles(p || {});
+      setThirdpartyProfiles(extractProfilesMap(p));
     }
   }, []);
 
@@ -729,7 +749,7 @@ export function useProviderAccounts(settings: TokenMonitorSettingsState): Provid
       : [],
     pendingDetail: copilotSigningIn
       ? {
-          message: 'Waiting for GitHub authorization...',
+          message: 'Authorizing GitHub Copilot via device code...',
           deviceCode: copilotDeviceCode,
         }
       : null,
@@ -774,7 +794,7 @@ export function useProviderAccounts(settings: TokenMonitorSettingsState): Provid
     status: mimoAccounts.length > 0 ? 'connected' : 'notConfigured',
     accounts: mimoAccounts.map((acc) => ({
       id: acc.id,
-      label: acc.name || acc.id,
+      label: resolveAccountLabel(acc, maskEmails),
       enabled: acc.enabled !== false,
       isActive: (acc as any).isActive ?? acc.isDefault,
     })),
@@ -806,7 +826,7 @@ export function useProviderAccounts(settings: TokenMonitorSettingsState): Provid
       addAccount: handleOpencodeSave,
       remove: handleOpencodeDelete,
       setEnabled: handleOpencodeSetEnabled,
-      refresh: () => window.tokenMonitor?.opencode?.getProfiles?.().then((p: any) => setOpencodeProfiles(p || {})),
+      refresh: () => window.tokenMonitor?.opencode?.getProfiles?.().then((p: any) => setOpencodeProfiles(extractProfilesMap(p))),
     },
   });
 
@@ -829,7 +849,7 @@ export function useProviderAccounts(settings: TokenMonitorSettingsState): Provid
       addAccount: handleOpenrouterSave,
       remove: handleOpenrouterDelete,
       setEnabled: handleOpenrouterSetEnabled,
-      refresh: () => window.tokenMonitor?.openrouter?.getProfiles?.().then((p: any) => setOpenrouterProfiles(p || {})),
+      refresh: () => window.tokenMonitor?.openrouter?.getProfiles?.().then((p: any) => setOpenrouterProfiles(extractProfilesMap(p))),
     },
   });
 
@@ -852,7 +872,7 @@ export function useProviderAccounts(settings: TokenMonitorSettingsState): Provid
       addAccount: handleThirdpartySave,
       remove: handleThirdpartyDelete,
       setEnabled: handleThirdpartySetEnabled,
-      refresh: () => window.tokenMonitor?.thirdparty?.getProfiles?.().then((p: any) => setThirdpartyProfiles(p || {})),
+      refresh: () => window.tokenMonitor?.thirdparty?.getProfiles?.().then((p: any) => setThirdpartyProfiles(extractProfilesMap(p))),
     },
   });
 

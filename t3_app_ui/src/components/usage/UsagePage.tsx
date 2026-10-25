@@ -5,12 +5,11 @@ import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/reactivity";
 import {
   ProviderDriverKind,
-  USAGE_CONTRACT_VERSION,
   type EnvironmentId,
   type UsageProviderKind,
   type UsageSummaryInput,
 } from "@t3tools/contracts";
-import { CircleAlertIcon, ChevronDownIcon, InfoIcon, SlidersHorizontalIcon } from "lucide-react";
+import { ChevronDownIcon, InfoIcon, SlidersHorizontalIcon } from "lucide-react";
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { settlePromise } from "@t3tools/client-runtime/state/runtime";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
@@ -19,14 +18,9 @@ import {
   cursorKeychainAccessEnvironments,
   refreshUsageLimits,
 } from "@t3tools/client-runtime/state/usage";
-import {
-  updatingProvidersLabel,
-  usageEnvironmentProgress,
-  usageLoadingState,
-} from "@t3tools/client-runtime/state/usage-progress";
+import { usageLoadingState } from "@t3tools/client-runtime/state/usage-progress";
 
 import {
-  isCompatibleUsageContractVersion,
   isModelCostUnknown,
   type DailyTotals,
   type HourlyTotals,
@@ -52,7 +46,6 @@ import {
   formatHourShort,
   formatPercent,
   formatTokens,
-  formatUsageContractMismatch,
   formatUsd,
   makeWindow,
 } from "@t3tools/shared/usageFormat";
@@ -72,9 +65,6 @@ import { Skeleton } from "~/components/ui/skeleton";
 import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
-import {
-  WorkspaceBreadcrumbText,
-} from "~/components/WorkspaceBreadcrumb";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { UsageLimitsSection } from "~/components/usage/UsageLimits";
 import { UsagePriceOverrides } from "~/components/usage/UsagePriceOverrides";
@@ -87,6 +77,7 @@ import {
   modelShare,
   sortModelsByTokens,
   speedCostSegments,
+  tokenTypeSegments,
 } from "~/components/usage/usageBreakdown";
 import {
   METRIC_OPTIONS,
@@ -95,7 +86,12 @@ import {
   type UsageMetric,
 } from "~/components/usage/usageShortcuts";
 import { useEscapeToGoBack } from "~/hooks/useNavigateBack";
-import { PROVIDER_ORDER, PROVIDER_PRESENTATION, providersWithUsage, getSelectableProviders } from "~/components/usage/usageProviders";
+import {
+  PROVIDER_ORDER,
+  PROVIDER_PRESENTATION,
+  getSelectableProviders,
+  providersWithUsage,
+} from "@/components/usage/usageProviders";
 import {
   readUsagePagePreferences,
   saveUsagePagePreferences,
@@ -198,8 +194,6 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
   const [limitsNow, setLimitsNow] = useState(() => Date.now());
   const refreshingRef = useRef(false);
   const [priceDialog, setPriceDialog] = useState<{ readonly model?: string } | null>(null);
-  const [selectedEnvironmentIds, setSelectedEnvironmentIds] =
-    useState<ReadonlySet<EnvironmentId> | null>(null);
   const hiddenProviders = useMemo(() => new Set(preferences.hiddenProviders), [preferences.hiddenProviders]);
   const { days: windowDays, window } = windowSelection;
   const isPast24Hours = windowDays === 1;
@@ -208,17 +202,23 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
     environments,
     selectedEnvironments,
     shown,
-    isPartial,
     refresh,
     activeDays,
     peakDayTokens,
     hasWindowSessions,
     windowSessions,
     stats,
-  } = useUsage(window, selectedEnvironmentIds, hiddenProviders);
+  } = useUsage(window, null, hiddenProviders);
   const merged = shown?.merged ?? answeredUsage;
   const shownWindow = shown?.window ?? window;
-  const shownHourly = shownWindow.resolution === "hour";
+  const summarySinceDay = (environments[0]?.summary as any)?.sinceDay;
+  const effectiveWindow = useMemo(() => {
+    if (windowDays === 0 && summarySinceDay && shownWindow.sinceDay !== summarySinceDay) {
+      return { ...shownWindow, sinceDay: summarySinceDay };
+    }
+    return shownWindow;
+  }, [windowDays, summarySinceDay, shownWindow]);
+  const shownHourly = effectiveWindow.resolution === "hour";
   const refreshingUsage = isRefreshing && !showingLimits;
   const showingKept = shown !== null && shown.window !== window;
   const presentations = useAtomValue(environmentPresentations.presentationsWithProvidersAtom);
@@ -232,9 +232,8 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
         merged,
         windowSessions,
         hiddenProviders,
-        selectedEnvironmentIds,
       }) as readonly UsageProviderKind[],
-    [mode, presentations, stats, merged, windowSessions, hiddenProviders, selectedEnvironmentIds],
+    [mode, presentations, stats, merged, windowSessions, hiddenProviders],
   );
   const cursorAccessEnvironments = useMemo(
     () => (hiddenProviders.has("cursor") ? [] : cursorKeychainAccessEnvironments(selectedEnvironments)),
@@ -269,7 +268,6 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
     settlePromise(() =>
       Promise.all(
         Array.from(presentations, ([environmentId, presentation]) => {
-          if (selectedEnvironmentIds !== null && !selectedEnvironmentIds.has(environmentId)) return;
           if (presentation.connection.phase === "connected" && presentation.serverConfig !== null) {
             return refreshUsageLimits(
               environmentId,
@@ -344,24 +342,26 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
         .filter(
           ([environmentId, presentation]) =>
             presentation.connection.phase === "connected" &&
-            presentation.serverConfig !== null &&
-            (selectedEnvironmentIds === null || selectedEnvironmentIds.has(environmentId)),
+            presentation.serverConfig !== null,
         )
         .map(([environmentId]) => environmentId)
         .sort()
         .join(","),
-    [presentations, selectedEnvironmentIds],
+    [presentations],
   );
   const autoRefreshLimits = useEffectEvent(() => {
-    void refreshLimits(true);
+    const hasProviders = [...presentations].some(
+      ([, presentation]) => (presentation.serverConfig?.providers?.length ?? 0) > 0,
+    );
+    void refreshLimits(!hasProviders ? false : true);
   });
   useEffect(() => {
     if (showingLimits && connectedLimitsEnvironments) autoRefreshLimits();
   }, [showingLimits, connectedLimitsEnvironments]);
 
   const days = useMemo(
-    () => enumerateDays(shownWindow.sinceDay, shownWindow.untilDay),
-    [shownWindow.sinceDay, shownWindow.untilDay],
+    () => enumerateDays(effectiveWindow.sinceDay, effectiveWindow.untilDay),
+    [effectiveWindow.sinceDay, effectiveWindow.untilDay],
   );
   const hours = useMemo(
     () =>
@@ -374,47 +374,53 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
     () =>
       !hiddenProviders.has("codex") &&
       [...providersByEnvironment].some(
-        ([id, providers]) =>
-          (selectedEnvironmentIds === null || selectedEnvironmentIds.has(id)) &&
-          providers.some(usesChatGptSharing),
+        ([, providers]) => providers.some(usesChatGptSharing),
       ),
-    [hiddenProviders, providersByEnvironment, selectedEnvironmentIds],
+    [hiddenProviders, providersByEnvironment],
   );
 
   const windowLabel = useMemo(
     () =>
-      shownHourly && shownWindow.sinceTime !== undefined && shownWindow.untilTime !== undefined
-        ? `${formatDateTimeShort(shownWindow.sinceTime, shownWindow.timeZone)} to ${formatDateTimeShort(shownWindow.untilTime, shownWindow.timeZone)}`
-        : `${formatDayShort(shownWindow.sinceDay)} to ${formatDayShort(shownWindow.untilDay)}`,
+      shownHourly && effectiveWindow.sinceTime !== undefined && effectiveWindow.untilTime !== undefined
+        ? `${formatDateTimeShort(effectiveWindow.sinceTime, effectiveWindow.timeZone)} to ${formatDateTimeShort(effectiveWindow.untilTime, effectiveWindow.timeZone)}`
+        : `${formatDayShort(effectiveWindow.sinceDay)} to ${formatDayShort(effectiveWindow.untilDay)}`,
     [
       shownHourly,
-      shownWindow.sinceTime,
-      shownWindow.untilTime,
-      shownWindow.timeZone,
-      shownWindow.sinceDay,
-      shownWindow.untilDay,
+      effectiveWindow.sinceTime,
+      effectiveWindow.untilTime,
+      effectiveWindow.timeZone,
+      effectiveWindow.sinceDay,
+      effectiveWindow.untilDay,
     ],
   );
   const headerControls = (
     <>
       <div className="flex h-8 items-center gap-3 rounded-[3px] px-3.5 shadow-[inset_0_0_0_1px_var(--border)] [&_*]:font-mono [&_*]:text-[11px] [&_*]:tracking-[0.06em] [&_*]:uppercase">
-      <UsageEnvironmentFilter
-        environments={environments}
-        selectedEnvironments={selectedEnvironments}
-        selectedEnvironmentIds={selectedEnvironmentIds}
-        onSelectionChange={setSelectedEnvironmentIds}
-        showUsageStatus={!showingLimits}
-        refreshing={refreshingUsage}
-        isPartial={isPartial}
-        duplicateSources={merged.duplicateSources}
-        contractMismatches={merged.contractMismatches}
-        onOpenModelPrices={() => setPriceDialog({})}
-      />
       <UsageProviderFilter
         availableProviders={selectableProviders}
         hiddenProviders={hiddenProviders}
         onChange={(next) => updatePreferences({ hiddenProviders: next })}
       />
+      {showingLimits ? null : (
+        <Menu>
+          <MenuTrigger
+            render={<InlineButton />}
+            aria-label="Usage options"
+            className="group/usage-options"
+          >
+            <SlidersHorizontalIcon
+              className="size-3.5 text-muted-foreground opacity-70 transition-opacity group-hover/usage-options:opacity-100 group-focus-visible/usage-options:opacity-100"
+              aria-hidden
+            />
+          </MenuTrigger>
+          <MenuPopup align="end">
+            <MenuItem onClick={() => setPriceDialog({})}>
+              <SlidersHorizontalIcon aria-hidden />
+              Model prices
+            </MenuItem>
+          </MenuPopup>
+        </Menu>
+      )}
       </div>
       {showingLimits ? null : (
       <>
@@ -474,13 +480,11 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
           <div className="flex w-full max-w-[1200px] flex-col gap-6 px-10 pt-4 pb-12">
             {selectedEnvironments.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                {environments.length === 0
-                  ? `Connect an environment to see ${showingLimits ? "limits" : "usage"}.`
-                  : `Select an environment to see ${showingLimits ? "limits" : "usage"}.`}
+                {`Connect an environment to see ${showingLimits ? "limits" : "usage"}.`}
               </p>
             ) : showingLimits ? (
               <UsageLimitsSection
-                selectedEnvironmentIds={selectedEnvironmentIds}
+                selectedEnvironmentIds={null}
                 hiddenProviders={hiddenProviders}
                 now={limitsNow}
                 cursorPrompt={
@@ -509,7 +513,7 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
             ) : (
               <UsageOverview
                 merged={merged}
-                shownWindow={shownWindow}
+                shownWindow={effectiveWindow}
                 days={days}
                 hours={hours}
                 showingKept={showingKept}
@@ -551,7 +555,7 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
       {priceDialog ? (
         <UsagePriceOverrides
           usage={environments}
-          initialSelectedEnvironmentIds={selectedEnvironmentIds}
+          initialSelectedEnvironmentIds={null}
           initialModel={priceDialog.model}
           onOpenChange={(open) => {
             if (!open) setPriceDialog(null);
@@ -704,49 +708,30 @@ function UsageOverview({
         </p>
       ))}
       <section className="flex flex-col gap-8">
-        <div className="flex flex-wrap items-end justify-between gap-x-12 gap-y-6">
-          <div className="flex flex-col gap-2">
-            <span
-              className={cn(
-                "text-[112px] leading-[0.8] font-bold text-foreground tabular-nums",
-                figureClass(loadingPartial),
-              )}
-            >
-              {metric === "cost" ? formatUsd(merged.costUsd) : formatTokens(merged.totalTokens)}
-            </span>
-            <span className="tm-label inline-flex items-center gap-1">
-              <span className={figureClass(loadingPartial)}>
-                {metric === "cost"
-                  ? `${formatTokens(merged.totalTokens)} tokens · API estimate`
-                  : hasWindowSessions && merged.sessions > 0
-                    ? `${formatUsd(merged.costUsd)} · ${formatCount(merged.sessions)} sessions`
-                    : `${formatUsd(merged.costUsd)} · —`}
-              </span>
-              {metric === "cost" && merged.costQuality.unpricedShare > 0 && (
-                <Popover>
-                  <PopoverTrigger
-                    openOnHover
-                    render={<InlineButton tone="muted" />}
-                    aria-label="Unpriced usage details"
-                  >
-                    <InfoIcon className="size-3" aria-hidden />
-                  </PopoverTrigger>
-                  <PopoverPopup side="top" tooltipStyle>
-                    API estimate excludes {formatPercent(merged.costQuality.unpricedShare)} unpriced
-                    records.
-                  </PopoverPopup>
-                </Popover>
-              )}
-            </span>
-          </div>
-          <div className="flex gap-10 border-l border-border pl-10">
-            <Metric loading={loadingPartial} label="Cached input" value={formatTokens(merged.cachedInputTokens)} />
-            <Metric loading={loadingPartial} label="Uncached input" value={formatTokens(merged.uncachedInputTokens)} />
-            <Metric loading={loadingPartial} label="Output" value={formatTokens(merged.outputTokens)} />
-            <Metric loading={loadingPartial} label="Cache savings" value={formatUsd(merged.costQuality.cacheSavingsUsd)} />
-          </div>
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-medium text-foreground">Totals</h2>
+          {metric === "cost" && merged.costQuality.unpricedShare > 0 ? (
+            <Popover>
+              <PopoverTrigger
+                openOnHover
+                render={<InlineButton tone="muted" />}
+                aria-label="Unpriced usage details"
+              >
+                <InfoIcon className="size-3" aria-hidden />
+              </PopoverTrigger>
+              <PopoverPopup side="top" tooltipStyle>
+                API estimate excludes {formatPercent(merged.costQuality.unpricedShare)} unpriced records.
+              </PopoverPopup>
+            </Popover>
+          ) : null}
         </div>
-
+        <div className="grid grid-cols-2 gap-x-6 gap-y-4 py-1 md:grid-cols-5">
+          <Metric loading={loadingPartial} label="Processed tokens" value={formatTokens(merged.totalTokens)} />
+          <Metric loading={loadingPartial} label="Cached input" value={formatTokens(merged.cachedInputTokens)} />
+          <Metric loading={loadingPartial} label="Uncached input" value={formatTokens(merged.uncachedInputTokens)} />
+          <Metric loading={loadingPartial} label="Output" value={formatTokens(merged.outputTokens)} />
+          <Metric loading={loadingPartial} label="Cache savings" value={formatUsd(merged.costQuality.cacheSavingsUsd)} />
+        </div>
         <UsageProviderChart
           providers={activeProviders}
           loadingProviders={chartLoadingProviders}
@@ -827,17 +812,34 @@ function UsageOverview({
         </div>
       </section>
 
-      {metric === "cost" && merged.totalTokens > 0 ? (
+      {metric === "tokens" && merged.totalTokens > 0 ? (
+        <section className={cn("border-t border-border pt-8", figureClass(loadingPartial))}>
+          <UsageShareBar
+            label="Tokens by type"
+            segments={tokenTypeSegments({
+              uncachedInputTokens: merged.uncachedInputTokens,
+              cachedInputTokens: merged.cachedInputTokens,
+              cacheCreationTokens: merged.cacheCreationTokens,
+              outputTokens: merged.outputTokens,
+            })}
+            format={formatTokens}
+          />
+        </section>
+      ) : null}
+
+      {metric === "cost" && merged.costUsd > 0 ? (
         <section className={cn("grid gap-x-12 gap-y-6 border-t border-border pt-8 lg:grid-cols-2", figureClass(loadingPartial))}>
           <UsageShareBar label="Cost by type" segments={costTypeSegments(merged.categoryCost)} format={formatUsd} />
-          {merged.speedCost.fast + merged.speedCost.ultrafast > 0 ? (
-            <UsageShareBar
-              label="Cost by speed"
-              segments={speedCostSegments(merged.speedCost)}
-              format={formatUsd}
-              aside={<SpeedPremium premiumUsd={merged.speedCost.premium} />}
-            />
-          ) : null}
+          <UsageShareBar
+            label="Cost by speed"
+            segments={speedCostSegments(merged.speedCost)}
+            format={formatUsd}
+            aside={
+              merged.speedCost.premium > 0 ? (
+                <SpeedPremium premiumUsd={merged.speedCost.premium} />
+              ) : undefined
+            }
+          />
         </section>
       ) : null}
 
@@ -1193,185 +1195,6 @@ function Metric({
         {value}
       </span>
     </div>
-  );
-}
-
-function UsageCoverageNotice({
-  environments,
-  duplicateSources,
-  contractMismatches,
-}: {
-  readonly environments: readonly EnvironmentUsageStatus[];
-  readonly duplicateSources: readonly string[];
-  readonly contractMismatches: MergedUsage["contractMismatches"];
-}) {
-  const failed = environments.filter((environment) => environment.error !== null);
-  const mismatchByEnvironment = new Map(
-    contractMismatches.map((mismatch) => [mismatch.environmentId, mismatch]),
-  );
-  const incompatible = environments.flatMap((environment) => {
-    const mismatch = mismatchByEnvironment.get(environment.environmentId);
-    return mismatch === undefined ? [] : [{ environment, mismatch }];
-  });
-  if (failed.length === 0 && incompatible.length === 0 && duplicateSources.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className="flex flex-col gap-1 border-t border-border px-2 py-2 text-xs text-muted-foreground">
-      {failed.map((environment) => (
-        <span key={environment.label}>
-          {environment.label}: {environment.error}
-        </span>
-      ))}
-      {incompatible.map(({ environment, mismatch }) => (
-        <span key={environment.environmentId}>
-          {formatUsageContractMismatch(environment.label, mismatch)}
-        </span>
-      ))}
-      {duplicateSources.length > 0 ? (
-        <span>
-          Counted once across environments sharing a transcript directory:{" "}
-          {duplicateSources.join(", ")}
-        </span>
-      ) : null}
-    </div>
-  );
-}
-
-function UsageEnvironmentFilter({
-  environments,
-  selectedEnvironments,
-  selectedEnvironmentIds,
-  onSelectionChange,
-  showUsageStatus,
-  refreshing,
-  isPartial,
-  duplicateSources,
-  contractMismatches,
-  onOpenModelPrices,
-}: {
-  readonly environments: readonly EnvironmentUsageStatus[];
-  readonly selectedEnvironments: readonly EnvironmentUsageStatus[];
-  readonly selectedEnvironmentIds: ReadonlySet<EnvironmentId> | null;
-  readonly onSelectionChange: (ids: ReadonlySet<EnvironmentId> | null) => void;
-  readonly showUsageStatus: boolean;
-  readonly refreshing: boolean;
-  readonly isPartial: boolean;
-  readonly duplicateSources: readonly string[];
-  readonly contractMismatches: MergedUsage["contractMismatches"];
-  readonly onOpenModelPrices: () => void;
-}) {
-  const allSelected = selectedEnvironmentIds === null;
-  const label = allSelected
-    ? "All environments"
-    : selectedEnvironments.length === 1
-      ? selectedEnvironments[0]!.label
-      : `${selectedEnvironments.length} environments`;
-  const hasIssue =
-    selectedEnvironments.some((environment) => environment.error !== null) ||
-    contractMismatches.length > 0;
-
-  return (
-    <Menu>
-      <MenuTrigger render={<InlineButton />} className="group/usage-environment min-w-0 max-w-full">
-        <WorkspaceBreadcrumbText>{label}</WorkspaceBreadcrumbText>
-        <span className="flex size-3.5 shrink-0 items-center justify-center text-muted-foreground">
-          {showUsageStatus && hasIssue ? (
-            <CircleAlertIcon
-              className="size-3.5 text-warning-foreground"
-              aria-label="Some environments could not report usage"
-            />
-          ) : (
-            <ChevronDownIcon
-              className="size-3.5 opacity-0 transition-opacity group-hover/usage-environment:opacity-100 group-focus-visible/usage-environment:opacity-100 group-data-popup-open/usage-environment:opacity-100"
-              aria-hidden
-            />
-          )}
-        </span>
-      </MenuTrigger>
-      <MenuPopup align="start">
-        <MenuCheckboxItem
-          checked={allSelected}
-          closeOnClick={false}
-          onCheckedChange={(checked) => onSelectionChange(checked ? null : new Set())}
-        >
-          All environments
-        </MenuCheckboxItem>
-        <MenuSeparator />
-        {environments.map((environment) => {
-          const checked =
-            selectedEnvironmentIds === null ||
-            selectedEnvironmentIds.has(environment.environmentId);
-          const progress = usageEnvironmentProgress(environment, refreshing);
-          const status =
-            environment.error !== null
-              ? "Unavailable"
-              : environment.summary !== null &&
-                  !isCompatibleUsageContractVersion(
-                    environment.summary.contractVersion,
-                    USAGE_CONTRACT_VERSION,
-                  )
-                ? "Update required"
-                : !environment.isConnected
-                  ? "Connecting…"
-                  : progress.phase === "loading"
-                    ? "Scanning…"
-                    : progress.phase === "stale"
-                      ? "Refreshing…"
-                      : progress.phase === "partway"
-                        ? updatingProvidersLabel(progress.providers, providerLabel)
-                        : "Ready";
-          return (
-            <MenuCheckboxItem
-              key={environment.environmentId}
-              checked={checked}
-              closeOnClick={false}
-              onCheckedChange={(nextChecked) => {
-                const next = new Set(selectedEnvironments.map((entry) => entry.environmentId));
-                if (nextChecked) next.add(environment.environmentId);
-                else next.delete(environment.environmentId);
-                onSelectionChange(next.size === environments.length ? null : next);
-              }}
-            >
-              <span className="flex min-w-0 items-center gap-3">
-                <span className="min-w-0 flex-1 truncate">{environment.label}</span>
-                {showUsageStatus ? (
-                  <span
-                    className={cn(
-                      "shrink-0 text-xs text-muted-foreground",
-                      environment.error !== null && "text-destructive",
-                    )}
-                  >
-                    {status}
-                  </span>
-                ) : null}
-              </span>
-            </MenuCheckboxItem>
-          );
-        })}
-        {environments.length === 0 ? (
-          <p className="px-2 py-2 text-xs text-muted-foreground">No environments connected.</p>
-        ) : null}
-        {showUsageStatus && isPartial ? (
-          <p className="px-2 py-2 text-xs text-muted-foreground">
-            Totals are partial while selected environments scan.
-          </p>
-        ) : null}
-        {showUsageStatus ? (
-          <UsageCoverageNotice
-            environments={selectedEnvironments}
-            duplicateSources={duplicateSources}
-            contractMismatches={contractMismatches}
-          />
-        ) : null}
-        <MenuSeparator />
-        <MenuItem onClick={onOpenModelPrices}>
-          <SlidersHorizontalIcon aria-hidden />
-          Model prices
-        </MenuItem>
-      </MenuPopup>
-    </Menu>
   );
 }
 

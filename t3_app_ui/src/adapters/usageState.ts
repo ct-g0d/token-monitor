@@ -52,6 +52,8 @@ export interface UsageView {
 export interface ModelPricingRates {
   readonly inputCostPerToken: number;
   readonly cacheReadCostPerToken: number;
+  readonly cacheWriteCostPerToken: number;
+  readonly outputCostPerToken: number;
 }
 
 import { deriveStatsRevisionKey, isUsageAffectingSettingsChange } from "./renderPerfHelpers";
@@ -96,16 +98,37 @@ function extractRatesFromPricingResult(res: any): ModelPricingRates | null {
     (p.cacheReadPerM != null ? Number(p.cacheReadPerM) / 1_000_000 : null) ??
     (p.cache_read_input_token_cost_per_million_tokens != null ? Number(p.cache_read_input_token_cost_per_million_tokens) / 1_000_000 : null);
 
+  const cacheWriteRate =
+    p.cacheCreationInputTokenCost ??
+    p.cacheWriteCostPerToken ??
+    p.cache_write_input_token_cost ??
+    (p.cacheWritePerM != null ? Number(p.cacheWritePerM) / 1_000_000 : null) ??
+    (p.cache_creation_input_token_cost_per_million_tokens != null
+      ? Number(p.cache_creation_input_token_cost_per_million_tokens) / 1_000_000
+      : null);
+
+  const outputRate =
+    p.outputCostPerToken ??
+    p.output_cost_per_token ??
+    (p.outputPerM != null ? Number(p.outputPerM) / 1_000_000 : null) ??
+    (p.output_cost_per_million_tokens != null ? Number(p.output_cost_per_million_tokens) / 1_000_000 : null);
+
   const finalInputRate = inputRate != null && Number.isFinite(inputRate) ? Math.max(0, inputRate) : null;
   if (finalInputRate === null) {
     return null;
   }
 
   const finalCacheReadRate = cacheReadRate != null && Number.isFinite(cacheReadRate) ? Math.max(0, cacheReadRate) : 0;
+  const finalCacheWriteRate = cacheWriteRate != null && Number.isFinite(cacheWriteRate)
+    ? Math.max(0, cacheWriteRate)
+    : finalInputRate;
+  const finalOutputRate = outputRate != null && Number.isFinite(outputRate) ? Math.max(0, outputRate) : 0;
 
   return {
     inputCostPerToken: finalInputRate,
     cacheReadCostPerToken: finalCacheReadRate,
+    cacheWriteCostPerToken: finalCacheWriteRate,
+    outputCostPerToken: finalOutputRate,
   };
 }
 
@@ -158,11 +181,27 @@ function parseCustomPricing(customModelPricing: any[] | undefined | null): Map<s
         ? Number(item.cacheReadPerM) / 1_000_000
         : (inputCostPerToken * 0.1));
 
+    const cacheWriteRate = item.cacheWriteCostPerToken !== undefined
+      ? Number(item.cacheWriteCostPerToken)
+      : (item.cacheWritePerM !== undefined && item.cacheWritePerM !== null && item.cacheWritePerM !== ""
+        ? Number(item.cacheWritePerM) / 1_000_000
+        : inputCostPerToken);
+
+    const outputRate = item.outputCostPerToken !== undefined
+      ? Number(item.outputCostPerToken)
+      : (item.outputPerM !== undefined && item.outputPerM !== null && item.outputPerM !== ""
+        ? Number(item.outputPerM) / 1_000_000
+        : 0);
+
     const cacheReadCostPerToken = cacheReadRate != null && Number.isFinite(cacheReadRate) ? Math.max(0, cacheReadRate) : 0;
+    const cacheWriteCostPerToken = Number.isFinite(cacheWriteRate) ? Math.max(0, cacheWriteRate) : inputCostPerToken;
+    const outputCostPerToken = Number.isFinite(outputRate) ? Math.max(0, outputRate) : 0;
 
     const rates: ModelPricingRates = {
       inputCostPerToken,
       cacheReadCostPerToken,
+      cacheWriteCostPerToken,
+      outputCostPerToken,
     };
     overrides.set(modelId, rates);
     overrides.set(modelId.toLowerCase(), rates);
@@ -225,14 +264,64 @@ function normalizeProviderKind(client: string): UsageProviderKind {
   return (trimmed || "unknown") as UsageProviderKind;
 }
 
-function modelRowsForClient(dayRow: DashboardHistoryDay, client: string, clientTokens: number) {
+function modelRowsForClient(
+  dayRow: DashboardHistoryDay,
+  client: string,
+  clientTokens: number,
+  clients: readonly string[],
+  clientTokensList: readonly number[],
+) {
   const direct = Object.entries(dayRow.clientModels?.[client] || {}).filter(([, value]) => nonNegative(value) > 0);
-  const fallback = Object.entries(dayRow.perModel || {}).filter(([, value]) => nonNegative(value.tokens) > 0);
-  const source = direct.length > 0 ? direct : fallback.map(([model, value]) => [model, value.tokens] as [string, number]);
+  const fallback = Object.entries(dayRow.perModel || {}).filter(([, value]) => {
+    const tokens = typeof value === "number" ? value : value?.tokens;
+    return nonNegative(tokens) > 0;
+  });
+  const source = direct.length > 0
+    ? direct
+    : fallback.map(([model, value]) => {
+        const tokens = typeof value === "number" ? value : value?.tokens;
+        if (clients.length <= 1) return [model, nonNegative(tokens)] as [string, number];
+        const clientIndex = Math.max(0, clients.indexOf(client));
+        return [model, apportionInteger(nonNegative(tokens), clientTokensList)[clientIndex] ?? 0] as [string, number];
+      });
   if (source.length === 0) return [["unknown", clientTokens] as [string, number]];
   const names = source.map(([model]) => model || "unknown");
   const weights = source.map(([, value]) => nonNegative(value));
   return names.map((name, index) => [name, apportionInteger(clientTokens, weights)[index] ?? 0] as [string, number]);
+}
+
+function categoryCostFor(
+  costUsd: number,
+  uncachedInputTokens: number,
+  cachedInputTokens: number,
+  cacheCreationTokens: number,
+  outputTokens: number,
+  pricing: ModelPricingRates | null,
+) {
+  const tokenWeights = [
+    nonNegative(uncachedInputTokens),
+    nonNegative(cachedInputTokens),
+    nonNegative(cacheCreationTokens),
+    nonNegative(outputTokens),
+  ];
+  const pricedWeights = pricing
+    ? [
+        tokenWeights[0]! * pricing.inputCostPerToken,
+        tokenWeights[1]! * pricing.cacheReadCostPerToken,
+        tokenWeights[2]! * pricing.cacheWriteCostPerToken,
+        tokenWeights[3]! * pricing.outputCostPerToken,
+      ]
+    : tokenWeights;
+  const weights = pricedWeights.some((value) => value > 0) ? pricedWeights : tokenWeights;
+  const totalWeight = weights.reduce((sum, value) => sum + value, 0);
+  if (costUsd <= 0 || totalWeight <= 0) {
+    return { input: 0, cacheRead: 0, cacheWrite: 0, output: 0 };
+  }
+  const input = Number((costUsd * (weights[0]! / totalWeight)).toFixed(6));
+  const cacheRead = Number((costUsd * (weights[1]! / totalWeight)).toFixed(6));
+  const cacheWrite = Number((costUsd * (weights[2]! / totalWeight)).toFixed(6));
+  const output = Math.max(0, Number((costUsd - input - cacheRead - cacheWrite).toFixed(6)));
+  return { input, cacheRead, cacheWrite, output };
 }
 
 function transformDayToBuckets(
@@ -252,7 +341,7 @@ function transformDayToBuckets(
 
   // Real client breakdown
   type ClientInfo = [string, { tokens: number; cost: number; messages: number }];
-  const rawClients = (dayRow.byClient || dayRow.perClient || {}) as Record<string, { tokens?: number; cost?: number; messages?: number }>;
+  const rawClients = (dayRow.perClient || dayRow.byClient || {}) as Record<string, { tokens?: number; cost?: number; messages?: number }>;
   const clients: ClientInfo[] = Object.entries(rawClients)
     .filter(([, stats]) => nonNegative(stats?.tokens) > 0)
     .map(([client, stats]) => [client, { tokens: nonNegative(stats.tokens), cost: nonNegative(stats.cost), messages: nonNegative(stats.messages) }]);
@@ -261,7 +350,15 @@ function transformDayToBuckets(
     : [["other", { tokens: dayTokens, cost: dayCost, messages: 1 }]];
 
   const clientTokensList = fallbackClients.map(([, stats]) => nonNegative(stats.tokens));
-  const clientCostsList = apportionInteger(dayCost * 1_000_000, clientTokensList).map((val) => val / 1_000_000);
+  const clientCostWeights = fallbackClients.map(([, stats]) => nonNegative(stats.cost));
+  const clientCostsList = (clientCostWeights.some((value) => value > 0)
+    ? apportionInteger(
+        (dayCost > 0 ? dayCost : clientCostWeights.reduce((sum, value) => sum + value, 0)) * 1_000_000,
+        clientCostWeights,
+      )
+    : apportionInteger(dayCost * 1_000_000, clientTokensList)
+  ).map((val) => val / 1_000_000);
+  const clientNames = fallbackClients.map(([client]) => client);
 
   // Apportion token components across clients using apportionInteger
   const clientReads = apportionInteger(
@@ -290,7 +387,7 @@ function transformDayToBuckets(
     const clientWrite = clientWrites[clientIndex] ?? 0;
     const clientOutput = clientOutputs[clientIndex] ?? 0;
 
-    const models = modelRowsForClient(dayRow, client, clientTokens);
+    const models = modelRowsForClient(dayRow, client, clientTokens, clientNames, clientTokensList);
     const modelWeights = models.map(([, tokens]) => tokens);
 
     // Apportion client components across models
@@ -329,11 +426,26 @@ function transformDayToBuckets(
 
       // Compute cache savings from real model pricing rates
       const pricing = pricingMap[model] || pricingMap[model.toLowerCase()] || null;
+      const hasPricing = pricing !== null && (
+        pricing.inputCostPerToken > 0 ||
+        pricing.cacheReadCostPerToken > 0 ||
+        pricing.cacheWriteCostPerToken > 0 ||
+        pricing.outputCostPerToken > 0
+      );
       let cacheSavingsUsd = 0;
-      if (pricing && pricing.inputCostPerToken > 0 && cached > 0) {
+      if (hasPricing && pricing.inputCostPerToken > 0 && cached > 0) {
         const unitSavings = Math.max(0, pricing.inputCostPerToken - (pricing.cacheReadCostPerToken || 0));
         cacheSavingsUsd = Number((cached * unitSavings).toFixed(6));
       }
+      const categoryCostUsd = categoryCostFor(
+        cost,
+        uncached,
+        cached,
+        cacheWrite,
+        output,
+        hasPricing ? pricing : null,
+      );
+      const records = modelRecordsList[modelIndex] ?? 0;
 
       buckets.push({
         day,
@@ -348,10 +460,11 @@ function transformDayToBuckets(
         },
         costUsd: cost,
         cacheSavingsUsd,
-        costSource: "modelPriced",
-        records: modelRecordsList[modelIndex] ?? 0,
+        categoryCostUsd,
+        costSource: hasPricing ? "modelPriced" : cost > 0 ? "providerReported" : "unpriced",
+        records,
         sessions: modelSessionsList[modelIndex] ?? 0,
-        unpricedRecords: 0,
+        unpricedRecords: hasPricing || cost > 0 ? 0 : records,
       });
     });
   });
@@ -434,11 +547,13 @@ export function buildUsageSummaryFromData(
       }
     : null;
 
-  const relevantDays = allTimeRequested && allTimeDay ? [allTimeDay] : daily.filter((d) => {
-    if (sinceDay && d.date < sinceDay) return false;
-    if (untilDay && d.date > untilDay) return false;
-    return true;
-  });
+  const relevantDays = allTimeRequested
+    ? (daily.length > 0 ? daily : (allTimeDay ? [allTimeDay] : []))
+    : daily.filter((d) => {
+        if (sinceDay && d.date < sinceDay) return false;
+        if (untilDay && d.date > untilDay) return false;
+        return true;
+      });
 
   // Active days inside selected range with tokens > 0
   const activeDays = relevantDays.filter((d) => nonNegative(d.tokens) > 0).length;
@@ -507,8 +622,11 @@ export function buildUsageSummaryFromData(
     message: null,
   }));
 
-  const windowSinceDay = (sinceDay || (relevantDays.length > 0 ? relevantDays[relevantDays.length - 1]?.date : "2026-01-01")) as any;
-  const windowUntilDay = (untilDay || (relevantDays.length > 0 ? relevantDays[0]?.date : "2026-12-31")) as any;
+  const sortedDates = relevantDays.map((d) => d.date).filter(Boolean).sort();
+  const earliestDate = sortedDates[0];
+  const latestDate = sortedDates[sortedDates.length - 1];
+  const windowSinceDay = (allTimeRequested && earliestDate ? earliestDate : (sinceDay || earliestDate || "2026-01-01")) as any;
+  const windowUntilDay = (untilDay || latestDate || "2026-12-31") as any;
 
   const summary: UsageSummary = {
     contractVersion: USAGE_CONTRACT_VERSION,
