@@ -784,7 +784,7 @@ export function useUsage(
     });
   }, []);
 
-  const fetchRealData = useCallback(async () => {
+  const fetchRealData = useCallback(async (force?: boolean) => {
     if (typeof window === "undefined" || !window.tokenMonitor) {
       setHasTokenMonitor(false);
       return;
@@ -793,12 +793,18 @@ export function useUsage(
     const tm = window.tokenMonitor;
     setHasTokenMonitor(true);
     try {
+      if (force) {
+        invalidateDayBucketsCache();
+      }
+      const statsOptions = force
+        ? { force: true, feedback: true, forceHistory: true, forceSelfSync: true }
+        : undefined;
       const [histData, statsData, allTimeSessions, settingsData] = await Promise.all([
         tm.getDashboardHistory({ days: 90, includeDevices: true })
           .catch(() => (tm.getDashboardHistory as any)(90))
           .catch(() => tm.getDashboardHistory())
           .catch(() => null),
-        tm.getStats().catch(() => null),
+        tm.getStats(statsOptions).catch(() => null),
         typeof tm.getAllTimeSessions === "function"
           ? tm.getAllTimeSessions().catch(() => null)
           : Promise.resolve(null),
@@ -807,7 +813,7 @@ export function useUsage(
           : Promise.resolve(null),
       ]);
       if (histData && Array.isArray(histData.daily) && histData.daily.length > 0) {
-        setHistory(histData);
+        setHistory(force ? { ...histData, daily: [...histData.daily] } : histData);
         updatePricingForHistory(histData);
       }
       if (statsData) {
@@ -819,7 +825,7 @@ export function useUsage(
           : null;
         const nextStats = sessions
           ? { ...actual, periods: { ...actual.periods, allTime: { ...actual.periods?.allTime, sessions } } }
-          : actual;
+          : (force ? { ...actual } : actual);
         lastKnownRevisionKey.current = deriveStatsRevisionKey(nextStats);
         setStats(nextStats);
         syncStatsToPresentation(nextStats);
@@ -971,7 +977,7 @@ export function useUsage(
 
   const refresh = useCallback((_refreshInput?: UsageSummaryInput) => {
     setIsPending(true);
-    return fetchRealData().finally(() => setIsPending(false));
+    return fetchRealData(true).finally(() => setIsPending(false));
   }, [fetchRealData]);
 
   const answeredCount = selection.selectedEnvironments.filter(
