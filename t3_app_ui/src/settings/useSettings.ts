@@ -1,6 +1,39 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { LimitAccountForms, TokenMonitorSettingsState } from './types';
 
+export function applyThemeMode(themeChoice?: string) {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  const mode = (themeChoice === 'dark' || themeChoice === 'light' || themeChoice === 'system') ? themeChoice : 'system';
+  try {
+    window.localStorage.setItem('t3code:theme-appearance-mode', mode);
+    window.localStorage.setItem('t3code:theme', mode);
+  } catch (_) {}
+  const isDark = mode === 'dark' || (mode === 'system' && Boolean(window.matchMedia?.('(prefers-color-scheme: dark)')?.matches));
+  document.documentElement.classList.toggle('dark', isDark);
+  if (window.desktopBridge?.setTheme) {
+    try {
+      window.desktopBridge.setTheme(mode);
+    } catch (_) {}
+  }
+}
+
+export function applyLanguage(languageChoice?: string) {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  const preferredLanguages = navigator.languages?.length ? navigator.languages : [navigator.language || 'en'];
+  const i18n = (window as any).TokenMonitorI18n;
+  const resolvedLocale = i18n?.resolveLocale
+    ? i18n.resolveLocale(languageChoice || 'auto', preferredLanguages)
+    : (languageChoice && languageChoice !== 'auto' ? languageChoice : (navigator.language || 'en').split('-')[0]);
+
+  document.documentElement.lang = resolvedLocale;
+  document.documentElement.setAttribute('lang', resolvedLocale);
+  document.documentElement.setAttribute('data-locale', resolvedLocale);
+
+  if (i18n?.applyTranslations) {
+    i18n.applyTranslations(document, resolvedLocale);
+  }
+}
+
 export function useTokenMonitorSettings() {
   const [settings, setSettings] = useState<TokenMonitorSettingsState>({});
   const [accountForms, setAccountForms] = useState<LimitAccountForms>([]);
@@ -16,6 +49,7 @@ export function useTokenMonitorSettings() {
         };
         const persistedSettings: TokenMonitorSettingsState = {
           ...rawSettings,
+          theme: rawSettings.theme || 'system',
           customModelPricing: Array.isArray(rawSettings.customModelPricing) ? rawSettings.customModelPricing : [],
           subscriptions: Array.isArray(rawSettings.subscriptions) ? rawSettings.subscriptions : [],
           modelAliases: rawSettings.modelAliases && typeof rawSettings.modelAliases === 'object' && !Array.isArray(rawSettings.modelAliases)
@@ -27,6 +61,12 @@ export function useTokenMonitorSettings() {
         };
         setSettings(persistedSettings);
         setAccountForms(limitAccountForms || []);
+        if (persistedSettings.theme) {
+          applyThemeMode(persistedSettings.theme);
+        }
+        if (persistedSettings.language) {
+          applyLanguage(persistedSettings.language);
+        }
       }
     } catch (err: any) {
       setError(err?.message || 'Failed to load settings');
@@ -46,6 +86,12 @@ export function useTokenMonitorSettings() {
           };
           if (limitAccountForms) setAccountForms(limitAccountForms);
           setSettings((prev) => ({ ...prev, ...persistedSettings }));
+          if (persistedSettings.theme) {
+            applyThemeMode(persistedSettings.theme);
+          }
+          if (persistedSettings.language) {
+            applyLanguage(persistedSettings.language);
+          }
         }
       });
       return () => {
@@ -54,8 +100,26 @@ export function useTokenMonitorSettings() {
     }
   }, [loadSettings]);
 
+  useEffect(() => {
+    if (settings.theme) {
+      applyThemeMode(settings.theme);
+    }
+  }, [settings.theme]);
+
+  useEffect(() => {
+    if (settings.language) {
+      applyLanguage(settings.language);
+    }
+  }, [settings.language]);
+
   const updateSettings = useCallback(async (patch: Partial<TokenMonitorSettingsState>) => {
     setSettings((prev) => ({ ...prev, ...patch }));
+    if (patch.theme !== undefined) {
+      applyThemeMode(patch.theme);
+    }
+    if (patch.language !== undefined) {
+      applyLanguage(patch.language);
+    }
     try {
       if (typeof window !== 'undefined' && window.tokenMonitor?.updateSettings) {
         await window.tokenMonitor.updateSettings(patch);
@@ -76,7 +140,9 @@ export function useTokenMonitorSettings() {
       };
       if (limitAccountForms) setAccountForms(limitAccountForms);
       setSettings((prev) => ({ ...prev, ...persistedSettings }));
+      return refreshed as TokenMonitorSettingsState;
     }
+    return null;
   }, []);
 
   return {

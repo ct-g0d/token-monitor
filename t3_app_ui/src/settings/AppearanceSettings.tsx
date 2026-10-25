@@ -4,6 +4,7 @@ import { Switch } from '~/components/ui/switch';
 import { Button } from '~/components/ui/button';
 import { Input } from '~/components/ui/input';
 import { useTheme } from '~/hooks/useTheme';
+import { applyThemeMode } from './useSettings';
 import type { TokenMonitorSettingsState } from './types';
 
 interface AppearanceSettingsProps {
@@ -15,7 +16,15 @@ const selectClass =
   'h-8 rounded-md border border-input bg-background px-2.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
 
 export function AppearanceSettings({ settings, updateSettings }: AppearanceSettingsProps) {
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, setAppearanceMode, appearanceMode } = useTheme();
+  const currentTheme = settings.theme || appearanceMode || theme || 'system';
+
+  const handleThemeChange = async (nextTheme: string) => {
+    setAppearanceMode(nextTheme as any);
+    setTheme(nextTheme as any);
+    applyThemeMode(nextTheme);
+    await updateSettings({ theme: nextTheme });
+  };
   const [bgPath, setBgPath] = useState<string | null>(null);
 
   useEffect(() => {
@@ -67,8 +76,8 @@ export function AppearanceSettings({ settings, updateSettings }: AppearanceSetti
           description="Switch between Light, Dark, or follow System appearance."
           control={
             <select
-              value={theme || 'system'}
-              onChange={(e) => setTheme(e.target.value as any)}
+              value={currentTheme}
+              onChange={(e) => handleThemeChange(e.target.value)}
               className={selectClass}
             >
               <option value="system">System Default</option>

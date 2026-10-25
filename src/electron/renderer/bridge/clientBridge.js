@@ -33,7 +33,13 @@
     sessions: [],
     sessionDetails: {},
     serviceStatus: [],
-    settings: { currency: 'USD', theme: 'system', language: 'en' },
+    settings: {
+      currency: 'USD',
+      currencyRates: { CNY: 7.24, EUR: 0.92, GBP: 0.79, JPY: 154.5, KRW: 1380.0, HKD: 7.82 },
+      currencyRatesEffective: { CNY: 7.24, EUR: 0.92, GBP: 0.79, JPY: 154.5, KRW: 1380.0, HKD: 7.82 },
+      theme: 'system',
+      language: 'en'
+    },
     appInfo: { name: 'TokeX', version: '0.69.0' }
   };
 
@@ -49,7 +55,12 @@
       getSessionDetail: async () => ({ turns: [] }),
       clearSessionUsageArchive: async () => ({ ok: true }),
       getSettings: async () => JSON.parse(JSON.stringify(DEFAULT_MOCK_DATA.settings)),
-      refreshCurrencyRates: async () => JSON.parse(JSON.stringify(DEFAULT_MOCK_DATA.settings)),
+      refreshCurrencyRates: async () => {
+        const rates = { CNY: 7.24, EUR: 0.92, GBP: 0.79, JPY: 154.5, KRW: 1380.0, HKD: 7.82 };
+        DEFAULT_MOCK_DATA.settings.currencyRates = rates;
+        DEFAULT_MOCK_DATA.settings.currencyRatesEffective = rates;
+        return JSON.parse(JSON.stringify(DEFAULT_MOCK_DATA.settings));
+      },
       updateSettings: async (patch) => ({ ...DEFAULT_MOCK_DATA.settings, ...patch }),
       saveSubscriptions: async () => ({}),
       adoptOrphanedSubscriptions: async () => ({ ok: true }),
