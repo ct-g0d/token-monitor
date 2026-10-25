@@ -157,6 +157,141 @@ const KNOWN_PROVIDERS: Record<string, UsageProviderPresentation> = {
     color: "#64748b",
     driverKind: ProviderDriverKind.make("thirdparty"),
   },
+  commandcode: {
+    label: "CommandCode",
+    color: "#8c4edd",
+    driverKind: ProviderDriverKind.make("commandcode"),
+  },
+  notion: {
+    label: "Notion",
+    color: "#000000",
+    driverKind: ProviderDriverKind.make("notion"),
+  },
+  typesafe: {
+    label: "TypeSafe",
+    color: "#3b82f6",
+    driverKind: ProviderDriverKind.make("typesafe"),
+  },
+  mistral: {
+    label: "Mistral",
+    color: "#ea580c",
+    driverKind: ProviderDriverKind.make("mistral"),
+  },
+  groq: {
+    label: "Groq",
+    color: "#f55036",
+    driverKind: ProviderDriverKind.make("groq"),
+  },
+  cerebras: {
+    label: "Cerebras",
+    color: "#ff6f00",
+    driverKind: ProviderDriverKind.make("cerebras"),
+  },
+  github: {
+    label: "GitHub",
+    color: "#24292f",
+    driverKind: ProviderDriverKind.make("github"),
+  },
+  gitlab: {
+    label: "GitLab",
+    color: "#e24329",
+    driverKind: ProviderDriverKind.make("gitlab"),
+  },
+  azure: {
+    label: "Azure DevOps",
+    color: "#0078d7",
+    driverKind: ProviderDriverKind.make("azure"),
+  },
+  bitbucket: {
+    label: "Bitbucket",
+    color: "#0052cc",
+    driverKind: ProviderDriverKind.make("bitbucket"),
+  },
+  forgejo: {
+    label: "Forgejo",
+    color: "#ff6600",
+    driverKind: ProviderDriverKind.make("forgejo"),
+  },
+  gitcafe: {
+    label: "GitCafe",
+    color: "#a78bfa",
+    driverKind: ProviderDriverKind.make("gitcafe"),
+  },
+  dsh: {
+    label: "DeepSeek Hardware",
+    color: "#4d6bfe",
+    driverKind: ProviderDriverKind.make("dsh"),
+  },
+  vertex: {
+    label: "Vertex AI",
+    color: "#4285f4",
+    driverKind: ProviderDriverKind.make("vertex"),
+  },
+  bedrock: {
+    label: "AWS Bedrock",
+    color: "#ff9900",
+    driverKind: ProviderDriverKind.make("bedrock"),
+  },
+  gemini: {
+    label: "Google Gemini",
+    color: "#1a73e8",
+    driverKind: ProviderDriverKind.make("gemini"),
+  },
+  cohere: {
+    label: "Cohere",
+    color: "#39594d",
+    driverKind: ProviderDriverKind.make("cohere"),
+  },
+  together: {
+    label: "Together AI",
+    color: "#0f6fff",
+    driverKind: ProviderDriverKind.make("together"),
+  },
+  hyperbolic: {
+    label: "Hyperbolic",
+    color: "#26b5ce",
+    driverKind: ProviderDriverKind.make("hyperbolic"),
+  },
+  sambanova: {
+    label: "SambaNova",
+    color: "#f58220",
+    driverKind: ProviderDriverKind.make("sambanova"),
+  },
+  fireworks: {
+    label: "Fireworks AI",
+    color: "#ff4f00",
+    driverKind: ProviderDriverKind.make("fireworks"),
+  },
+  perplexity: {
+    label: "Perplexity",
+    color: "#20808d",
+    driverKind: ProviderDriverKind.make("perplexity"),
+  },
+  ai21: {
+    label: "AI21 Labs",
+    color: "#7142cf",
+    driverKind: ProviderDriverKind.make("ai21"),
+  },
+  replicate: {
+    label: "Replicate",
+    color: "#000000",
+    driverKind: ProviderDriverKind.make("replicate"),
+  },
+  upstage: {
+    label: "Upstage",
+    color: "#6528f7",
+    driverKind: ProviderDriverKind.make("upstage"),
+  },
+  vllm: {
+    label: "vLLM",
+    color: "#5865f2",
+    driverKind: ProviderDriverKind.make("vllm"),
+  },
+  lmstudio: {
+    label: "LM Studio",
+    color: "#3b82f6",
+    driverKind: ProviderDriverKind.make("lmstudio"),
+  },
 };
 
 function hashString(str: string): number {

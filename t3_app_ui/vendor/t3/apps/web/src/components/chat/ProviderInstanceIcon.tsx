@@ -1,9 +1,10 @@
-import { type CSSProperties, memo } from "react";
+﻿import { type CSSProperties, memo } from "react";
 
 import { providerInstanceInitials } from "@t3tools/client-runtime/state/provider-instance-display";
 
 import { ProviderDriverKind } from "@t3tools/contracts";
 import { AntigravityIcon, ClaudeAI, Icon, OpenAI } from "../Icons";
+import { PROVIDER_ICON_CATALOG, getProviderIconComponent } from "../providerIcons";
 
 import { cn } from "~/lib/utils";
 import { providerClients } from "../settings/providerDriverMeta";
@@ -14,16 +15,36 @@ import {
   resolveOfficialAcpRegistryIconUrl,
 } from "../settings/AcpRegistryIcon";
 
-const PROVIDER_ICON_BY_PROVIDER: Partial<Record<ProviderDriverKind, Icon>> = {
+export const PROVIDER_ICON_BY_PROVIDER: Partial<Record<ProviderDriverKind, Icon>> = {
   [ProviderDriverKind.make("codex")]: OpenAI,
   [ProviderDriverKind.make("claudeAgent")]: ClaudeAI,
+  [ProviderDriverKind.make("claude")]: ClaudeAI,
   [ProviderDriverKind.make("antigravity")]: AntigravityIcon,
+  ...Object.fromEntries(
+    Object.entries(PROVIDER_ICON_CATALOG).map(([k, icon]) => [ProviderDriverKind.make(k), icon]),
+  ),
 };
 
 const PROVIDER_TEXT_COLOR_BY_PROVIDER: Partial<Record<ProviderDriverKind, string>> = {
   [ProviderDriverKind.make("codex")]: "text-black dark:text-white",
   [ProviderDriverKind.make("claudeAgent")]: "text-[#d97757]",
+  [ProviderDriverKind.make("claude")]: "text-[#d97757]",
   [ProviderDriverKind.make("antigravity")]: "text-[#5b87bf]",
+  [ProviderDriverKind.make("deepseek")]: "text-[#4d6bfe]",
+  [ProviderDriverKind.make("dsh")]: "text-[#4d6bfe]",
+  [ProviderDriverKind.make("kimi")]: "text-[#1783FF]",
+  [ProviderDriverKind.make("minimax")]: "text-[#ff647c]",
+  [ProviderDriverKind.make("workbuddy")]: "text-[#0DC8A5]",
+  [ProviderDriverKind.make("qoder")]: "text-[#2ADB5C]",
+  [ProviderDriverKind.make("qodercn")]: "text-[#2ADB5C]",
+  [ProviderDriverKind.make("volcengine")]: "text-[#006EFF]",
+  [ProviderDriverKind.make("openrouter")]: "text-[#6566F1]",
+  [ProviderDriverKind.make("cline")]: "text-[#9D4EDD]",
+  [ProviderDriverKind.make("kiro")]: "text-[#9046FF]",
+  [ProviderDriverKind.make("trae")]: "text-[#32F08C]",
+  [ProviderDriverKind.make("alibaba")]: "text-[#615CED]",
+  [ProviderDriverKind.make("commandcode")]: "text-[#8C4EDD]",
+  [ProviderDriverKind.make("zed")]: "text-[#4173e7]",
 };
 
 export function providerTextColor(driverKind: ProviderDriverKind): {
@@ -37,7 +58,10 @@ export function providerTextColor(driverKind: ProviderDriverKind): {
       style: { "--icon-light": icon.fill.light, "--icon-dark": icon.fill.dark } as CSSProperties,
     };
   }
-  const className = PROVIDER_TEXT_COLOR_BY_PROVIDER[driverKind];
+  const normalizedKey = String(driverKind || "").toLowerCase().replace(/[^a-z0-9_-]/g, "");
+  const className =
+    PROVIDER_TEXT_COLOR_BY_PROVIDER[driverKind] ??
+    PROVIDER_TEXT_COLOR_BY_PROVIDER[ProviderDriverKind.make(normalizedKey)];
   return className ? { className } : {};
 }
 
@@ -67,7 +91,12 @@ export const ProviderInstanceIcon = memo(function ProviderInstanceIcon(props: {
   statusDotClassName?: string;
   indicatorBackground?: string;
 }) {
-  const Icon = PROVIDER_ICON_BY_PROVIDER[props.driverKind] ?? null;
+  const normalizedKey = String(props.driverKind || "").toLowerCase().replace(/[^a-z0-9_-]/g, "");
+  const Icon =
+    PROVIDER_ICON_BY_PROVIDER[props.driverKind] ??
+    PROVIDER_ICON_BY_PROVIDER[ProviderDriverKind.make(normalizedKey)] ??
+    getProviderIconComponent(normalizedKey) ??
+    (normalizedKey === "claude" ? ClaudeAI : null);
   const packageIcon = providerClients.get(props.driverKind)?.icon;
   const indicatorBackground = props.indicatorBackground ?? "var(--card)";
   const accentStyle = props.accentColor

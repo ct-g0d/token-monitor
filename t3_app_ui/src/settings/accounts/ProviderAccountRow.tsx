@@ -8,23 +8,42 @@ import { ChevronRightIcon, Trash2Icon, KeyRoundIcon, UserIcon, ShieldAlertIcon }
 import { SignInPendingState } from './SignInPendingState';
 import { CredentialDialog } from './CredentialDialog';
 import { cn } from '~/lib/utils';
-import { AntigravityIcon, ClaudeAI, OpenAI } from '~/components/Icons';
+import { getProviderIconComponent, AntigravityIcon, ClaudeAI, OpenAI } from '~/components/Icons';
 
 export interface ProviderAccountRowProps {
   provider: ProviderAccounts;
 }
 
+const PROVIDER_COLOR_CLASSES: Record<string, string> = {
+  codex: 'text-black dark:text-white',
+  claude: 'text-[#d97757]',
+  claudeagent: 'text-[#d97757]',
+  antigravity: 'text-[#5b87bf]',
+  deepseek: 'text-[#4d6bfe]',
+  dsh: 'text-[#4d6bfe]',
+  kimi: 'text-[#1783FF]',
+  minimax: 'text-[#ff647c]',
+  workbuddy: 'text-[#0DC8A5]',
+  qoder: 'text-[#2ADB5C]',
+  qodercn: 'text-[#2ADB5C]',
+  volcengine: 'text-[#006EFF]',
+  openrouter: 'text-[#6566F1]',
+  cline: 'text-[#9D4EDD]',
+  kiro: 'text-[#9046FF]',
+  trae: 'text-[#32F08C]',
+  alibaba: 'text-[#615CED]',
+  commandcode: 'text-[#8C4EDD]',
+  zed: 'text-[#4173e7]',
+};
+
 function getProviderIcon(providerId: string) {
-  switch (providerId) {
-    case 'codex':
-      return <OpenAI className="size-4 text-black dark:text-white" />;
-    case 'claude':
-      return <ClaudeAI className="size-4 text-[#d97757]" />;
-    case 'antigravity':
-      return <AntigravityIcon className="size-4 text-[#5b87bf]" />;
-    default:
-      return <UserIcon className="size-4 text-muted-foreground" />;
+  const norm = String(providerId || '').toLowerCase().trim();
+  const IconComponent = getProviderIconComponent(norm);
+  if (IconComponent) {
+    const colorClass = PROVIDER_COLOR_CLASSES[norm] || '';
+    return <IconComponent className={cn('size-4', colorClass)} />;
   }
+  return <UserIcon className="size-4 text-muted-foreground" />;
 }
 
 export function ProviderAccountRow({ provider }: ProviderAccountRowProps) {
