@@ -1,13 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { Activity, FolderGit2, Gauge, Server, Settings } from 'lucide-react';
+import { Activity, Gauge, Server, Settings } from 'lucide-react';
 import { getDeviceLabel } from '../../views/logicBridge';
 
-export type MainView = 'usage' | 'limits' | 'projects' | 'status' | 'settings';
+export type MainView = 'usage' | 'limits' | 'status' | 'settings';
 
 export const NAV_ITEMS = [
   { id: 'usage' as const, label: 'Usage', Icon: Activity },
   { id: 'limits' as const, label: 'Limits', Icon: Gauge },
-  { id: 'projects' as const, label: 'Projects', Icon: FolderGit2 },
   { id: 'status' as const, label: 'Status', Icon: Server },
 ];
 

@@ -3,32 +3,13 @@
 
 import '../../../src/shared/clientCatalog.js';
 import '../../../src/shared/vendorPresentation.js';
-import '../../../src/shared/projectKey.js';
 import '../../../src/shared/sessionActivityProviders.js';
 import '../../../src/shared/sessionLive.js';
 import '../../../src/electron/renderer/fixedPeriodRanges.js';
 import '../../../src/electron/renderer/deviceBreakdown.js';
 import '../../../src/electron/renderer/allTimeSessions.js';
 import '../../../src/electron/renderer/sessionRows.js';
-import '../../../src/electron/renderer/projectRows.js';
 import '../../../src/electron/renderer/sessionDetail.js';
-
-export interface ProjectRow {
-  key: string;
-  name: string;
-  value: number;
-  cost: number;
-  unpricedTokens?: number;
-  clients?: Set<string>;
-  clientTokens?: Record<string, number>;
-  accordionRows?: Array<{
-    key: string;
-    name: string;
-    value: number;
-    percent: number;
-    color: string;
-  }>;
-}
 
 export interface SessionRow {
   key: string;
@@ -118,27 +99,6 @@ export function getSessionExchangeRows(
   } catch (err) {
     console.error('[logicBridge] getSessionExchangeRows error:', err);
     return [];
-  }
-}
-
-export function getProjectRows(periodData: any, options: any = {}): ProjectRow[] {
-  const api = getGlobal('TokenMonitorProjectRows');
-  if (!api?.projectRowsForPeriod) return [];
-  try {
-    return api.projectRowsForPeriod(periodData, options) || [];
-  } catch (err) {
-    console.error('[logicBridge] getProjectRows error:', err);
-    return [];
-  }
-}
-
-export function isProjectBreakdownIncomplete(stats: any, period: string): boolean {
-  const api = getGlobal('TokenMonitorProjectRows');
-  if (!api?.projectBreakdownIncomplete) return false;
-  try {
-    return api.projectBreakdownIncomplete(stats, period);
-  } catch {
-    return false;
   }
 }
 
