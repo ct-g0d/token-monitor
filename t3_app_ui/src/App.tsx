@@ -7,14 +7,12 @@ import { SettingsPage } from './settings/SettingsPage';
 import { SettingsScopeProvider } from '~/components/settings/SettingsScopeContext';
 import { Sidebar, type MainView } from './components/shell/Sidebar';
 
-import { ProjectsView } from './views/ProjectsView';
 import { ServiceStatusView } from './views/ServiceStatusView';
 
-// Main-process view names (tray, last view state, URL `breakdown`) folded onto the four views
+// Main-process view names (tray, last view state, URL `breakdown`) folded onto the active views
 function viewFor(name: string | null | undefined): MainView {
   const target = String(name || '').toLowerCase();
   if (target === 'limits') return 'limits';
-  if (['project', 'projects'].includes(target)) return 'projects';
   if (target === 'status') return 'status';
   return 'usage';
 }
@@ -22,7 +20,6 @@ function viewFor(name: string | null | undefined): MainView {
 const BREAKDOWN: Record<MainView, string> = {
   usage: 'home',
   limits: 'limits',
-  projects: 'project',
   status: 'status',
   settings: 'home',
 };
@@ -68,7 +65,6 @@ export function App() {
 
         <main key={activeView} className="tm-view-in absolute inset-y-0 right-0 left-[216px] flex flex-col overflow-hidden">
           {(activeView === 'usage' || activeView === 'limits') && <UsagePage mode={activeView} />}
-          {activeView === 'projects' && <ProjectsView />}
           {activeView === 'status' && <ServiceStatusView />}
           {activeView === 'settings' && <SettingsPage />}
         </main>
