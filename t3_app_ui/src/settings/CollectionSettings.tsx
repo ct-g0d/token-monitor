@@ -513,7 +513,7 @@ export function CollectionSettings({ settings, updateSettings }: CollectionSetti
               placeholder="Input $/1M"
               value={pricingInput}
               onChange={(e) => setPricingInput(e.target.value)}
-              className="h-8 text-xs"
+              className="h-8 text-xs tabular-nums"
             />
             <Input
               type="number"
@@ -521,7 +521,7 @@ export function CollectionSettings({ settings, updateSettings }: CollectionSetti
               placeholder="Output $/1M"
               value={pricingOutput}
               onChange={(e) => setPricingOutput(e.target.value)}
-              className="h-8 text-xs"
+              className="h-8 text-xs tabular-nums"
             />
             <Button size="sm" variant="outline" onClick={handleAddPricing}>
               Save Price
@@ -534,7 +534,7 @@ export function CollectionSettings({ settings, updateSettings }: CollectionSetti
                 <div key={item.modelId} className="flex items-center justify-between p-2 rounded-md bg-muted/20 text-xs border border-border/40">
                   <div>
                     <span className="font-mono font-medium text-foreground">{item.modelId}</span>
-                    <span className="ml-3 text-muted-foreground">
+                    <span className="ml-3 text-muted-foreground tabular-nums">
                       Input: ${item.inputPerM} / 1M · Output: ${item.outputPerM} / 1M
                     </span>
                   </div>

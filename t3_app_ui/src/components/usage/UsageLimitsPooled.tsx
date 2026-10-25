@@ -509,23 +509,23 @@ function PoolWindowCard({
   return (
     <div className="grid items-center gap-x-6 gap-y-3 rounded-lg border border-border/60 p-4 md:grid-cols-[11rem_minmax(0,1fr)]">
       <div className="flex flex-col gap-1">
-        <span className="text-sm font-medium text-foreground">{label ?? pool.label}</span>
+        <span className="tm-label truncate">{label ?? pool.label}</span>
         <span className="flex items-baseline gap-2">
           {isCredits && balanceAmount !== null ? (
             <>
-              <span className="text-3xl font-semibold text-foreground tabular-nums">
+              <span className="text-[26px] leading-none font-semibold text-foreground tabular-nums">
                 ${balanceAmount.toFixed(2)}
               </span>
-              <span className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+              <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground uppercase font-mono tracking-wider">
                 <span>balance</span>
               </span>
             </>
           ) : (
             <>
-              <span className="text-3xl font-semibold text-foreground tabular-nums">
+              <span className="text-[26px] leading-none font-semibold text-foreground tabular-nums">
                 {pool.remainingPercent}%
               </span>
-              <span className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+              <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground uppercase font-mono tracking-wider">
                 <span>left</span>
                 {pool.pace ? <PaceIcon pace={pool.pace} /> : null}
               </span>
@@ -533,7 +533,7 @@ function PoolWindowCard({
           )}
         </span>
         {isCredits && typeof monthSpend === "number" ? (
-          <span className="text-xs text-muted-foreground tabular-nums">
+          <span className="text-2xs text-muted-foreground tabular-nums">
             ${monthSpend.toFixed(2)} spent this month
           </span>
         ) : nextRefill && pool.columns.length > 1 ? (
@@ -587,7 +587,7 @@ function PoolSection({
           {label}
         </h2>
         {planSummary ? (
-          <span className="text-xs text-muted-foreground">{planSummary}</span>
+          <span className="text-xs text-muted-foreground tabular-nums">{planSummary}</span>
         ) : null}
       </div>
       {windows.map((window) => {
@@ -767,7 +767,7 @@ export function UsageLimitsPooled({
 
       {notConfiguredDrivers.length > 0 ? (
         <section className="flex flex-col gap-3">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          <h2 className="tm-label !text-foreground">
             Unconfigured Providers
           </h2>
           <div className="grid gap-3 sm:grid-cols-2">

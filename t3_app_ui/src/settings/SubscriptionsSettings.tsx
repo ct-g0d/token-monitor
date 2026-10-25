@@ -100,7 +100,7 @@ export function SubscriptionsSettings({ settings, updateSettings, refreshSetting
       {orphanList.length > 0 && (
         <div className="p-3 rounded-xl border border-warning/40 bg-warning/10 space-y-2 text-xs">
           <p className="font-medium text-foreground">
-            {orphanList.length} local subscription records were found from before joining this Hub.
+            <span className="tabular-nums font-semibold">{orphanList.length}</span> local subscription records were found from before joining this Hub.
           </p>
           <div className="flex gap-2">
             <Button size="sm" variant="outline" disabled={adoptingOrphans} onClick={handleAdoptOrphans}>
@@ -135,7 +135,7 @@ export function SubscriptionsSettings({ settings, updateSettings, refreshSetting
                         <span className="text-2xs text-muted-foreground">({sub.account})</span>
                       )}
                     </div>
-                    <div className="text-2xs text-muted-foreground">
+                    <div className="text-2xs text-muted-foreground tabular-nums">
                       {sub.currency} {sub.amount} / {sub.interval}
                       {sub.startDate ? ` · Started ${sub.startDate}` : ''}
                       {sub.autoRenew ? ' · Auto-renewing' : ''}
@@ -162,7 +162,7 @@ export function SubscriptionsSettings({ settings, updateSettings, refreshSetting
         <div className="p-3 space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <div className="space-y-1">
-              <label className="text-2xs font-medium text-muted-foreground">Provider</label>
+              <label className="tm-label">Provider</label>
               <select
                 value={provider}
                 onChange={(e) => setProvider(e.target.value)}
@@ -181,7 +181,7 @@ export function SubscriptionsSettings({ settings, updateSettings, refreshSetting
             </div>
 
             <div className="space-y-1">
-              <label className="text-2xs font-medium text-muted-foreground">Plan Name</label>
+              <label className="tm-label">Plan Name</label>
               <Input
                 placeholder="e.g. Pro, Team, Ultra"
                 value={planName}
@@ -191,7 +191,7 @@ export function SubscriptionsSettings({ settings, updateSettings, refreshSetting
             </div>
 
             <div className="space-y-1">
-              <label className="text-2xs font-medium text-muted-foreground">Account / Email</label>
+              <label className="tm-label">Account / Email</label>
               <Input
                 placeholder="Optional account tag"
                 value={account}
@@ -203,19 +203,19 @@ export function SubscriptionsSettings({ settings, updateSettings, refreshSetting
 
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
             <div className="space-y-1">
-              <label className="text-2xs font-medium text-muted-foreground">Price</label>
+              <label className="tm-label">Price</label>
               <Input
                 type="number"
                 step="0.01"
                 placeholder="20.00"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
-                className="h-8 text-xs"
+                className="h-8 text-xs tabular-nums"
               />
             </div>
 
             <div className="space-y-1">
-              <label className="text-2xs font-medium text-muted-foreground">Currency</label>
+              <label className="tm-label">Currency</label>
               <select
                 value={currency}
                 onChange={(e) => setCurrency(e.target.value)}
@@ -230,7 +230,7 @@ export function SubscriptionsSettings({ settings, updateSettings, refreshSetting
             </div>
 
             <div className="space-y-1">
-              <label className="text-2xs font-medium text-muted-foreground">Billing Interval</label>
+              <label className="tm-label">Billing Interval</label>
               <select
                 value={interval}
                 onChange={(e) => setInterval(e.target.value as any)}
@@ -242,12 +242,12 @@ export function SubscriptionsSettings({ settings, updateSettings, refreshSetting
             </div>
 
             <div className="space-y-1">
-              <label className="text-2xs font-medium text-muted-foreground">Start Date</label>
+              <label className="tm-label">Start Date</label>
               <Input
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="h-8 text-xs"
+                className="h-8 text-xs tabular-nums"
               />
             </div>
           </div>

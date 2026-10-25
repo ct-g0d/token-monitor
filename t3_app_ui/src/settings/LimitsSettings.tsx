@@ -172,8 +172,8 @@ export function LimitsSettings({ settings, updateSettings, refreshSettings }: Li
           {signedInProviders.length > 0 && (
             <div className="space-y-2.5">
               <div className="flex items-center justify-between">
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Signed in ({signedInProviders.length})
+                <h3 className="tm-label flex items-center gap-1.5 !text-foreground">
+                  Signed in <span className="tabular-nums text-muted-foreground">({signedInProviders.length})</span>
                 </h3>
               </div>
               <div className="space-y-2">
@@ -186,8 +186,8 @@ export function LimitsSettings({ settings, updateSettings, refreshSettings }: Li
 
           <div className="space-y-2.5">
             <div className="flex items-center justify-between">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Available ({availableProviders.length})
+              <h3 className="tm-label flex items-center gap-1.5 !text-foreground">
+                Available <span className="tabular-nums text-muted-foreground">({availableProviders.length})</span>
               </h3>
             </div>
             <div className="space-y-2">

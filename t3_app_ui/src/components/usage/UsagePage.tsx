@@ -709,7 +709,7 @@ function UsageOverview({
       ))}
       <section className="flex flex-col gap-8">
         <div className="flex items-center gap-2">
-          <h2 className="text-sm font-medium text-foreground">Totals</h2>
+          <h2 className="tm-label !text-foreground">Totals</h2>
           {metric === "cost" && merged.costQuality.unpricedShare > 0 ? (
             <Popover>
               <PopoverTrigger
@@ -879,12 +879,12 @@ function UsageOverview({
         {breakdown === "model" ? (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-border text-right text-xs text-muted-foreground">
-                <th className="py-2 pr-3 text-left font-normal">#</th>
-                <th className="w-full py-2 text-left font-normal">Model</th>
-                <th className="py-2 pl-6 font-normal">Cost</th>
-                <th className="hidden py-2 pl-6 font-normal sm:table-cell">Share</th>
-                <th className="py-2 pl-6 font-normal">Tokens</th>
+              <tr className="border-b border-border text-right tm-label">
+                <th className="py-2 pr-3 text-left font-medium">#</th>
+                <th className="w-full py-2 text-left font-medium">Model</th>
+                <th className="py-2 pl-6 font-medium">Cost</th>
+                <th className="hidden py-2 pl-6 font-medium sm:table-cell">Share</th>
+                <th className="py-2 pl-6 font-medium">Tokens</th>
               </tr>
             </thead>
             <tbody>
@@ -958,15 +958,15 @@ function UsageOverview({
               <col style={{ width: timeValueColumnWidth }} />
             </colgroup>
             <thead>
-              <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                <th className="py-2 font-normal">{shownHourly ? "Hour" : "Day"}</th>
+              <tr className="border-b border-border text-left tm-label">
+                <th className="py-2 font-medium">{shownHourly ? "Hour" : "Day"}</th>
                 {activeProviders.map((provider) => (
-                  <th key={provider} className="py-2 text-right font-normal">
+                  <th key={provider} className="py-2 text-right font-medium">
                     {PROVIDER_PRESENTATION[provider].label}
                   </th>
                 ))}
-                <th className="py-2 text-right font-normal">Total</th>
-                <th className="py-2 text-right font-normal">Tokens</th>
+                <th className="py-2 text-right font-medium">Total</th>
+                <th className="py-2 text-right font-medium">Tokens</th>
               </tr>
             </thead>
             <tbody>
@@ -985,7 +985,7 @@ function UsageOverview({
                     key={"hourStart" in period ? period.hourStart : period.day}
                     className="border-b border-border/50 transition-colors hover:bg-muted/50"
                   >
-                    <td className="py-2 text-foreground">
+                    <td className="py-2 text-foreground tabular-nums">
                       {"hourStart" in period
                         ? formatHourShort(period.hourStart, shownWindow.timeZone)
                         : formatDayShort(period.day)}
@@ -1098,22 +1098,22 @@ function CursorEnableRow({
   readonly onEnabled: () => void;
 }) {
   return (
-    <div className="flex min-w-0 items-baseline justify-between gap-4 text-sm">
-      <span className="flex min-w-0 items-center gap-2 text-sm text-foreground">
-        <span
-          aria-hidden
-          className="size-2 shrink-0 rounded-full"
-          style={{ backgroundColor: PROVIDER_PRESENTATION.cursor.color }}
-        />
-        <ProviderMark provider="cursor" className="size-4" />
+    <div
+      className="flex min-w-0 flex-col gap-2 border-l-[3px] pl-3"
+      style={{ borderColor: PROVIDER_PRESENTATION.cursor.color }}
+    >
+      <span className="tm-label flex min-w-0 items-center gap-1.5">
+        <ProviderMark provider="cursor" className="size-3.5" />
         <span className="truncate">Cursor{showEnvironment ? ` · ${label}` : ""}</span>
       </span>
-      <CursorEnableButton
-        environmentId={environmentId}
-        label={label}
-        onEnabled={onEnabled}
-        tooltip
-      />
+      <div className="pt-1">
+        <CursorEnableButton
+          environmentId={environmentId}
+          label={label}
+          onEnabled={onEnabled}
+          tooltip
+        />
+      </div>
     </div>
   );
 }
@@ -1309,7 +1309,7 @@ function UsageSkeleton() {
       </section>
 
       <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-medium text-foreground">Totals</h2>
+        <h2 className="tm-label !text-foreground">Totals</h2>
         <MetricSkeletons
           labels={["Processed tokens", "Cached input", "Uncached input", "Output", "Cache savings"]}
         />
@@ -1325,7 +1325,7 @@ function UsageSkeleton() {
 
       <section className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-sm font-medium text-foreground">Breakdown</h2>
+          <h2 className="tm-label !text-foreground">Breakdown</h2>
           <Skeleton shape="card" className="h-7 w-28" />
         </div>
         <Skeleton className="h-44" />

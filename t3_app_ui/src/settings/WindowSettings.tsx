@@ -193,7 +193,7 @@ export function WindowSettings({ settings, updateSettings }: WindowSettingsProps
                       onChange={(e) => updateSettings({ edgeDockCustomScale: parseFloat(e.target.value) })}
                       className="w-24 accent-primary"
                     />
-                    <span className="text-xs text-muted-foreground w-8">
+                    <span className="text-xs text-muted-foreground w-8 tabular-nums">
                       {Math.round((settings.edgeDockCustomScale || 1.0) * 100)}%
                     </span>
                   </div>

@@ -174,7 +174,7 @@ export function ProviderAccountRow({ provider }: ProviderAccountRowProps) {
                 {label}
               </span>
               {hasAccounts && (
-                <span className="text-xs text-muted-foreground">
+                <span className="text-xs text-muted-foreground tabular-nums">
                   ({accounts.length})
                 </span>
               )}
@@ -220,7 +220,7 @@ export function ProviderAccountRow({ provider }: ProviderAccountRowProps) {
                         <Badge
                           variant="secondary"
                           size="sm"
-                          className="text-[10px] font-mono uppercase"
+                          className="tm-label text-[10px]"
                         >
                           {acc.realm}
                         </Badge>
