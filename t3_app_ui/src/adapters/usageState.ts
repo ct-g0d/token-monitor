@@ -980,8 +980,8 @@ export function useUsage(
   const shown = answeredCount > 0 ? { window: input, merged: selection.merged } : null;
 
   const primarySummary = environmentsList[0]?.summary as any;
-  const activeDays = primarySummary?.activeDays;
-  const peakDayTokens = primarySummary?.peakDayTokens;
+  const activeDays = selection.merged.daily.filter((d) => d.totalTokens > 0).length;
+  const peakDayTokens = selection.merged.daily.reduce((max, d) => Math.max(max, d.totalTokens), 0);
   const hasWindowSessions = primarySummary?.hasWindowSessions ?? false;
   const windowSessions = primarySummary?.windowSessions;
 

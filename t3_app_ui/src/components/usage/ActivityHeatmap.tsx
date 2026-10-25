@@ -30,6 +30,7 @@ export interface ActivityHeatmapProps {
   untilDay?: string | undefined;
   activeDays?: number | undefined;
   peakTokens?: number | undefined;
+  peakValue?: number | undefined;
   daily?: DailyRecord[] | undefined;
 }
 
@@ -58,6 +59,7 @@ export function ActivityHeatmap({
   untilDay,
   activeDays,
   peakTokens,
+  peakValue,
   daily: dailyProp,
 }: ActivityHeatmapProps) {
   const [dailyState, setDailyState] = useState<DailyRecord[]>([]);
@@ -112,7 +114,7 @@ export function ActivityHeatmap({
     const peakAll = Math.max(0, ...cells.map((c) => c.value));
     const weeks = Array.from({ length: WEEKS }, (_, w) => cells.slice(w * 7, w * 7 + 7));
 
-    // Active days must count only days within the selected range that have tokens > 0
+    // Active days must count only days within the selected range that have activity
     const inRangeDaily = daily.filter((d) => {
       if (sinceDay && d.date < sinceDay) return false;
       if (untilDay && d.date > untilDay) return false;
@@ -121,14 +123,16 @@ export function ActivityHeatmap({
 
     const activeCount = typeof activeDays === 'number'
       ? activeDays
-      : inRangeDaily.filter((d) => Number(d.tokens || 0) > 0).length;
+      : inRangeDaily.filter((d) => (metric === 'cost' ? Number(d.cost || 0) > 0 : Number(d.tokens || 0) > 0)).length;
 
-    const resolvedPeak = (metric === 'tokens' && typeof peakTokens === 'number' && peakTokens > 0)
-      ? peakTokens
-      : (inRangeDaily.length > 0 ? inRangeDaily.reduce((max, d) => Math.max(max, value(d)), 0) : peakAll);
+    const resolvedPeak = typeof peakValue === 'number' && peakValue >= 0
+      ? peakValue
+      : (metric === 'tokens' && typeof peakTokens === 'number' && peakTokens >= 0)
+        ? peakTokens
+        : (inRangeDaily.length > 0 ? inRangeDaily.reduce((max, d) => Math.max(max, value(d)), 0) : 0);
 
     return { weeks, allCells: cells, active: activeCount, peak: resolvedPeak, today: todayStr };
-  }, [daily, metric, sinceDay, untilDay, activeDays, peakTokens]);
+  }, [daily, metric, sinceDay, untilDay, activeDays, peakTokens, peakValue]);
 
   const latestNonFutureIndex = useMemo(() => {
     for (let i = allCells.length - 1; i >= 0; i--) {
@@ -269,7 +273,7 @@ export function ActivityHeatmap({
         role="grid"
         aria-label="Activity heatmap"
         aria-readonly="true"
-        className="flex min-w-0 flex-1 justify-end gap-[3px] overflow-hidden"
+        className="flex min-w-0 flex-1 justify-end gap-[3px] overflow-hidden py-1 -my-1"
         onPointerLeave={() => {
           if (!gridRef.current?.contains(document.activeElement)) {
             hideTooltip();
@@ -289,7 +293,8 @@ export function ActivityHeatmap({
                   />
                 );
               }
-              const isCellPeak = peak > 0 && Math.abs(c.value - peak) < 0.0001;
+              const isCellInRange = (!sinceDay || c.key >= sinceDay) && (!untilDay || c.key <= untilDay);
+              const isCellPeak = isCellInRange && peak > 0 && Math.abs(c.value - peak) < 0.0001;
               const isCellToday = c.key === today;
               const cellDescriptor = [
                 formatHeatmapDate(c.key),
@@ -359,7 +364,7 @@ export function ActivityHeatmap({
                       Today
                     </span>
                   ) : null}
-                  {peak > 0 && Math.abs(activeCell.value - peak) < 0.0001 ? (
+                  {(!sinceDay || activeCell.key >= sinceDay) && (!untilDay || activeCell.key <= untilDay) && peak > 0 && Math.abs(activeCell.value - peak) < 0.0001 ? (
                     <span className="rounded-sm bg-muted px-1 py-0.5 font-mono text-3xs font-medium text-muted-foreground">
                       Peak
                     </span>
