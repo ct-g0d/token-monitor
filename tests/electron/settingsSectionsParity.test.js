@@ -104,13 +104,6 @@ const OG_RENDERER_SETTINGS_KEYS = [
   'modelAliasGrouping',
   'modelAliases',
   'customModelPricing',
-  'hubMode',
-  'deviceId',
-  'hubUrl',
-  'hubHostPort',
-  'hubHostSecret',
-  'syncUploadIntervalMs',
-  'hubSyncSessionTitles',
   'showLimitSource',
   'maskLimitAccountEmails',
   'showLimitUsed',
@@ -172,7 +165,7 @@ test('settings sections parity: all backend-supported settings keys are present 
     `The following ${missingKeys.length} settings keys are missing from t3_app_ui/src/settings/*.tsx: ${missingKeys.join(', ')}`
   );
 
-  assert.equal(OG_RENDERER_SETTINGS_KEYS.length, 105);
+  assert.equal(OG_RENDERER_SETTINGS_KEYS.length, 98);
 });
 
 test('settings sections parity: none of the 22 upstream-only keys appear in React settings', () => {

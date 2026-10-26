@@ -62,5 +62,7 @@
   - *Branch:* `t3/remove-subscription-settings-ui`
   - *Status:* Completed; removed subscription settings presentation and navigation wiring.
 - [ ] **Task 21 (`*`)**: Delete sync strategy settings.
+  - *Branch:* `t3/remove-sync-strategy-settings`
+  - *Status:* In review (PR targeting `feat/t3-ui-ledger`).
 - [ ] **Task 22 (`*`)**: Make settings sidebar active highlight track scroll position (scrollspy) rather than remaining on general.
 - [ ] **Task 23 (`***`)**: Add a dedicated settings panel for the hover bar.
