@@ -755,3 +755,6 @@ export const MacAccessibilityIcon: Icon = (props) => {
     </svg>
   );
 };
+
+export * from './providerIcons';
+
