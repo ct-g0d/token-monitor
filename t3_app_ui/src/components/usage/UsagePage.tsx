@@ -1322,7 +1322,13 @@ function UsageProviderFilter({
 
   return (
     <Menu>
-      <MenuTrigger render={<InlineButton />} className="group/usage-provider min-w-0 max-w-full">
+      <MenuTrigger
+        render={<InlineButton />}
+        className="group/usage-provider min-w-0 max-w-full gap-1.5 flex items-center"
+      >
+        {visible.length === 1 ? (
+          <ProviderMark provider={visible[0]!} className="size-3.5 shrink-0" />
+        ) : null}
         <span className="min-w-0 truncate">{label}</span>
         <ChevronDownIcon
           className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/usage-provider:opacity-100 group-focus-visible/usage-provider:opacity-100 group-data-popup-open/usage-provider:opacity-100"
