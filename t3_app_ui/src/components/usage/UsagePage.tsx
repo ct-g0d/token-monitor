@@ -67,6 +67,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { UsageLimitsSection } from "~/components/usage/UsageLimits";
+import { UsageLimitsFilter, collectLimitOptions } from "./UsageLimitsPooled";
 import { UsagePriceOverrides } from "~/components/usage/UsagePriceOverrides";
 import { UsageProviderChart } from "~/components/usage/UsageProviderChart";
 import { SpeedPremium, UsageModelDialog } from "~/components/usage/UsageModelDialog";
@@ -370,6 +371,11 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
         : enumerateHourStarts(shownWindow.sinceTime, shownWindow.untilTime),
     [shownWindow.sinceTime, shownWindow.untilTime],
   );
+  const limitOptions = useMemo(
+    () => (showingLimits ? collectLimitOptions(presentations, limitsNow, hiddenProviders) : []),
+    [showingLimits, presentations, limitsNow, hiddenProviders],
+  );
+
   const showChatGptSharing = useMemo(
     () =>
       !hiddenProviders.has("codex") &&
@@ -401,7 +407,14 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
         hiddenProviders={hiddenProviders}
         onChange={(next) => updatePreferences({ hiddenProviders: next })}
       />
-      {showingLimits ? null : (
+      {showingLimits ? (
+        limitOptions.length > 0 ? (
+          <>
+            <div className="h-3.5 w-px bg-border/60" aria-hidden />
+            <UsageLimitsFilter limitOptions={limitOptions} />
+          </>
+        ) : null
+      ) : (
         <Menu>
           <MenuTrigger
             render={<InlineButton />}
