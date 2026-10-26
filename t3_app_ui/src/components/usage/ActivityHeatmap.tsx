@@ -9,8 +9,8 @@ import React, {
 import { createPortal } from 'react-dom';
 import { formatTokens, formatUsd } from '@t3tools/shared/usageFormat';
 import { cn } from '~/lib/utils';
-import { useTokenMonitorSettings } from '~/settings/useSettings';
-import type { HeatmapHoverBehavior } from '~/settings/types';
+import { useTokenMonitorSettings } from '../../settings/useSettings';
+import type { HeatmapHoverBehavior } from '../../settings/types';
 
 export type { HeatmapHoverBehavior };
 
