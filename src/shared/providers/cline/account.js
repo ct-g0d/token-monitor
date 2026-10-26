@@ -41,7 +41,8 @@ module.exports = {
   },
   accountStatus: ({ settings, discovered }) => ({
     clineCredentialConfigured: Boolean(settings?.clineApiKey || discovered?.source),
-    clineCredentialSource: settings?.clineApiKey ? 'settings' : (discovered?.source ?? '')
+    clineCredentialSource: settings?.clineApiKey ? 'settings' : (discovered?.source ?? ''),
+    clineAutoDetected: Boolean(discovered?.source)
   }),
   urlPolicy: [
     { hosts: ['app.cline.bot'], pathPrefixes: ['/dashboard'] }

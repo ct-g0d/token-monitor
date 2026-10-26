@@ -1,6 +1,9 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const test = require('node:test');
 
 const {
@@ -10,6 +13,8 @@ const {
   qoderUserPlanUrl,
   parseQoderPlanLabel,
   parseQoderUsage,
+  readQoderAppStatus,
+  resolveQoderAutomaticCredential,
   fetchQoderLimits
 } = require('../../src/shared/providers/qoder/limits');
 
@@ -181,4 +186,141 @@ test('fetchQoderLimits keeps the response body read inside the deadline', async 
 
   assert.equal(provider.status, 'unavailable');
   assert.equal(signal.aborted, true);
+});
+
+test('readQoderAppStatus reads valid status file from .qoder directory', () => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-qoder-test-'));
+  try {
+    const qoderDir = path.join(tmpHome, '.qoder');
+    fs.mkdirSync(qoderDir, { recursive: true });
+    fs.writeFileSync(path.join(qoderDir, '.qoder-app-status.json'), JSON.stringify({
+      logged_in: true,
+      name: 'Alice Developer',
+      email: 'alice@example.com',
+      product: 'qoder-ide'
+    }));
+
+    const status = readQoderAppStatus({}, { homeDir: tmpHome });
+    assert.equal(status.detected, true);
+    assert.equal(status.loggedIn, true);
+    assert.equal(status.name, 'Alice Developer');
+    assert.equal(status.email, 'alice@example.com');
+    assert.equal(status.product, 'qoder-ide');
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('readQoderAppStatus handles invalid or corrupt json gracefully with fallback', () => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-qoder-test-'));
+  try {
+    const qoderDir = path.join(tmpHome, '.qoder');
+    fs.mkdirSync(qoderDir, { recursive: true });
+    fs.writeFileSync(path.join(qoderDir, '.qoder-app-status.json'), 'CORRUPTED JSON {{{{');
+
+    // Since .qoder directory exists, it falls back to directory detection
+    const status = readQoderAppStatus({}, { homeDir: tmpHome });
+    assert.equal(status.detected, true);
+    assert.equal(status.loggedIn, true);
+    assert.equal(status.product, 'qoder');
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('readQoderAppStatus returns not detected when files and directories are missing', () => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-qoder-test-'));
+  try {
+    const status = readQoderAppStatus({}, { homeDir: tmpHome });
+    assert.equal(status.detected, false);
+    assert.equal(status.loggedIn, false);
+    assert.equal(status.name, '');
+    assert.equal(status.email, '');
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('readQoderAppStatus falls back to .auth/user, .qoder-cli, and .qoder-cn', () => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-qoder-test-'));
+  try {
+    // 1. .auth/user
+    const authDir = path.join(tmpHome, '.qoder', '.auth');
+    fs.mkdirSync(authDir, { recursive: true });
+    fs.writeFileSync(path.join(authDir, 'user'), 'user-token-content');
+    const authStatus = readQoderAppStatus({}, { homeDir: tmpHome });
+    assert.equal(authStatus.detected, true);
+    assert.equal(authStatus.loggedIn, true);
+
+    fs.rmSync(path.join(tmpHome, '.qoder'), { recursive: true, force: true });
+
+    // 2. .qoder-cli
+    fs.mkdirSync(path.join(tmpHome, '.qoder-cli'), { recursive: true });
+    const cliStatus = readQoderAppStatus({}, { homeDir: tmpHome });
+    assert.equal(cliStatus.detected, true);
+
+    fs.rmSync(path.join(tmpHome, '.qoder-cli'), { recursive: true, force: true });
+
+    // 3. .qoder-cn
+    fs.mkdirSync(path.join(tmpHome, '.qoder-cn'), { recursive: true });
+    const cnStatus = readQoderAppStatus({}, { homeDir: tmpHome });
+    assert.equal(cnStatus.detected, true);
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('resolveQoderAutomaticCredential prioritizes env and detects local files with no-secret fallback', () => {
+  // Env priority
+  assert.deepEqual(resolveQoderAutomaticCredential({ QODER_COOKIE: 'cookie-val' }), { source: 'env' });
+  assert.deepEqual(resolveQoderAutomaticCredential({ TOKEN_MONITOR_QODER_COOKIE: 'cookie-val' }), { source: 'env' });
+
+  // No secret, missing files fallback
+  const emptyHome = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-qoder-test-'));
+  try {
+    assert.deepEqual(resolveQoderAutomaticCredential({}, { homeDir: emptyHome }), { source: '' });
+
+    // Local file detected with credentials
+    const qoderDir = path.join(emptyHome, '.qoder');
+    fs.mkdirSync(qoderDir, { recursive: true });
+    fs.writeFileSync(path.join(qoderDir, '.qoder-app-status.json'), JSON.stringify({
+      name: 'Bob',
+      email: 'bob@example.com',
+      logged_in: true
+    }));
+
+    const cred = resolveQoderAutomaticCredential({}, { homeDir: emptyHome });
+    assert.equal(cred.source, 'qoder-auto');
+    assert.equal(cred.accountLabel, 'Bob');
+    assert.equal(cred.email, 'bob@example.com');
+    assert.equal(cred.loggedIn, true);
+    assert.equal(cred.detected, true);
+  } finally {
+    fs.rmSync(emptyHome, { recursive: true, force: true });
+  }
+});
+
+test('fetchQoderLimits surfaces local status when auto-detected without cookie', async () => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-qoder-test-'));
+  try {
+    const qoderDir = path.join(tmpHome, '.qoder');
+    fs.mkdirSync(qoderDir, { recursive: true });
+    fs.writeFileSync(path.join(qoderDir, '.qoder-app-status.json'), JSON.stringify({
+      name: 'Carol',
+      email: 'carol@example.com',
+      logged_in: true
+    }));
+
+    const provider = await fetchQoderLimits(
+      { homeDir: tmpHome },
+      { env: {}, now: () => Date.parse('2026-07-06T00:00:00Z') }
+    );
+    assert.equal(provider.provider, 'qoder');
+    assert.equal(provider.source, 'local');
+    assert.equal(provider.status, 'ok');
+    assert.equal(provider.accountLabel, 'Carol');
+    assert.equal(provider.accountEmail, 'carol@example.com');
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
 });

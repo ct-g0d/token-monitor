@@ -142,6 +142,7 @@ const { createCursorUsageEventIndex } = require('../shared/providers/cursor/usag
 const { limitProviderUrlAllowed } = require('../shared/limits/accounts');
 const { normalizeLimitProviderHiddenItems } = require('../shared/limits/usageItems');
 const {
+  discoveredLimitProviderIds,
   accountFieldProjection,
   accountStatusProjection,
   finalAccountSettings,
@@ -2782,6 +2783,7 @@ function seedInitialLimitProviders(summary) {
   return applyInitialLimitProviderSeed(initialLimitProvidersPending, summary, {
     settings,
     saveSettings,
+    discoveredProviders: discoveredLimitProviderIds(process.env),
     onPersisted() {
       // Consume the one-shot seed before reconfiguration can publish again.
       initialLimitProvidersPending = false;

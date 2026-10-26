@@ -200,12 +200,25 @@ function clineApiKey(env = process.env, options = {}) {
 // resolveFactoryAutomaticApiKey: the settings row reports this instead of a
 // generic "configured", so a discovered sign-in reads as its own lane.
 function resolveClineAutomaticCredential(env = process.env) {
-  if (clineApiKey(env, {})) return { source: "env" };
+  if (clineApiKey(env, {})) return { source: "env", detected: true };
   try {
     readClineSession(env);
-    return { source: "cline-signin" };
+    return { source: "cline-signin", detected: true };
   } catch (_) {
-    return { source: "" };
+    try {
+      const p = clineProvidersPath(env);
+      if (p && fs.existsSync(p)) return { source: "cline-signin", detected: true };
+    } catch (_) {}
+    try {
+      const home = env.HOME || env.USERPROFILE || (env === process.env ? os.homedir() : '');
+      if (home) {
+        const dotCline = path.join(home, '.cline');
+        if (fs.existsSync(dotCline) && fs.statSync(dotCline).isDirectory()) {
+          return { source: "cline-signin", detected: true };
+        }
+      }
+    } catch (_) {}
+    return { source: "", detected: false };
   }
 }
 

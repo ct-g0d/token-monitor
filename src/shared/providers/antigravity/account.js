@@ -15,5 +15,11 @@ module.exports = {
       watch: false,
       initial: []
     }
-  ]
+  ],
+  discover: (env, limits) => limits.resolveAntigravityAutomaticCredential(env),
+  accountStatus: ({ settings, discovered }) => ({
+    antigravityConfigured: Boolean(settings?.antigravityManagedAccounts?.length || discovered?.source),
+    antigravitySource: settings?.antigravityManagedAccounts?.length ? 'settings' : (discovered?.source ?? ''),
+    antigravityAutoDetected: Boolean(discovered?.source)
+  })
 };

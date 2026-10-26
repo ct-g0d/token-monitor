@@ -106,8 +106,10 @@ const LIMIT_PROVIDER_ACCOUNT_NODES = {
 const LIMIT_PROVIDER_CONNECTION_DETAIL_KEYS = {
   antigravity: 'settings.limits.connection.antigravity',
   cline: 'settings.limits.connection.cline',
+  copilot: 'settings.limits.connection.copilot',
   grok: 'settings.limits.connection.grok',
   kiro: 'settings.limits.connection.kiro',
+  qoder: 'settings.limits.connection.qoder',
   workbuddy: 'settings.limits.connection.workbuddy'
 };
 const TRAY_ICON_VARIANTS = [
@@ -14726,7 +14728,7 @@ function renderCodexAccounts() {
   const accounts = state.settings?.codexManagedAccounts || [];
   const enabledCount = accounts.filter(account => account.enabled !== false).length;
   const statusText = accounts.length === 0
-    ? t('settings.codex.notConfigured')
+    ? (state.settings?.codexAutoDetected ? t('settings.limits.connection.autoDetect') : t('settings.codex.notConfigured'))
     : t('settings.opencode.connected', { linked: enabledCount, total: accounts.length });
   accountShellApi.render({ status: statusEl, statusText, error: errorEl, errorText: state.codexAccountError });
   listEl.replaceChildren();
@@ -14988,7 +14990,7 @@ function renderWorkbuddyStatus() {
     status: document.getElementById('workbuddyAccountStatus'),
     statusText: accounts.length
       ? t('settings.workbuddy.connected', { linked: accounts.filter((a) => a.enabled !== false).length, total: accounts.length })
-      : t('settings.workbuddy.notConfigured'),
+      : (state.settings?.workbuddyAutoDetected ? t('settings.limits.connection.autoDetect') : t('settings.workbuddy.notConfigured')),
     progress: document.getElementById('workbuddyLoginStatus'),
     progressText: state.workbuddyCancelBusy
       ? t('settings.workbuddy.cancelling')
@@ -15111,7 +15113,7 @@ function renderAntigravityStatus() {
   accountShellApi.render({
     status: statusEl,
     statusText: accounts.length === 0
-      ? t('settings.antigravity.notConfigured')
+      ? (state.settings?.antigravityAutoDetected ? t('settings.limits.connection.autoDetect') : t('settings.antigravity.notConfigured'))
       : t('settings.antigravity.connected', { linked: enabledCount, total: accounts.length }),
     error: errorEl,
     errorText: state.antigravityAccountError,
@@ -15460,7 +15462,14 @@ function copilotAccountStatusText(provider, configured, source, enabled = true) 
   const accountStatus = limitProviderPresentationApi.apiKeyAccountStatus(provider, configured, enabled);
   if (accountStatus === 'linked') {
     const accountName = String(provider?.accountName || '').trim();
-    return accountName || t(source === 'env' ? 'settings.copilot.statusEnv' : 'settings.copilot.statusSet');
+    if (accountName) return accountName;
+    if (source === 'copilot-auto' || source?.endsWith('-auto') || source?.includes('auto')) {
+      return t('settings.limits.connection.autoDetect');
+    }
+    return t(source === 'env' ? 'settings.copilot.statusEnv' : 'settings.copilot.statusSet');
+  }
+  if ((accountStatus === 'notConfigured' || (!enabled && accountStatus === 'disabled')) && state.settings?.copilotAutoDetected) {
+    return t('settings.limits.connection.autoDetect');
   }
   if (accountStatus === 'invalid') return t('settings.copilot.statusInvalid');
   if (accountStatus === 'notConfigured') return t('settings.copilot.statusNotSet');
@@ -15486,8 +15495,13 @@ function apiKeyAccountStatusText(providerName, provider, configured, source, ena
         ? 'settings.factory.statusDroidEnv'
         : providerName === 'cline' && source === 'cline-signin'
           ? 'settings.cline.statusSignin'
-          : null;
+          : (source.endsWith('-auto') || source.includes('auto'))
+            ? 'settings.limits.connection.autoDetect'
+            : null;
     return t(linkedKey || (source === 'env' ? `settings.${providerName}.statusEnv` : `settings.${providerName}.statusSet`));
+  }
+  if ((accountStatus === 'notConfigured' || (!enabled && accountStatus === 'disabled')) && state.settings?.[`${providerName}AutoDetected`]) {
+    return t('settings.limits.connection.autoDetect');
   }
   if (accountStatus === 'invalid') {
     // Cline's two lanes refuse in different places, and this row names the lane the
@@ -15575,10 +15589,15 @@ function renderExternalProviderStatus(providerName) {
   if (providerName === 'zai' && !enabled && state.settings?.zcodeLoginDetected === true) {
     setCursorStatusText(statusEl, t('settings.limits.connection.autoDetect'));
   }
+  if (!enabled && (source.endsWith('-auto') || source.includes('auto') || state.settings?.[`${providerName}AutoDetected`])) {
+    setCursorStatusText(statusEl, t('settings.limits.connection.autoDetect'));
+  }
   manualPanel.classList.toggle('hidden', linked);
   openBtn.classList.toggle('hidden', linked);
   const discoveredLogin = (providerName === 'zai' && source === 'zcode-auto')
-    || (providerName === 'cline' && source === 'cline-signin');
+    || (providerName === 'cline' && source === 'cline-signin')
+    || source.endsWith('-auto') || source.includes('auto')
+    || state.settings?.[`${providerName}AutoDetected`];
   if (discoveredLogin) {
     // The discovered login is not user-entered, so the override input and the
     // console link stay reachable instead of hiding behind linked. Cline's stored
@@ -15641,9 +15660,10 @@ function renderCopilotStatus() {
     progress: loginStatusEl,
     progressText: state.copilotLoginStatus
   });
-  manualPanel.classList.toggle('hidden', linked);
-  if (linked && state.copilotManualExpanded) setCopilotManualExpanded(false);
-  signInBtn.classList.toggle('hidden', linked || state.copilotSignInBusy);
+  const autoDetected = source === 'copilot-auto' || state.settings?.copilotAutoDetected;
+  manualPanel.classList.toggle('hidden', linked && !autoDetected);
+  if (linked && !autoDetected && state.copilotManualExpanded) setCopilotManualExpanded(false);
+  signInBtn.classList.toggle('hidden', (linked && !autoDetected) || state.copilotSignInBusy);
   cancelBtn.classList.toggle('hidden', !state.copilotSignInBusy || !state.copilotSignInCancelable || linked);
   logoutBtn.classList.toggle('hidden', !linked || source !== 'settings');
   refreshBtn.classList.toggle('hidden', !configured || (state.copilotSignInBusy && !linked));
@@ -16202,7 +16222,7 @@ function renderOpenCodeProfilesStatusSummary(profiles, ambient = null) {
       status: totalEl,
       statusText: totalCount > 0
         ? t('settings.opencode.connected', { linked: linkedCount, total: totalCount })
-        : t('settings.opencode.statusNotSet')
+        : (state.settings?.opencodeAutoDetected ? t('settings.limits.connection.autoDetect') : t('settings.opencode.statusNotSet'))
     });
   }
 }

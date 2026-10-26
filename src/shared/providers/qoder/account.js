@@ -26,12 +26,22 @@ module.exports = {
       initial: 'global'
     }
   ],
+  discover: (env, limits) => limits.resolveQoderAutomaticCredential(env),
   status: {
     credential: 'qoderCookie',
     configuredKey: 'qoderCookieConfigured',
     sourceKey: 'qoderCookieSource',
     pendingKey: 'qoderPendingCheckSince'
   },
+  accountStatus: ({ settings, env, discovered, limits }) => ({
+    qoderCookieConfigured: Boolean(settings?.qoderCookie || limits.qoderCookie(env) || discovered?.source),
+    qoderCookieSource: settings?.qoderCookie
+      ? 'settings'
+      : limits.qoderCookie(env)
+        ? 'env'
+        : (discovered?.source ?? ''),
+    qoderAutoDetected: Boolean(discovered?.source)
+  }),
   form: {
     titleKey: 'settings.qoder.title',
     openKey: 'settings.qoder.openBrowser',

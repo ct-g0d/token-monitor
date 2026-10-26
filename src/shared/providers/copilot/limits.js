@@ -4,6 +4,9 @@
 // The GitHub OAuth token from device flow is used directly here, matching the
 // CodexBar implementation this feature was based on.
 
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const { normalizeLimitProvider } = require('../../limits/core');
 const {
   cleanSecret,
@@ -15,6 +18,77 @@ const COPILOT_DEFAULT_HOST = 'github.com';
 const COPILOT_USER_AGENT = 'GitHubCopilotChat/0.26.7';
 const COPILOT_TOKEN_NAMES = ['COPILOT_API_TOKEN', 'GITHUB_COPILOT_TOKEN'];
 
+function readCopilotLocalCredentials(env = process.env, options = {}) {
+  const home = options.homeDir || env.HOME || env.USERPROFILE || (env === process.env ? os.homedir() : '');
+  const platform = options.platform || process.platform;
+
+  // 1. hosts.json (github-copilot)
+  const hostsJsonCandidates = [];
+  if (platform === 'win32') {
+    if (env.LOCALAPPDATA) hostsJsonCandidates.push(path.join(env.LOCALAPPDATA, 'github-copilot', 'hosts.json'));
+    if (env.APPDATA) hostsJsonCandidates.push(path.join(env.APPDATA, 'github-copilot', 'hosts.json'));
+  }
+  if (home) hostsJsonCandidates.push(path.join(home, '.config', 'github-copilot', 'hosts.json'));
+  for (const candidate of hostsJsonCandidates) {
+    try {
+      const raw = fs.readFileSync(candidate, 'utf8');
+      const data = JSON.parse(raw);
+      if (data && typeof data === 'object') {
+        for (const host of Object.keys(data)) {
+          const token = cleanSecret(data[host]?.oauth_token);
+          if (token) return { token, user: String(data[host]?.user || '').trim(), source: 'hosts.json', detected: true };
+        }
+      }
+    } catch (_) {}
+  }
+
+  // 2. hosts.yml (GitHub CLI)
+  const hostsYmlCandidates = [];
+  if (platform === 'win32' && env.APPDATA) {
+    hostsYmlCandidates.push(path.join(env.APPDATA, 'GitHub CLI', 'hosts.yml'));
+  }
+  if (home) hostsYmlCandidates.push(path.join(home, '.config', 'gh', 'hosts.yml'));
+  for (const candidate of hostsYmlCandidates) {
+    try {
+      const content = fs.readFileSync(candidate, 'utf8');
+      const tokenMatch = content.match(/oauth_token:\s*([^\s\r\n]+)/);
+      const userMatch = content.match(/user:\s*([^\s\r\n]+)/);
+      const token = cleanSecret(tokenMatch?.[1]);
+      if (token) {
+        return { token, user: String(userMatch?.[1] || '').trim(), source: 'gh-cli', detected: true };
+      }
+    } catch (_) {}
+  }
+
+  // 3. ~/.copilot
+  if (home) {
+    const copilotDir = path.join(home, '.copilot');
+    try {
+      if (fs.existsSync(copilotDir) && fs.statSync(copilotDir).isDirectory()) {
+        return { token: '', user: '', source: 'copilot-dir', detected: true };
+      }
+    } catch (_) {}
+  }
+
+  return { token: '', user: '', source: '', detected: false };
+}
+
+function resolveCopilotAutomaticCredential(env = process.env, options = {}) {
+  for (const name of COPILOT_TOKEN_NAMES) {
+    if (cleanSecret(env[name])) return { source: 'env' };
+  }
+  const local = readCopilotLocalCredentials(env, options);
+  if (local.detected) {
+    return {
+      source: 'copilot-auto',
+      user: local.user || '',
+      hasToken: Boolean(local.token),
+      detected: true
+    };
+  }
+  return { source: '' };
+}
+
 function copilotToken(env = process.env, options = {}) {
   const explicit = cleanSecret(options.copilotApiToken || options.copilotToken || '');
   if (explicit) return explicit;
@@ -22,6 +96,8 @@ function copilotToken(env = process.env, options = {}) {
     const raw = cleanSecret(env[name]);
     if (raw) return raw;
   }
+  const local = readCopilotLocalCredentials(env, options);
+  if (local?.token) return local.token;
   return '';
 }
 
@@ -303,6 +379,20 @@ async function fetchCopilotLimits(options = {}, deps = {}) {
   const requestDeps = { ...deps, copilotEnterpriseHost: enterpriseHost };
 
   if (!token) {
+    const autoCred = resolveCopilotAutomaticCredential(env, options);
+    if (autoCred.detected) {
+      return normalizeLimitProvider({
+        provider: 'copilot',
+        accountKey: hashKey('copilot', autoCred.user || 'auto'),
+        accountLabel: 'GitHub Copilot',
+        accountName: autoCred.user || '',
+        accountEmail: '',
+        source: 'local',
+        status: 'ok',
+        updatedAt,
+        windows: []
+      });
+    }
     return normalizeLimitProvider({
       provider: 'copilot',
       source: 'api',
@@ -351,5 +441,7 @@ module.exports = {
   parseQuotaResetDate,
   mapCopilotUsageToProvider,
   fetchCopilotUsage,
+  readCopilotLocalCredentials,
+  resolveCopilotAutomaticCredential,
   fetchCopilotLimits
 };

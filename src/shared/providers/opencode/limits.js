@@ -4,6 +4,9 @@
 // local Go ledger in ./goLimits.js and the profile store in ./profiles.js.
 // Reached through providerFetchers() in src/shared/limits/collector.js.
 
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const crypto = require('node:crypto');
 const opencodeGoApi = require('./goApi');
 const opencodeLimits = require('./goLimits');
@@ -480,7 +483,41 @@ async function fetchOpenCodeProfile(name, cookie, fetchGoWeb, fetchZen, nowMs, u
   }
 }
 
+function resolveOpenCodeAutomaticCredential(env = process.env, options = {}) {
+  const apiKey = opencodeGoApi.readGoApiKey(env);
+  if (apiKey) {
+    return { source: 'opencode-auto', apiKey, detected: true };
+  }
+
+  const home = options.homeDir || env.HOME || env.USERPROFILE || (env === process.env ? os.homedir() : '');
+  try {
+    const dataDir = opencodeLimits.resolveDataDir(env);
+    if (dataDir && fs.existsSync(dataDir) && fs.statSync(dataDir).isDirectory()) {
+      return { source: 'opencode-auto', detected: true };
+    }
+  } catch (_) {}
+
+  if (home) {
+    try {
+      const configDir = path.join(home, '.config', 'opencode');
+      if (fs.existsSync(configDir) && fs.statSync(configDir).isDirectory()) {
+        return { source: 'opencode-auto', detected: true };
+      }
+    } catch (_) {}
+
+    try {
+      const dotDir = path.join(home, '.opencode');
+      if (fs.existsSync(dotDir) && fs.statSync(dotDir).isDirectory()) {
+        return { source: 'opencode-auto', detected: true };
+      }
+    } catch (_) {}
+  }
+
+  return { source: '', detected: false };
+}
+
 module.exports = {
+  resolveOpenCodeAutomaticCredential,
   fetchOpenCodeLimits,
   fetchOpenCodeProfile
 };

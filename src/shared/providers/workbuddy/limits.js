@@ -1,3 +1,6 @@
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 'use strict';
 
 const { hashKey } = require('../../hashKey');
@@ -607,7 +610,50 @@ async function fetchWorkbuddyLimits(options = {}, deps = {}) {
   return !managed.length && !scope && rows.length === 1 ? rows[0] : rows;
 }
 
+function resolveWorkbuddyAutomaticCredential(env = process.env, options = {}) {
+  if (workbuddyAccessToken(env, options)) return { source: 'env' };
+
+  const home = options.homeDir || env.HOME || env.USERPROFILE || (env === process.env ? os.homedir() : '');
+  const platform = options.platform || process.platform;
+
+  const authDirs = [];
+  if (home && platform === 'darwin') {
+    authDirs.push(path.join(home, 'Library', 'Application Support', 'CodeBuddyExtension', 'Data', 'Public', 'auth'));
+  } else if (platform === 'win32') {
+    const localAppData = env?.LOCALAPPDATA || (home ? path.join(home, 'AppData', 'Local') : '');
+    const roamingAppData = env?.APPDATA || (home ? path.join(home, 'AppData', 'Roaming') : '');
+    if (localAppData) authDirs.push(path.join(localAppData, 'CodeBuddyExtension', 'Data', 'Public', 'auth'));
+    if (roamingAppData) authDirs.push(path.join(roamingAppData, 'CodeBuddyExtension', 'Data', 'Public', 'auth'));
+  }
+
+  for (const dir of authDirs) {
+    try {
+      if (dir && fs.existsSync(dir) && fs.statSync(dir).isDirectory()) {
+        const info = path.join(dir, 'workbuddy-desktop.info');
+        const infoAi = path.join(dir, 'workbuddy-desktop-ai.info');
+        if ((fs.existsSync(info) && fs.statSync(info).size > 0) || (fs.existsSync(infoAi) && fs.statSync(infoAi).size > 0)) {
+          return { source: 'workbuddy-auto', detected: true };
+        }
+      }
+    } catch (_) {}
+  }
+
+  if (home) {
+    for (const dot of ['.workbuddy', '.workbuddy-ai']) {
+      try {
+        const p = path.join(home, dot);
+        if (fs.existsSync(p) && fs.statSync(p).isDirectory()) {
+          return { source: 'workbuddy-auto', detected: true };
+        }
+      } catch (_) {}
+    }
+  }
+
+  return { source: '', detected: false };
+}
+
 module.exports = {
+  resolveWorkbuddyAutomaticCredential,
   WORKBUDDY_DEFAULT_ENDPOINT,
   WORKBUDDY_AI_ENDPOINT,
   WORKBUDDY_ENTERPRISE_PATH,
