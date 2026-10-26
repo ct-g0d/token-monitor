@@ -5,12 +5,13 @@ import { Button } from '~/components/ui/button';
 import { Input } from '~/components/ui/input';
 import { Spinner } from '~/components/ui/spinner';
 import { useTheme } from '~/hooks/useTheme';
+import { applyThemeMode, applyLanguage } from './useSettings';
 import type { TokenMonitorSettingsState } from './types';
 
 interface GeneralSettingsProps {
   settings: TokenMonitorSettingsState;
   updateSettings: (patch: Partial<TokenMonitorSettingsState>) => Promise<void>;
-refreshCurrencyRates: () => Promise<void>;
+refreshCurrencyRates: () => Promise<TokenMonitorSettingsState | null | void>;
 }
 
 export const selectClass =
@@ -32,7 +33,8 @@ const COMMON_CURRENCIES = [
 ];
 
 export function GeneralSettings({ settings, updateSettings, refreshCurrencyRates }: GeneralSettingsProps) {
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, setAppearanceMode, appearanceMode } = useTheme();
+  const currentTheme = settings.theme || appearanceMode || theme || 'system';
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateMessage, setUpdateMessage] = useState<string | null>(null);
   const [generatingReport, setGeneratingReport] = useState(false);
@@ -42,13 +44,44 @@ export function GeneralSettings({ settings, updateSettings, refreshCurrencyRates
   const [tokscaleInfo, setTokscaleInfo] = useState<any>(null);
 
   const [customRates, setCustomRates] = useState<Record<string, string>>(() => {
-    const existing = settings.currencyRates || {};
+    const existing = settings.currencyRatesEffective || settings.currencyRates || {};
     const init: Record<string, string> = {};
     for (const [k, v] of Object.entries(existing)) {
-      init[k] = String(v);
+      if (v !== undefined && v !== null) {
+        init[k] = String(v);
+      }
     }
     return init;
   });
+
+  useEffect(() => {
+    const rates = settings.currencyRatesEffective || settings.currencyRates;
+    if (rates && Object.keys(rates).length > 0) {
+      setCustomRates((prev) => {
+        const next = { ...prev };
+        let hasNew = false;
+        for (const [code, val] of Object.entries(rates)) {
+          if (val !== undefined && val !== null && next[code] !== String(val)) {
+            next[code] = String(val);
+            hasNew = true;
+          }
+        }
+        return hasNew ? next : prev;
+      });
+    }
+  }, [settings.currencyRatesEffective, settings.currencyRates]);
+
+  const handleThemeChange = async (nextTheme: string) => {
+    setAppearanceMode(nextTheme as any);
+    setTheme(nextTheme as any);
+    applyThemeMode(nextTheme);
+    await updateSettings({ theme: nextTheme });
+  };
+
+  const handleLanguageChange = async (lang: string) => {
+    applyLanguage(lang);
+    await updateSettings({ language: lang });
+  };
 
   useEffect(() => {
     if (typeof window !== 'undefined' && window.tokenMonitor?.getTokscaleStatus) {
@@ -111,7 +144,15 @@ export function GeneralSettings({ settings, updateSettings, refreshCurrencyRates
     setRefreshingRates(true);
     setRateMessage(null);
     try {
-      await refreshCurrencyRates();
+      const refreshed = (await refreshCurrencyRates()) as TokenMonitorSettingsState | null | undefined;
+      const rates = refreshed?.currencyRatesEffective || refreshed?.currencyRates || settings.currencyRatesEffective || settings.currencyRates || {};
+      const updated: Record<string, string> = {};
+      for (const [code, val] of Object.entries(rates)) {
+        if (val !== undefined && val !== null) {
+          updated[code] = String(val);
+        }
+      }
+      setCustomRates((prev) => ({ ...prev, ...updated }));
       setRateMessage('Exchange rates updated.');
     } catch (err: any) {
       setRateMessage(err?.message || 'Could not update exchange rates.');
@@ -126,7 +167,11 @@ export function GeneralSettings({ settings, updateSettings, refreshCurrencyRates
         <SettingRow
           title="Theme"
           control={
-            <select value={theme || 'system'} onChange={(e) => setTheme(e.target.value as any)} className={selectClass}>
+            <select
+              value={currentTheme}
+              onChange={(e) => handleThemeChange(e.target.value)}
+              className={selectClass}
+            >
               <option value="system">System</option>
               <option value="dark">Dark</option>
               <option value="light">Light</option>
@@ -139,7 +184,7 @@ export function GeneralSettings({ settings, updateSettings, refreshCurrencyRates
           control={
             <select
               value={settings.language || 'auto'}
-              onChange={(e) => updateSettings({ language: e.target.value })}
+              onChange={(e) => handleLanguageChange(e.target.value)}
               className={selectClass}
             >
               <option value="auto">Auto (system)</option>

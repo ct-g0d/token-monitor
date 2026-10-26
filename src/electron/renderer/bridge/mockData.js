@@ -272,6 +272,8 @@
     },
     settings: {
       currency: 'USD',
+      currencyRates: { CNY: 7.24, EUR: 0.92, GBP: 0.79, JPY: 154.5, KRW: 1380.0, HKD: 7.82 },
+      currencyRatesEffective: { CNY: 7.24, EUR: 0.92, GBP: 0.79, JPY: 154.5, KRW: 1380.0, HKD: 7.82 },
       theme: 'system',
       language: 'en',
       modelAliases: { 'anthropic/claude-opus-5': 'claude-opus-5' },
@@ -606,6 +608,30 @@
 
       // Settings & Appearance
       getSettings: async () => clone(state.settings),
+      refreshCurrencyRates: async () => {
+        const rates = {
+          CNY: 7.24,
+          EUR: 0.92,
+          GBP: 0.79,
+          JPY: 154.5,
+          KRW: 1380.0,
+          HKD: 7.82,
+          TWD: 32.5,
+          CAD: 1.38,
+          AUD: 1.52,
+          SGD: 1.35,
+          CHF: 0.89
+        };
+        state.settings.currencyRates = rates;
+        state.settings.currencyRatesEffective = rates;
+        state.settings.currencyRateInfo = {
+          source: 'Exchange Rates API',
+          date: new Date().toISOString().slice(0, 10),
+          fetchedAt: new Date().toISOString()
+        };
+        emit('settings:push', clone(state.settings));
+        return clone(state.settings);
+      },
       updateSettings: async (patch) => {
         Object.assign(state.settings, patch);
         emit('settings:push', clone(state.settings));
