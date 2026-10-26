@@ -603,7 +603,7 @@ function PoolWindowCard({
 
   return (
     <div className="grid items-center gap-x-4 sm:gap-x-6 gap-y-2.5 sm:gap-y-3 rounded-lg border border-border/60 p-3 sm:p-4 md:grid-cols-[11rem_minmax(0,1fr)]">
-      <div className="flex flex-wrap sm:flex-col items-baseline sm:items-start justify-between sm:justify-start gap-x-4 gap-y-1">
+      <div className="flex flex-wrap items-baseline justify-between sm:justify-start gap-x-3 sm:gap-x-4 gap-y-1">
         <span className="text-sm font-medium text-foreground">{cardTitle}</span>
         <span className="flex items-baseline gap-2">
           {isCredits && balanceAmount !== null ? (
