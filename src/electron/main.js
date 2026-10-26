@@ -8319,7 +8319,7 @@ app.whenReady().then(() => {
     providerIds: Array.isArray(options?.providerIds) ? options.providerIds : null
   }));
   ipcMain.handle('codexResetForecast:get', (_event, options) => {
-    if (settings?.codexResetForecastEnabled !== true) {
+    if (settings?.codexResetForecastEnabled !== true && !options?.bypassSetting) {
       return { status: 'disabled', checkedAt: new Date().toISOString() };
     }
     return codexResetForecastClient.getForecast({ force: Boolean(options?.force) });
