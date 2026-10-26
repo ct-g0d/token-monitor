@@ -283,7 +283,9 @@
       heatmapHoverBehavior: 'detailed',
       codexResetForecastEnabled: true,
       compactTokenUnits: 'western',
-      reduceMotion: 'system'
+      reduceMotion: 'system',
+      interfaceFontFamily: '',
+      displayFontFamily: ''
     },
     appInfo: {
       name: 'TokeX',

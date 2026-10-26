@@ -28,6 +28,16 @@
     root.TokenMonitorI18n = i18nModule;
   }
 
+  let fontSettingsModule = null;
+  if (typeof require === 'function') {
+    try {
+      fontSettingsModule = require('../../../shared/fontSettings');
+    } catch (_) {}
+  }
+  if (root && !root.TokenMonitorFontSettings && fontSettingsModule) {
+    root.TokenMonitorFontSettings = fontSettingsModule;
+  }
+
   const DEFAULT_MOCK_DATA = mockDataModule?.DEFAULT_MOCK_DATA || {
     stats: {
       snapshot: 'snap-mock-current',
@@ -48,7 +58,9 @@
       currencyRates: { CNY: 7.24, EUR: 0.92, GBP: 0.79, JPY: 154.5, KRW: 1380.0, HKD: 7.82 },
       currencyRatesEffective: { CNY: 7.24, EUR: 0.92, GBP: 0.79, JPY: 154.5, KRW: 1380.0, HKD: 7.82 },
       theme: 'system',
-      language: 'en'
+      language: 'en',
+      interfaceFontFamily: '',
+      displayFontFamily: ''
     },
     appInfo: { name: 'TokeX', version: '0.69.0' }
   };
