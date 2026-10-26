@@ -582,7 +582,6 @@ function defaultSettings() {
     syncContentState: normalizeSyncContentState(null),
     windowBehavior,
     alwaysOnTop: windowBehavior === 'floating',
-    skipTaskbar: false,
     keepAboveTaskbar: false,
     refreshMs: Number(process.env.TOKEN_MONITOR_WIDGET_REFRESH_MS || 15000),
     glassOpacity: 68,
