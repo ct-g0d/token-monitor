@@ -5,7 +5,7 @@ import { Button } from '~/components/ui/button';
 import { Input } from '~/components/ui/input';
 import { Spinner } from '~/components/ui/spinner';
 import { useTheme } from '~/hooks/useTheme';
-import { applyThemeMode, applyLanguage } from './useSettings';
+import { applyThemeMode, applyLanguage, t } from './useSettings';
 import type { TokenMonitorSettingsState } from './types';
 
 interface GeneralSettingsProps {
@@ -170,20 +170,20 @@ export function GeneralSettings({ settings, updateSettings, refreshCurrencyRates
         />
 
         <SettingRow
-          title="Language"
+          title={t('settings.language.title') || 'Language'}
           control={
             <select
               value={settings.language || 'auto'}
               onChange={(e) => handleLanguageChange(e.target.value)}
               className={selectClass}
             >
-              <option value="auto">Auto (system)</option>
-              <option value="en">English</option>
-              <option value="zh-TW">繁體中文</option>
-              <option value="zh-CN">简体中文</option>
-              <option value="ko">한국어</option>
-              <option value="ja">日本語</option>
-              <option value="pt-BR">Português (Brasil)</option>
+              <option value="auto">{t('settings.language.auto') || 'Auto (system)'}</option>
+              <option value="en">{t('settings.language.english') || 'English'}</option>
+              <option value="zh-TW">{t('settings.language.zhTW') || '繁體中文'}</option>
+              <option value="zh-CN">{t('settings.language.zhCN') || '简体中文'}</option>
+              <option value="ko">{t('settings.language.korean') || '한국어'}</option>
+              <option value="ja">{t('settings.language.japanese') || '日本語'}</option>
+              <option value="pt-BR">{t('settings.language.portugueseBR') || 'Português (Brasil)'}</option>
             </select>
           }
         />

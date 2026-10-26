@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { Activity, Gauge, Server, Settings } from 'lucide-react';
 import { getDeviceLabel } from '../../views/logicBridge';
+import { t } from '@/i18n';
 
 export type MainView = 'usage' | 'limits' | 'status' | 'settings';
 
 export const NAV_ITEMS = [
-  { id: 'usage' as const, label: 'Usage', Icon: Activity },
-  { id: 'limits' as const, label: 'Limits', Icon: Gauge },
-  { id: 'status' as const, label: 'Status', Icon: Server },
+  { id: 'usage' as const, label: 'Usage', i18nKey: 'views.home', Icon: Activity },
+  { id: 'limits' as const, label: 'Limits', i18nKey: 'views.limits', Icon: Gauge },
+  { id: 'status' as const, label: 'Status', i18nKey: 'views.status', Icon: Server },
 ];
 
 interface Device {
@@ -18,8 +19,13 @@ interface Device {
   stale: boolean;
 }
 
-const compact = (n: number) =>
-  new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(n);
+const compact = (n: number) => {
+  const locale =
+    (typeof document !== 'undefined'
+      ? document.documentElement.getAttribute('data-locale') || document.documentElement.lang
+      : 'en') || 'en';
+  return new Intl.NumberFormat(locale, { notation: 'compact', maximumFractionDigits: 1 }).format(n);
+};
 
 // Today's totals, live stream rate and synced devices, refreshed in the background
 function useLive() {
@@ -129,14 +135,21 @@ export function Sidebar({ active, onSelect }: { active: MainView; onSelect: (vie
       </div>
 
       <nav className="flex flex-col">
-        {NAV_ITEMS.map(({ id, label, Icon }) => (
-          <NavButton key={id} tab={id} on={id === active} onClick={() => onSelect(id)} Icon={Icon} label={label} />
+        {NAV_ITEMS.map(({ id, label, i18nKey, Icon }) => (
+          <NavButton
+            key={id}
+            tab={id}
+            on={id === active}
+            onClick={() => onSelect(id)}
+            Icon={Icon}
+            label={(i18nKey ? t(i18nKey) : null) || label}
+          />
         ))}
       </nav>
 
       <div className="mx-4 mt-8 flex flex-col gap-2 border-t border-border pt-4">
         <span className="tm-label flex items-center justify-between">
-          Today
+          {t('edgeDock.period.today') || 'Today'}
           <span className="flex items-center gap-1.5">
             <span className={`size-1.5 ${live.rate > 0 ? 'animate-pulse bg-[var(--tm-signal)]' : 'bg-muted-foreground/40'}`} />
             {live.rate > 0 ? <span className="tabular-nums">{live.rate.toFixed(1)}/s</span> : 'idle'}
@@ -149,9 +162,9 @@ export function Sidebar({ active, onSelect }: { active: MainView; onSelect: (vie
       <div className="mt-auto flex flex-col pb-2">
         {live.devices.length > 0 && (
           <div className="mx-4 mb-2 flex flex-col gap-px border-t border-border pt-3">
-            <span className="tm-label pb-1.5">Devices</span>
+            <span className="tm-label pb-1.5">{t('settings.sync.panel.devices') || 'Devices'}</span>
             {live.devices.map((d) => (
-              <div key={d.id} className="flex h-6 items-center gap-2 text-[12px]" title={d.local ? 'This device' : d.stale ? 'Not seen recently' : undefined}>
+              <div key={d.id} className="flex h-6 items-center gap-2 text-[12px]" title={d.local ? (t('settings.limits.device.local') || 'This device') : d.stale ? 'Not seen recently' : undefined}>
                 <span className={`size-1.5 shrink-0 ${d.stale ? 'bg-muted-foreground/40' : 'bg-[var(--tm-signal)]'}`} />
                 <span className="min-w-0 flex-1 truncate">
                   {d.name}
@@ -162,7 +175,13 @@ export function Sidebar({ active, onSelect }: { active: MainView; onSelect: (vie
             ))}
           </div>
         )}
-        <NavButton tab="settings" on={active === 'settings'} onClick={() => onSelect('settings')} Icon={Settings} label="Settings" />
+        <NavButton
+          tab="settings"
+          on={active === 'settings'}
+          onClick={() => onSelect('settings')}
+          Icon={Settings}
+          label={t('settings.title') || 'Settings'}
+        />
       </div>
     </aside>
   );

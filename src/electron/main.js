@@ -180,7 +180,7 @@ const {
   normalizePinnedClients
 } = require('./renderer/clientDisplayPreferences');
 const { normalizeRankingMetric } = require('./renderer/usageAttributionRows');
-const { LANGUAGE_OPTIONS, resolveLocale, resolveRegionalLocale, translate } = require('./renderer/i18n');
+const { LANGUAGE_OPTIONS, normalizeLanguage, resolveLocale, resolveRegionalLocale, translate } = require('./renderer/i18n');
 const {
   defaultViewDisplayPreferences,
   normalizeHiddenViews,
@@ -2104,14 +2104,11 @@ function normalizeHubMode(value, fallback = 'local', platform = process.platform
 }
 
 function normalizeLanguageSetting(value, fallback = 'auto') {
-  const raw = String(value || '').replace(/_/g, '-').trim();
-  const lower = raw.toLowerCase();
-  if (lower === 'auto') return 'auto';
-  if (lower === 'en' || lower.startsWith('en-')) return 'en';
-  if (lower === 'zh-tw' || lower.startsWith('zh-hant') || /-(tw|hk|mo)\b/i.test(raw)) return 'zh-TW';
-  if (lower === 'zh-cn' || lower.startsWith('zh-hans') || /-(cn|sg|my)\b/i.test(raw)) return 'zh-CN';
-  if (lower === 'pt' || lower.startsWith('pt-')) return 'pt-BR';
-  return LANGUAGE_VALUES.has(raw) ? raw : fallback;
+  if (value === undefined || value === null) return fallback;
+  const raw = String(value || '').trim();
+  if (raw.toLowerCase() === 'auto') return 'auto';
+  const normalized = normalizeLanguage(raw);
+  return normalized !== 'auto' ? normalized : (LANGUAGE_VALUES.has(raw) ? raw : fallback);
 }
 
 function normalizeHubPort(value, fallback = HUB_DEFAULT_PORT) {

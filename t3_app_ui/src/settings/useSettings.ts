@@ -1,5 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { LimitAccountForms, TokenMonitorSettingsState } from './types';
+import { i18n, resolveLocale, t } from '../i18n';
+
+export { t, resolveLocale };
 
 export function applyThemeMode(themeChoice?: string) {
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
@@ -20,18 +23,33 @@ export function applyThemeMode(themeChoice?: string) {
 export function applyLanguage(languageChoice?: string) {
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
   const preferredLanguages = navigator.languages?.length ? navigator.languages : [navigator.language || 'en'];
-  const i18n = (window as any).TokenMonitorI18n;
-  const resolvedLocale = i18n?.resolveLocale
-    ? i18n.resolveLocale(languageChoice || 'auto', preferredLanguages)
-    : (languageChoice && languageChoice !== 'auto' ? languageChoice : (navigator.language || 'en').split('-')[0]);
+  const activeI18n = (window as any).TokenMonitorI18n || i18n;
+  const resolvedLocale = activeI18n?.resolveLocale
+    ? activeI18n.resolveLocale(languageChoice || 'auto', preferredLanguages)
+    : resolveLocale(languageChoice, preferredLanguages as string[]);
 
   document.documentElement.lang = resolvedLocale;
   document.documentElement.setAttribute('lang', resolvedLocale);
   document.documentElement.setAttribute('data-locale', resolvedLocale);
 
-  if (i18n?.applyTranslations) {
-    i18n.applyTranslations(document, resolvedLocale);
+  try {
+    window.localStorage.setItem('t3code:language', languageChoice || 'auto');
+    window.localStorage.setItem('t3code:locale', resolvedLocale);
+    window.localStorage.setItem('tokenmonitor:language', languageChoice || 'auto');
+    window.localStorage.setItem('tokenmonitor:locale', resolvedLocale);
+  } catch (_) {}
+
+  if (activeI18n?.applyTranslations) {
+    activeI18n.applyTranslations(document, resolvedLocale);
   }
+
+  try {
+    window.dispatchEvent(
+      new CustomEvent('tokenmonitor:languagechange', {
+        detail: { language: languageChoice || 'auto', locale: resolvedLocale },
+      })
+    );
+  } catch (_) {}
 }
 
 export function useTokenMonitorSettings() {

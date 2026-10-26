@@ -51,7 +51,9 @@
 - [ ] **Task 10 (`**`)**: Redesign arrangement for effective space utilization when window shrinks (ref: `image_ae57f434-ad0c-4afd-a216-435691072403`).
 - [ ] **Task 11 (`*`)**: Align percentage number in the progress bar to be on the same line as the label text (ref: `image_d7258227-3749-4f9f-bf6b-d81d7d3f3f60`).
 - [ ] **Task 12 (`**`)**: Redesign status page + integrate Tibo reset forecasts.
-- [ ] **Task 13 (`*`)**: Ensure language setting applies globally across the app.
+- [x] **Task 13 (`*`)**: Ensure language setting applies globally across the app.
+  - *Branch:* `t3/global-language-setting`
+  - *Status:* Completed; language setting is normalized, persisted, synchronized between main and renderer, and applied globally across the React UI, Electron shell, and document attributes.
 - [x] **Task 14 (`*`)**: Remove automatic app updates UI and logic since this is a local project.
 - [x] **Task 15 (`*`)**: Restrict currency options to CNY and USD only.
   - *Branch:* `t3/restrict-currency-options`
