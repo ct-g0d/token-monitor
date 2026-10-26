@@ -283,6 +283,18 @@ export const primaryPresentationAtom = Atom.make((get): EnvironmentPresentation 
       environmentId: PRIMARY_ENV_ID,
       settings: settings || DEFAULT_SERVER_SETTINGS,
       providers,
+      environment: {
+        environmentId: PRIMARY_ENV_ID,
+        label: "Token Monitor Workstation",
+        platform: {
+          os: (typeof process !== "undefined" && process.platform === "win32") ? "windows" : (typeof process !== "undefined" && process.platform === "darwin") ? "darwin" : "linux",
+          arch: (typeof process !== "undefined" && process.arch === "arm64") ? "arm64" : "x64",
+        },
+        capabilities: {
+          usagePriceOverrides: true,
+          usageModelAliases: true,
+        },
+      },
     } as any,
   };
 }).pipe(Atom.withLabel("primary-presentation"));

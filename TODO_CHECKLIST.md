@@ -43,6 +43,8 @@
   - *Branch:* `feat/task-5-window-shrink-header-pr30`
   - *Status:* In review (PR #29 targeting `feat/t3-ui-ledger`).
 - [ ] **Task 6 (`***`)**: Fix model prices page crash; inspect T3 code source to build the interface (ref: `image_f5b6049d-b800-4f17-991b-58b88da1cc75`).
+  - *Branch:* `t3/fix-model-prices-crash`
+  - *Status:* PR #31 opened targeting `feat/t3-ui-ledger`.
 - [ ] **Task 7 (`*`)**: When clicking limits, show loading first, then empty state if no limits exist, or transition directly from loading to limits.
 - [ ] **Task 8 (`***`)**: In limits page (and settings/globally), expand supported providers, and change unconfigured boxes into an "Add Provider" action.
 - [ ] **Task 9 (`*`)**: Codex monthly, weekly, and session limits: expand to full width of the bar instead of half-and-half (ref: `image_af4c2e80-7068-487e-baa3-dba56aa88c57`).
