@@ -409,8 +409,8 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
     ],
   );
   const headerControls = showingLimits ? (
-    <div className="flex shrink-0 items-center gap-2 mr-28 mt-5 [-webkit-app-region:no-drag]">
-      <div className="flex h-8 items-center gap-3 rounded-[3px] px-3.5 shadow-[inset_0_0_0_1px_var(--border)] [&_*]:font-mono [&_*]:text-[11px] [&_*]:tracking-[0.06em] [&_*]:uppercase">
+    <div className="flex flex-wrap items-center gap-2">
+      <div className="flex h-8 shrink-0 items-center gap-3 rounded-[3px] px-3.5 shadow-[inset_0_0_0_1px_var(--border)] [&_*]:font-mono [&_*]:text-[11px] [&_*]:tracking-[0.06em] [&_*]:uppercase">
         <UsageProviderFilter
           availableProviders={selectableProviders}
           hiddenProviders={hiddenProviders}
@@ -430,13 +430,14 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
         disabled={isRefreshing}
         size="icon-sm"
         variant="ghost"
+        className="shrink-0"
       >
         <RefreshIcon size="sm" refreshing={isRefreshing} />
       </Button>
     </div>
   ) : (
-    <div className="flex shrink-0 items-center gap-2 mr-28 mt-5 [-webkit-app-region:no-drag]">
-      <div className="flex h-8 items-center gap-3 rounded-[3px] px-3.5 shadow-[inset_0_0_0_1px_var(--border)] [&_*]:font-mono [&_*]:text-[11px] [&_*]:tracking-[0.06em] [&_*]:uppercase">
+    <div className="flex flex-wrap items-center gap-2">
+      <div className="flex h-8 shrink-0 items-center gap-3 rounded-[3px] px-3.5 shadow-[inset_0_0_0_1px_var(--border)] [&_*]:font-mono [&_*]:text-[11px] [&_*]:tracking-[0.06em] [&_*]:uppercase">
         <UsageProviderFilter
           availableProviders={selectableProviders}
           hiddenProviders={hiddenProviders}
@@ -465,6 +466,7 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
         aria-label="Usage metric"
         variant="segmented"
         value={[metric]}
+        className="shrink-0"
         onValueChange={(next) => {
           const value = next[0];
           if (isUsageMetric(value)) selectMetric(value);
@@ -480,6 +482,7 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
         aria-label="Usage period"
         variant="segmented"
         value={[String(windowDays)]}
+        className="shrink-0"
         onValueChange={(next) => {
           const value = next[0];
           if (value) selectWindow(Number(value));
@@ -498,6 +501,7 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
         disabled={isRefreshing}
         size="icon-sm"
         variant="ghost"
+        className="shrink-0"
       >
         <RefreshIcon size="sm" refreshing={isRefreshing} />
       </Button>
