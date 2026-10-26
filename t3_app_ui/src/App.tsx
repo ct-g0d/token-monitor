@@ -6,6 +6,7 @@ import { WindowControls } from './settings/WindowControls';
 import { SettingsPage } from './settings/SettingsPage';
 import { SettingsScopeProvider } from '~/components/settings/SettingsScopeContext';
 import { Sidebar, type MainView } from './components/shell/Sidebar';
+import { useTokenMonitorSettings } from './settings/useSettings';
 
 import { ServiceStatusView } from './views/ServiceStatusView';
 
@@ -35,6 +36,8 @@ function getInitialView(): MainView {
 
 export function App() {
   const [activeView, setActiveView] = useState<MainView>(getInitialView);
+  // Ensure persisted settings (language, theme, etc.) load and apply globally across the app
+  useTokenMonitorSettings();
 
   // Sync view state back to main process
   useEffect(() => {

@@ -6,14 +6,14 @@ import { AppearanceSettings } from './AppearanceSettings';
 import { WindowSettings } from './WindowSettings';
 import { CollectionSettings } from './CollectionSettings';
 import { LimitsSettings } from './LimitsSettings';
-import { useTokenMonitorSettings } from './useSettings';
+import { useTokenMonitorSettings, t } from './useSettings';
 
 const SETTINGS_SECTIONS = [
-  ['general', 'General'],
-  ['appearance', 'Appearance'],
-  ['window', 'Window'],
-  ['collection', 'Collection'],
-  ['accounts', 'Accounts'],
+  ['general', 'General', 'settings.general.title'],
+  ['appearance', 'Appearance', 'settings.appearance.title'],
+  ['window', 'Window', 'settings.window.title'],
+  ['collection', 'Collection', 'settings.collection.title'],
+  ['accounts', 'Accounts', 'settings.accounts.title'],
 ] as const;
 
 type SectionId = (typeof SETTINGS_SECTIONS)[number][0];
@@ -162,11 +162,11 @@ export function SettingsPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <PageHeader title="Settings" />
+      <PageHeader title={t('settings.title') || 'Settings'} />
       <div className="flex min-h-0 flex-1">
         <aside className="hidden w-44 shrink-0 border-r border-border px-3 py-4 sm:block">
           <nav aria-label="Settings sections" className="sticky top-0 flex flex-col gap-1">
-            {SETTINGS_SECTIONS.map(([id, label]) => (
+            {SETTINGS_SECTIONS.map(([id, defaultLabel, i18nKey]) => (
               <button
                 key={id}
                 type="button"
@@ -178,7 +178,7 @@ export function SettingsPage() {
                     : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
                 }`}
               >
-                {label}
+                {(i18nKey ? t(i18nKey) : null) || defaultLabel}
               </button>
             ))}
           </nav>
@@ -220,7 +220,7 @@ export function SettingsPage() {
               className="flex flex-col gap-3"
             >
               <div className="px-1">
-                <h2 className="tm-label !text-foreground">Accounts</h2>
+                <h2 className="tm-label !text-foreground">{t('settings.accounts.title') || 'Accounts'}</h2>
                 <p className="text-xs text-muted-foreground">Sign in to show live limits.</p>
               </div>
               <LimitsSettings settings={settings} updateSettings={updateSettings} refreshSettings={refreshSettings} />

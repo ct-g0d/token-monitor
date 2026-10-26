@@ -18,6 +18,16 @@
     mockDataModule = root.TokenMonitorBridgeMockData;
   }
 
+  let i18nModule = null;
+  if (typeof require === 'function') {
+    try {
+      i18nModule = require('../i18n');
+    } catch (_) {}
+  }
+  if (root && !root.TokenMonitorI18n && i18nModule) {
+    root.TokenMonitorI18n = i18nModule;
+  }
+
   const DEFAULT_MOCK_DATA = mockDataModule?.DEFAULT_MOCK_DATA || {
     stats: {
       snapshot: 'snap-mock-current',
