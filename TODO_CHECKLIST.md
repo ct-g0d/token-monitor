@@ -63,7 +63,9 @@
 - [x] **Task 16 (`*`)**: Remove redundant color theme selector overlapping with the top theme control in settings.
   - *Branch:* `t3/remove-redundant-theme-selector-1`
   - *Status:* Completed; removed redundant Color Theme dropdown and direct hook wiring from Appearance settings, preserving top-level Theme control under General settings.
-- [ ] **Task 17 (`*`)**: Unify and clean up excessive options in the Theme & Glass Effects settings section.
+- [x] **Task 17 (`*`)**: Unify and clean up excessive options in the Theme & Glass Effects settings section.
+  - *Branch:* `t3/unify-theme-glass-options`
+  - *Status:* Completed; streamlined Theme & Glass Effects options by platform-gating backdrop material selectors to the host operating system, conditionally concealing inactive backdrop controls when native system glass is disabled, adding reset-to-default shortcuts with canonical backend defaults (68% opacity, 32% blur, 100% zoom), and preserving canonical theme and Edge Dock settings.
 - [ ] **Task 18 (`*`)**: Delete background image settings.
 - [ ] **Task 19 (`*`)**: Unify interface fonts & display fonts settings and fix application so changes take effect.
 - [x] **Task 20 (`*`)**: Delete app subscription settings and UI.

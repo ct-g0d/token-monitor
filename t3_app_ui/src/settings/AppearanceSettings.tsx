@@ -57,49 +57,72 @@ export function AppearanceSettings({ settings, updateSettings }: AppearanceSetti
     return 'custom';
   };
 
+  const isMac = typeof navigator !== 'undefined' && /Macintosh|Mac OS X/.test(navigator.userAgent);
+  const isWindows = typeof navigator !== 'undefined' && /Windows NT/.test(navigator.userAgent);
+  const isOtherPlatform = !isWindows && !isMac;
+
+  const systemGlassEnabled = settings.systemGlass !== false;
+  const showWindowsBackdrop = systemGlassEnabled && (isWindows || isOtherPlatform);
+  const showMacBackdrop = systemGlassEnabled && (isMac || isOtherPlatform);
+
   return (
     <div className="space-y-6">
-      <SettingSection title="Theme & Glass Effects" description="Window materials, transparency, and background filters.">
+      <SettingSection
+        title="Theme & Glass Effects"
+        description="Window materials, transparency, and background filters."
+      >
         <SettingRow
           title="Native System Material"
-          description="Use OS native frosted glass or acrylic backdrop material."
+          description={
+            systemGlassEnabled
+              ? "Use OS native frosted glass or acrylic backdrop material."
+              : "Native material disabled. Using transparent window background."
+          }
           control={
             <Switch
-              checked={settings.systemGlass !== false}
+              checked={systemGlassEnabled}
               onCheckedChange={(checked) => updateSettings({ systemGlass: checked })}
             />
           }
         />
 
-        <SettingRow
-          title="Windows Backdrop Material"
-          description="Surface composition style when running on Windows 11 / 10."
-          control={
-            <select
-              value={settings.windowsBackdrop || 'acrylic'}
-              onChange={(e) => updateSettings({ windowsBackdrop: e.target.value as any })}
-              className={selectClass}
-            >
-              <option value="acrylic">Acrylic</option>
-              <option value="accent">Accent Blur (experimental)</option>
-            </select>
-          }
-        />
+        {showWindowsBackdrop && (
+          <SettingRow
+            title="Windows Glass Style"
+            description={
+              settings.windowsBackdrop === 'accent'
+                ? "Accent Blur (experimental): keeps backdrop translucent and blurred even when unfocused."
+                : "Surface composition style when running on Windows 11 / 10."
+            }
+            control={
+              <select
+                value={settings.windowsBackdrop || 'acrylic'}
+                onChange={(e) => updateSettings({ windowsBackdrop: e.target.value as any })}
+                className={selectClass}
+              >
+                <option value="acrylic">Acrylic</option>
+                <option value="accent">Accent Blur (experimental)</option>
+              </select>
+            }
+          />
+        )}
 
-        <SettingRow
-          title="macOS Glass Style"
-          description="Backdrop material formulation when running on macOS."
-          control={
-            <select
-              value={settings.macBackdrop || 'vibrancy'}
-              onChange={(e) => updateSettings({ macBackdrop: e.target.value as any })}
-              className={selectClass}
-            >
-              <option value="vibrancy">Frosted Glass (Vibrancy)</option>
-              <option value="liquid-glass">Liquid Glass (Regular)</option>
-            </select>
-          }
-        />
+        {showMacBackdrop && (
+          <SettingRow
+            title="macOS Glass Style"
+            description="Backdrop material formulation when running on macOS."
+            control={
+              <select
+                value={settings.macBackdrop || 'vibrancy'}
+                onChange={(e) => updateSettings({ macBackdrop: e.target.value as any })}
+                className={selectClass}
+              >
+                <option value="vibrancy">Frosted Glass (Vibrancy)</option>
+                <option value="liquid-glass">Liquid Glass (Regular)</option>
+              </select>
+            }
+          />
+        )}
 
         <SettingRow
           title="Glass Opacity"
@@ -111,13 +134,24 @@ export function AppearanceSettings({ settings, updateSettings }: AppearanceSetti
                 min="0"
                 max="100"
                 step="1"
-                value={settings.glassOpacity ?? 85}
+                value={settings.glassOpacity ?? 68}
                 onChange={(e) => updateSettings({ glassOpacity: parseInt(e.target.value, 10) })}
                 className="w-28 accent-primary"
               />
               <span className="text-xs text-muted-foreground w-8 tabular-nums">
-                {settings.glassOpacity ?? 85}%
+                {settings.glassOpacity ?? 68}%
               </span>
+              {settings.glassOpacity !== undefined && settings.glassOpacity !== 68 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                  title="Reset to default (68%)"
+                  onClick={() => updateSettings({ glassOpacity: 68 })}
+                >
+                  ↺
+                </Button>
+              )}
             </div>
           }
         />
@@ -132,13 +166,24 @@ export function AppearanceSettings({ settings, updateSettings }: AppearanceSetti
                 min="0"
                 max="100"
                 step="1"
-                value={settings.glassBlur ?? 50}
+                value={settings.glassBlur ?? 32}
                 onChange={(e) => updateSettings({ glassBlur: parseInt(e.target.value, 10) })}
                 className="w-28 accent-primary"
               />
               <span className="text-xs text-muted-foreground w-8 tabular-nums">
-                {settings.glassBlur ?? 50}%
+                {settings.glassBlur ?? 32}%
               </span>
+              {settings.glassBlur !== undefined && settings.glassBlur !== 32 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                  title="Reset to default (32%)"
+                  onClick={() => updateSettings({ glassBlur: 32 })}
+                >
+                  ↺
+                </Button>
+              )}
             </div>
           }
         />
@@ -160,6 +205,17 @@ export function AppearanceSettings({ settings, updateSettings }: AppearanceSetti
               <span className="text-xs text-muted-foreground w-10 tabular-nums">
                 {Math.round((settings.zoomFactor ?? 1.0) * 100)}%
               </span>
+              {settings.zoomFactor !== undefined && settings.zoomFactor !== 1.0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                  title="Reset to default (100%)"
+                  onClick={() => updateSettings({ zoomFactor: 1.0 })}
+                >
+                  ↺
+                </Button>
+              )}
             </div>
           }
         />
