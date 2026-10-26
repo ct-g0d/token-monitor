@@ -340,7 +340,19 @@ function limitAccountFormsForRenderer() {
   });
 }
 
+function discoveredLimitProviderIds(env = process.env) {
+  const detected = [];
+  for (const entry of LIMIT_PROVIDER_REGISTRY) {
+    if (entry.discover) {
+      const disc = entry.discover(env);
+      if (disc?.source || disc?.detected) detected.push(entry.id);
+    }
+  }
+  return detected;
+}
+
 module.exports = {
+  discoveredLimitProviderIds,
   accountForm,
   accountFieldProjection,
   accountStatusProjection,

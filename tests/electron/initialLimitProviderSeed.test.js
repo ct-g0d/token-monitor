@@ -2,10 +2,12 @@
 
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
 const { applyInitialLimitProviderSeed } = require('../../src/electron/initialLimitProviderSeed');
+const { discoveredLimitProviderIds } = require('../../src/electron/limits/accountSettings');
 const { parseLimitProviders } = require('../../src/shared/limits/collector');
 
 const ROOT = path.resolve(__dirname, '../..');
@@ -67,6 +69,66 @@ test('a source-free first run falls back to Codex so Limits remains available', 
 
   assert.equal(settings.limitProviders, 'codex');
   assert.deepEqual(parseLimitProviders(settings.limitProviders), ['codex']);
+});
+
+test('initial provider seeding incorporates auto-discovered providers when client health sources are absent', () => {
+  const settings = { limitProviders: 'claude,codex' };
+
+  assert.equal(applyInitialLimitProviderSeed(true, {
+    clientHealth: { clients: {} },
+    discoveredProviders: ['qoder', 'copilot']
+  }, {
+    settings,
+    saveSettings: () => true
+  }), true);
+
+  assert.equal(settings.limitProviders, 'copilot,qoder');
+  assert.deepEqual(parseLimitProviders(settings.limitProviders), ['copilot', 'qoder']);
+});
+
+test('deps.discoveredProviders overrides summary.discoveredProviders during initial seeding', () => {
+  const settings = { limitProviders: 'claude,codex' };
+
+  assert.equal(applyInitialLimitProviderSeed(true, {
+    clientHealth: { clients: {} },
+    discoveredProviders: ['qoder']
+  }, {
+    settings,
+    discoveredProviders: ['copilot'],
+    saveSettings: () => true
+  }), true);
+
+  assert.equal(settings.limitProviders, 'copilot');
+});
+
+test('discoveredLimitProviderIds identifies providers with credentials or local installations', () => {
+  const detectedWithEnv = discoveredLimitProviderIds({
+    QODER_COOKIE: 'sess-123',
+    COPILOT_API_TOKEN: 'gho-123'
+  });
+  assert.ok(detectedWithEnv.includes('qoder'));
+  assert.ok(detectedWithEnv.includes('copilot'));
+});
+
+test('discoveredLimitProviderIds handles missing and corrupt local files gracefully without throwing', () => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-discovery-corrupt-'));
+  try {
+    const qoderDir = path.join(tmpHome, '.qoder');
+    fs.mkdirSync(qoderDir, { recursive: true });
+    fs.writeFileSync(path.join(qoderDir, '.qoder-app-status.json'), 'CORRUPTED JSON {{{{');
+
+    const copilotDir = path.join(tmpHome, '.config', 'github-copilot');
+    fs.mkdirSync(copilotDir, { recursive: true });
+    fs.writeFileSync(path.join(copilotDir, 'hosts.json'), 'CORRUPTED HOSTS {{{{');
+
+    const detected = discoveredLimitProviderIds({
+      HOME: tmpHome,
+      USERPROFILE: tmpHome
+    });
+    assert.ok(Array.isArray(detected));
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
 });
 
 test('usage-derived active status alone does not consume the pending seed', () => {

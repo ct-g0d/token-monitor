@@ -1,5 +1,8 @@
 'use strict';
 
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const { normalizeLimitProvider } = require('../../limits/core');
 const {
   cleanSecret,
@@ -164,6 +167,81 @@ function parseQoderUsage(body) {
   };
 }
 
+function readQoderAppStatus(env = process.env, options = {}) {
+  const home = options.homeDir || env.HOME || env.USERPROFILE || (env === process.env ? os.homedir() : '');
+  const qoderDir = cleanSecret(env.QODER_HOME || env.QODER_DIR) || (home ? path.join(home, '.qoder') : '');
+  if (!qoderDir && !home) return { detected: false, loggedIn: false, name: '', email: '', product: '' };
+
+  if (qoderDir) {
+    const statusFile = path.join(qoderDir, '.qoder-app-status.json');
+    try {
+      const raw = fs.readFileSync(statusFile, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        return {
+          detected: true,
+          loggedIn: parsed.logged_in !== false,
+          name: String(parsed.name || '').trim(),
+          email: String(parsed.email || '').trim(),
+          product: String(parsed.product || 'qoder').trim()
+        };
+      }
+    } catch (_) {}
+
+    // Check auth user file
+    try {
+      const authFile = path.join(qoderDir, '.auth', 'user');
+      if (fs.existsSync(authFile) && fs.statSync(authFile).size > 0) {
+        return { detected: true, loggedIn: true, name: '', email: '', product: 'qoder' };
+      }
+    } catch (_) {}
+
+    // Check .qoder directory presence
+    try {
+      if (fs.existsSync(qoderDir) && fs.statSync(qoderDir).isDirectory()) {
+        return { detected: true, loggedIn: true, name: '', email: '', product: 'qoder' };
+      }
+    } catch (_) {}
+  }
+
+  if (home) {
+    // Check .qoder-cli
+    try {
+      const cliDir = path.join(home, '.qoder-cli');
+      if (fs.existsSync(cliDir) && fs.statSync(cliDir).isDirectory()) {
+        return { detected: true, loggedIn: true, name: '', email: '', product: 'qoder' };
+      }
+    } catch (_) {}
+
+    // Check .qoder-cn
+    try {
+      const cnDir = path.join(home, '.qoder-cn');
+      if (fs.existsSync(cnDir) && fs.statSync(cnDir).isDirectory()) {
+        return { detected: true, loggedIn: true, name: '', email: '', product: 'qoder' };
+      }
+    } catch (_) {}
+  }
+
+  return { detected: false, loggedIn: false, name: '', email: '', product: '' };
+}
+
+function resolveQoderAutomaticCredential(env = process.env, options = {}) {
+  for (const name of ['QODER_COOKIE', 'TOKEN_MONITOR_QODER_COOKIE']) {
+    if (cleanSecret(env[name])) return { source: 'env' };
+  }
+  const status = readQoderAppStatus(env, options);
+  if (status.detected) {
+    return {
+      source: 'qoder-auto',
+      accountLabel: status.name || status.email || 'Qoder User',
+      email: status.email || '',
+      loggedIn: status.loggedIn !== false,
+      detected: true
+    };
+  }
+  return { source: '' };
+}
+
 function fetchJsonWithDeadline(url, init, deps = {}) {
   const deadlineMs = Number(deps.qoderFetchTimeoutMs || deps.fetchTimeoutMs || QODER_FETCH_TIMEOUT_MS);
   return runWithProbeDeadline(
@@ -183,6 +261,20 @@ async function fetchQoderLimits(options = {}, deps = {}) {
   const cookie = qoderCookie(env, options);
   const site = qoderSite(options, env);
   if (!cookie) {
+    const autoCred = resolveQoderAutomaticCredential(env, options);
+    if (autoCred?.source === 'qoder-auto') {
+      return normalizeLimitProvider({
+        provider: 'qoder',
+        accountKey: hashKey('qoder', autoCred.email || autoCred.accountLabel || 'auto'),
+        accountLabel: autoCred.accountLabel || 'Qoder',
+        accountEmail: autoCred.email || '',
+        source: 'local',
+        status: autoCred.loggedIn ? 'ok' : 'unauthorized',
+        updatedAt,
+        windows: [],
+        region: site === 'cn' ? 'cn' : 'global'
+      });
+    }
     return normalizeLimitProvider({
       provider: 'qoder',
       source: 'web',
@@ -255,5 +347,7 @@ module.exports = {
   qoderUserPlanUrl,
   parseQoderPlanLabel,
   parseQoderUsage,
+  readQoderAppStatus,
+  resolveQoderAutomaticCredential,
   fetchQoderLimits
 };

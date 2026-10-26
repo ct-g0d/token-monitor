@@ -23,12 +23,22 @@ module.exports = {
       clearWithCredential: true
     }
   ],
+  discover: (env, limits) => limits.resolveClaudeAutomaticCredential(env),
   status: {
     credential: 'claudeWebCookie',
     configuredKey: 'claudeWebCookieConfigured',
     sourceKey: 'claudeWebCookieSource',
     pendingKey: 'claudePendingCheckSince'
   },
+  accountStatus: ({ settings, env, discovered, limits }) => ({
+    claudeWebCookieConfigured: Boolean(settings?.claudeWebCookie || limits.claudeWebCookie(env) || discovered?.source),
+    claudeWebCookieSource: settings?.claudeWebCookie
+      ? 'settings'
+      : limits.claudeWebCookie(env)
+        ? 'env'
+        : (discovered?.source ?? ''),
+    claudeAutoDetected: Boolean(discovered?.source)
+  }),
   form: {
     discover: { fn: 'listClaudeWebOrganizations', credential: 'claudeWebCookie', selection: 'claudeWebOrganizationId' },
     titleKey: 'settings.claude.title',

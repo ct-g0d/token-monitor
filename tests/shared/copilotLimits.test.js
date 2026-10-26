@@ -1,6 +1,9 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const test = require('node:test');
 
 const {
@@ -13,6 +16,8 @@ const {
   parseCopilotUsageResponse,
   parseQuotaResetDate,
   mapCopilotUsageToProvider,
+  readCopilotLocalCredentials,
+  resolveCopilotAutomaticCredential,
   fetchCopilotLimits
 } = require('../../src/shared/providers/copilot/limits');
 const { parseLimitProviders } = require('../../src/shared/limits/collector');
@@ -99,12 +104,12 @@ test('parseCopilotUsageResponse keeps unlimited chat quotas', () => {
       chat_messages: {
         entitlement: 0,
         remaining: 0,
+        percent_remaining: 100,
         quota_id: 'chat_messages',
         unlimited: true
       }
     }
   });
-  assert.equal(usage.premium, null);
   assert.equal(usage.chat.unlimited, true);
   assert.equal(usage.chat.percentRemaining, 100);
 });
@@ -259,4 +264,147 @@ test('fetchCopilotLimits bounds a body that stalls after the headers', { timeout
     }
   );
   assert.equal(provider.status, 'unavailable');
+});
+
+test('readCopilotLocalCredentials extracts credentials from hosts.json', () => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-copilot-test-'));
+  try {
+    const cfgDir = path.join(tmpHome, '.config', 'github-copilot');
+    fs.mkdirSync(cfgDir, { recursive: true });
+    fs.writeFileSync(path.join(cfgDir, 'hosts.json'), JSON.stringify({
+      'github.com': {
+        user: 'monalisa',
+        oauth_token: 'gho_secret123456'
+      }
+    }));
+
+    const result = readCopilotLocalCredentials({}, { homeDir: tmpHome, platform: 'linux' });
+    assert.equal(result.detected, true);
+    assert.equal(result.source, 'hosts.json');
+    assert.equal(result.user, 'monalisa');
+    assert.equal(result.token, 'gho_secret123456');
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('readCopilotLocalCredentials extracts credentials from hosts.yml', () => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-copilot-test-'));
+  try {
+    const ghDir = path.join(tmpHome, '.config', 'gh');
+    fs.mkdirSync(ghDir, { recursive: true });
+    fs.writeFileSync(path.join(ghDir, 'hosts.yml'), 'github.com:\n  user: octocat\n  oauth_token: gho_ghcli999\n');
+
+    const result = readCopilotLocalCredentials({}, { homeDir: tmpHome, platform: 'linux' });
+    assert.equal(result.detected, true);
+    assert.equal(result.source, 'gh-cli');
+    assert.equal(result.user, 'octocat');
+    assert.equal(result.token, 'gho_ghcli999');
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('readCopilotLocalCredentials handles corrupt or invalid json/yaml gracefully', () => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-copilot-test-'));
+  try {
+    const cfgDir = path.join(tmpHome, '.config', 'github-copilot');
+    fs.mkdirSync(cfgDir, { recursive: true });
+    fs.writeFileSync(path.join(cfgDir, 'hosts.json'), '{not json at all!!!');
+
+    const ghDir = path.join(tmpHome, '.config', 'gh');
+    fs.mkdirSync(ghDir, { recursive: true });
+    fs.writeFileSync(path.join(ghDir, 'hosts.yml'), 'random content without tokens');
+
+    const result = readCopilotLocalCredentials({}, { homeDir: tmpHome, platform: 'linux' });
+    assert.equal(result.detected, false);
+    assert.equal(result.token, '');
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('readCopilotLocalCredentials supports no-secret directory fallback', () => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-copilot-test-'));
+  try {
+    const copilotDir = path.join(tmpHome, '.copilot');
+    fs.mkdirSync(copilotDir, { recursive: true });
+
+    const result = readCopilotLocalCredentials({}, { homeDir: tmpHome, platform: 'linux' });
+    assert.equal(result.detected, true);
+    assert.equal(result.source, 'copilot-dir');
+    assert.equal(result.token, '');
+    assert.equal(result.user, '');
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('readCopilotLocalCredentials returns empty when files and directories are missing', () => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-copilot-test-'));
+  try {
+    const result = readCopilotLocalCredentials({}, { homeDir: tmpHome, platform: 'linux' });
+    assert.equal(result.detected, false);
+    assert.equal(result.source, '');
+    assert.equal(result.token, '');
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+test('resolveCopilotAutomaticCredential prioritizes env and detects local files with no-secret fallback', () => {
+  // Env priority
+  assert.deepEqual(resolveCopilotAutomaticCredential({ COPILOT_API_TOKEN: 'token-abc' }), { source: 'env' });
+  assert.deepEqual(resolveCopilotAutomaticCredential({ GITHUB_COPILOT_TOKEN: 'token-gho' }), { source: 'env' });
+
+  // Missing files fallback
+  const emptyHome = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-copilot-test-'));
+  try {
+    assert.deepEqual(resolveCopilotAutomaticCredential({}, { homeDir: emptyHome, platform: 'linux' }), { source: '' });
+
+    // Local file with token
+    const cfgDir = path.join(emptyHome, '.config', 'github-copilot');
+    fs.mkdirSync(cfgDir, { recursive: true });
+    fs.writeFileSync(path.join(cfgDir, 'hosts.json'), JSON.stringify({
+      'github.com': { user: 'hubot', oauth_token: 'gho_hubot' }
+    }));
+    assert.deepEqual(resolveCopilotAutomaticCredential({}, { homeDir: emptyHome, platform: 'linux' }), {
+      source: 'copilot-auto',
+      user: 'hubot',
+      hasToken: true,
+      detected: true
+    });
+
+    // Clean config dir, add .copilot directory only (no-secret fallback)
+    fs.rmSync(path.join(emptyHome, '.config'), { recursive: true, force: true });
+    fs.mkdirSync(path.join(emptyHome, '.copilot'), { recursive: true });
+    assert.deepEqual(resolveCopilotAutomaticCredential({}, { homeDir: emptyHome, platform: 'linux' }), {
+      source: 'copilot-auto',
+      user: '',
+      hasToken: false,
+      detected: true
+    });
+  } finally {
+    fs.rmSync(emptyHome, { recursive: true, force: true });
+  }
+});
+
+test('fetchCopilotLimits surfaces local status when auto-detected without token', async () => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-copilot-test-'));
+  try {
+    const copilotDir = path.join(tmpHome, '.copilot');
+    fs.mkdirSync(copilotDir, { recursive: true });
+
+    const provider = await fetchCopilotLimits(
+      { homeDir: tmpHome, platform: 'linux' },
+      { env: {}, now: () => Date.parse('2026-06-25T00:00:00.000Z') }
+    );
+    assert.equal(provider.provider, 'copilot');
+    assert.equal(provider.source, 'local');
+    assert.equal(provider.status, 'ok');
+    assert.equal(provider.accountLabel, 'GitHub Copilot');
+    assert.deepEqual(provider.windows, []);
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
 });

@@ -15,7 +15,10 @@ function applyInitialLimitProviderSeed(pending, summary, deps = {}) {
   }
 
   const previousProviders = deps.settings.limitProviders;
-  const detectedProviders = limitProvidersForDetectedClients(summary.clientHealth);
+  const discoveredProviders = deps.discoveredProviders || summary.discoveredProviders || [];
+  const detectedProviders = limitProvidersForDetectedClients(summary.clientHealth, {
+    discoveredProviders
+  });
   // Keep the Limits view discoverable on a source-free first run.
   deps.settings.limitProviders = (detectedProviders.length > 0 ? detectedProviders : ['codex']).join(',');
   try {

@@ -14,6 +14,7 @@ const { normalizeLimitProvider } = require('../../limits/core');
 const { abortError } = require('../../probeDeadline');
 const { hashKey } = require('../../hashKey');
 const {
+  cleanSecret,
   PLAN_LABEL_ALIASES,
   TOKEN_MONITOR_USER_AGENT,
   cleanPlanText,
@@ -2236,7 +2237,34 @@ async function probeClaudeCliSdkLimits(deps = {}, options = {}) {
     now: deps.now
   });
 }
+function resolveClaudeAutomaticCredential(env = process.env, options = {}) {
+  for (const name of ['CLAUDE_WEB_COOKIE', 'TOKEN_MONITOR_CLAUDE_WEB_COOKIE']) {
+    if (cleanSecret(env[name])) return { source: 'env' };
+  }
+  const home = options.homeDir || env.HOME || env.USERPROFILE || (env === process.env ? os.homedir() : '');
+  const nativeCred = claudeCredentialPath(env);
+  if (nativeCred) {
+    try {
+      if (fs.existsSync(nativeCred) && fs.statSync(nativeCred).size > 0) {
+        return { source: 'cli', detected: true };
+      }
+    } catch (_) {}
+  }
+
+  const claudeDir = env.CLAUDE_CONFIG_DIR || (home ? path.join(home, '.claude') : '');
+  if (claudeDir) {
+    try {
+      if (fs.existsSync(claudeDir) && fs.statSync(claudeDir).isDirectory()) {
+        return { source: 'claude-auto', detected: true };
+      }
+    } catch (_) {}
+  }
+
+  return { source: '', detected: false };
+}
+
 module.exports = {
+  resolveClaudeAutomaticCredential,
   claudeCommandCandidates,
   claudeWebCookie,
   delegatedClaudeRefresh,

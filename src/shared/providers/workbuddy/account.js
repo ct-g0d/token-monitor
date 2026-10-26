@@ -17,5 +17,11 @@ module.exports = {
     { key: 'workbuddyDomain', kind: 'setting', persist: 'never', rendererOmit: true, initial: null, config: false },
     { key: 'workbuddyDepartmentInfo', kind: 'setting', persist: 'never', rendererOmit: true, initial: null, config: false }
   ],
+  discover: (env, limits) => limits.resolveWorkbuddyAutomaticCredential(env),
+  accountStatus: ({ settings, discovered }) => ({
+    workbuddyConfigured: Boolean(settings?.workbuddyManagedAccounts?.length || discovered?.source),
+    workbuddySource: settings?.workbuddyManagedAccounts?.length ? 'settings' : (discovered?.source ?? ''),
+    workbuddyAutoDetected: Boolean(discovered?.source)
+  }),
   fetchDep: 'workbuddyFetch'
 };

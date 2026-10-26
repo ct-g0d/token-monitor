@@ -66,6 +66,25 @@ test('initial limit providers map only corresponding Collection client aliases',
   );
 });
 
+test('initial limit providers incorporate discovered providers in stable catalog order', () => {
+  assert.deepEqual(
+    limitProvidersForDetectedClients({ clients: {} }, { discoveredProviders: ['qoder', 'copilot'] }),
+    ['copilot', 'qoder']
+  );
+  assert.deepEqual(
+    limitProvidersForDetectedClients({
+      clients: {
+        claude: { source: { state: 'detected' } }
+      }
+    }, { discoveredProviders: ['qoder', 'claude'] }),
+    ['claude', 'qoder']
+  );
+  assert.deepEqual(
+    limitProvidersForDetectedClients({ clients: {} }, { discoveredProviders: ['unknown', 'nonexistent', 'qodercn'] }),
+    ['qoder']
+  );
+});
+
 // This table is read twice — for Edge Dock usage attribution and for the
 // seeding above — so mapping a client here also enables that provider on a
 // fresh install. Qwen is a tracked client whose Limits side is the Alibaba

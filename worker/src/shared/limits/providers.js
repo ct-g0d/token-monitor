@@ -111,14 +111,22 @@
   // provider mapped from a currently detected local source can be seeded.
   // Usage-derived client status can remain active after a source disappears, so
   // source health is the authoritative signal here.
-  function limitProvidersForDetectedClients(clientHealth) {
+  function limitProvidersForDetectedClients(clientHealth, options = {}) {
     const clients = clientHealth?.clients;
-    if (!clients || typeof clients !== 'object' || Array.isArray(clients)) return [];
     const detectedProviders = new Set();
-    for (const [client, health] of Object.entries(clients)) {
-      if (health?.source?.state !== 'detected') continue;
-      const provider = limitProviderForClient(client);
-      if (provider) detectedProviders.add(provider);
+    if (clients && typeof clients === 'object' && !Array.isArray(clients)) {
+      for (const [client, health] of Object.entries(clients)) {
+        if (health?.source?.state !== 'detected') continue;
+        const provider = limitProviderForClient(client);
+        if (provider) detectedProviders.add(provider);
+      }
+    }
+    const extras = options?.discoveredProviders || options?.extraProviders;
+    if (Array.isArray(extras)) {
+      for (const item of extras) {
+        const id = limitProviderForClient(item) || (LIMIT_PROVIDER_ID_SET.has(item) ? item : null);
+        if (id) detectedProviders.add(id);
+      }
     }
     return LIMIT_PROVIDER_IDS.filter((provider) => detectedProviders.has(provider));
   }

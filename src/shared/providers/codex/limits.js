@@ -1491,7 +1491,53 @@ async function fetchCodexLimits(options = {}, deps = {}) {
   return providers;
 }
 
+function resolveCodexAutomaticCredential(env = process.env, options = {}) {
+  const home = options.homeDir || env.HOME || env.USERPROFILE || (env === process.env ? os.homedir() : '');
+  const authFile = options.codexAuthPath || codexAuthPath(env);
+
+  if (authFile) {
+    try {
+      const raw = fs.readFileSync(authFile, 'utf8');
+      const parsed = JSON.parse(raw);
+      const token = codexAccessTokenFromAuth(parsed);
+      if (token) {
+        return {
+          source: 'oauth',
+          accountLabel: String(parsed.account_id || parsed.email || '').trim(),
+          detected: true
+        };
+      }
+      if (parsed && typeof parsed === 'object') {
+        return { source: 'codex-auto', detected: true };
+      }
+    } catch (_) {}
+  }
+
+  const codexDir = env.CODEX_HOME || (home ? path.join(home, '.codex') : '');
+  if (codexDir) {
+    try {
+      if (fs.existsSync(codexDir) && fs.statSync(codexDir).isDirectory()) {
+        return { source: 'codex-auto', detected: true };
+      }
+    } catch (_) {}
+  }
+
+  if (home) {
+    try {
+      const candidates = codexCommandCandidates(env, process.platform, options);
+      for (const cmd of candidates) {
+        if (cmd && path.isAbsolute(cmd) && fs.existsSync(cmd)) {
+          return { source: 'rpc', detected: true };
+        }
+      }
+    } catch (_) {}
+  }
+
+  return { source: '', detected: false };
+}
+
 module.exports = {
+  resolveCodexAutomaticCredential,
   codexCommandCandidates,
   quoteWindowsCmdArg,
   codexCommandSourceDetail,

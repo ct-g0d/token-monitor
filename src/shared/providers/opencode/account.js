@@ -22,6 +22,16 @@ module.exports = {
       project: 'redact'
     }
   ],
+  discover: (env, limits) => limits.resolveOpenCodeAutomaticCredential(env),
+  accountStatus: ({ settings, env, discovered }) => ({
+    opencodeCookieConfigured: Boolean(settings?.opencodeCookie || env.TOKEN_MONITOR_OPENCODE_COOKIE || discovered?.source),
+    opencodeCookieSource: settings?.opencodeCookie
+      ? 'settings'
+      : env.TOKEN_MONITOR_OPENCODE_COOKIE
+        ? 'env'
+        : (discovered?.source ?? ''),
+    opencodeAutoDetected: Boolean(discovered?.source)
+  }),
   extraSettingKeys: ['opencodeLocalLimitsEnabled'],
   urlPolicy: [
     { hosts: ['opencode.ai', 'www.opencode.ai'] }

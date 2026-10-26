@@ -3,6 +3,11 @@
 // Antigravity limits provider: RPC snapshot plus the OAuth/probe helpers in
 // this folder. Reached through providerFetchers() in src/shared/limits/collector.js.
 
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { discoverAntigravityAcpRoots } = require('./paths');
+const { antigravityDataPresent } = require('./selfSync');
 const antigravityOAuth = require('./oauth');
 const antigravityProbe = require('./probe');
 const {
@@ -178,6 +183,33 @@ async function fetchAntigravityLimits(options = {}, deps = {}) {
   return providers;
 }
 
+function resolveAntigravityAutomaticCredential(env = process.env, options = {}) {
+  const home = options.homeDir || env.HOME || env.USERPROFILE || (env === process.env ? os.homedir() : '');
+  if (!home) return { source: '', detected: false };
+  try {
+    if (antigravityDataPresent(home)) {
+      return { source: 'rpc', detected: true };
+    }
+  } catch (_) {}
+
+  try {
+    const acpRoots = discoverAntigravityAcpRoots({ homeDir: home, env });
+    if (acpRoots && acpRoots.length > 0) {
+      return { source: 'rpc', detected: true };
+    }
+  } catch (_) {}
+
+  try {
+    const defaultGemini = path.join(home, '.gemini');
+    if (fs.existsSync(defaultGemini) && fs.statSync(defaultGemini).isDirectory()) {
+      return { source: 'rpc', detected: true };
+    }
+  } catch (_) {}
+
+  return { source: '', detected: false };
+}
+
 module.exports = {
+  resolveAntigravityAutomaticCredential,
   fetchAntigravityLimits
 };
