@@ -791,7 +791,7 @@ export const ZaiIcon: Icon = ({ className, ...props }) => (
 
 export const MimoIcon: Icon = XiaomiIcon;
 
-export const PROVIDER_ICON_CATALOG: Record<string, Icon> = {
+const getCatalog = (): Record<string, Icon> => ({
   codex: OpenAI,
   claude: ClaudeAI,
   claudeagent: ClaudeAI,
@@ -856,10 +856,37 @@ export const PROVIDER_ICON_CATALOG: Record<string, Icon> = {
   nvidia: NvidiaIcon,
   newapi: NewApiIcon,
   sub2api: Sub2ApiIcon,
-};
+});
+
+let _catalogCache: Record<string, Icon> | null = null;
+export function getProviderIconCatalog(): Record<string, Icon> {
+  if (!_catalogCache) {
+    _catalogCache = getCatalog();
+  }
+  return _catalogCache;
+}
+
+export const PROVIDER_ICON_CATALOG = new Proxy({} as Record<string, Icon>, {
+  get(_target, prop: string) {
+    return getProviderIconCatalog()[prop];
+  },
+  has(_target, prop: string) {
+    return prop in getProviderIconCatalog();
+  },
+  ownKeys() {
+    return Reflect.ownKeys(getProviderIconCatalog());
+  },
+  getOwnPropertyDescriptor(_target, prop) {
+    return {
+      configurable: true,
+      enumerable: true,
+      value: getProviderIconCatalog()[prop as string],
+    };
+  }
+});
 
 export function getProviderIconComponent(providerOrDriver: string | undefined | null): Icon | null {
   if (!providerOrDriver) return null;
   const key = String(providerOrDriver).trim().toLowerCase().replace(/[^a-z0-9_-]/g, "");
-  return PROVIDER_ICON_CATALOG[key] ?? null;
+  return getProviderIconCatalog()[key] ?? null;
 }
