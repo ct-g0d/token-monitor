@@ -1,6 +1,7 @@
 import React from 'react';
 
-// Page title with an optional subtitle; page controls sit on the right, on the title's baseline
+// Page title with an optional subtitle; page controls sit on the right, on the title's baseline.
+// When the window shrinks, controls wrap cleanly without colliding with the title or native window controls.
 export function PageHeader({
   title,
   subtitle,
@@ -10,8 +11,19 @@ export function PageHeader({
   subtitle?: React.ReactNode;
   children?: React.ReactNode;
 }) {
+  const handleHeaderDoubleClick = (e: React.MouseEvent<HTMLElement>) => {
+    if ((e.target as HTMLElement).closest('button, a, input, select, textarea, [data-tab], [data-control]')) {
+      return;
+    }
+    const tm = typeof window !== 'undefined' ? window.tokenMonitor : null;
+    (tm?.toggleMaximize || tm?.dashboard?.toggleMaximize)?.();
+  };
+
   return (
-    <header className="flex min-h-[80px] shrink-0 items-center justify-between gap-x-6 px-8 xl:px-10 py-4 [-webkit-app-region:drag]">
+    <header
+      className="flex min-h-[80px] shrink-0 flex-wrap items-center justify-between gap-x-6 gap-y-3 pl-6 sm:pl-8 xl:pl-10 pr-36 xl:pr-40 py-4 [-webkit-app-region:drag]"
+      onDoubleClick={handleHeaderDoubleClick}
+    >
       <div className="flex min-w-0 shrink items-baseline gap-3">
         <h1 className="tm-display shrink-0 text-[34px] leading-none font-bold uppercase text-foreground">{title}</h1>
         {subtitle && (
@@ -24,7 +36,7 @@ export function PageHeader({
         )}
       </div>
       {children && (
-        <div className="flex shrink-0 items-center gap-2 [-webkit-app-region:no-drag]">{children}</div>
+        <div className="flex flex-wrap items-center gap-2 [-webkit-app-region:no-drag]">{children}</div>
       )}
     </header>
   );

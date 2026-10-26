@@ -70,11 +70,11 @@ export function App() {
           {activeView === 'settings' && <SettingsPage />}
         </main>
 
-        {/* Window controls own the top-right corner; the strip beside them drags the window.
+        {/* Window controls own the top-right corner.
             Must stay last: Chromium applies drag regions in DOM order, so a page's drag
             header rendered later would override this overlay's no-drag buttons. */}
         <div
-          className="absolute top-0 right-0 left-[216px] z-30 flex h-10 justify-end [-webkit-app-region:drag]"
+          className="absolute top-0 right-0 z-30 flex h-10 justify-end [-webkit-app-region:drag]"
           onDoubleClick={handleHeaderDoubleClick}
         >
           <WindowControls />
