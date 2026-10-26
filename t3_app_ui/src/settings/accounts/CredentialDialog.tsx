@@ -41,6 +41,12 @@ export function CredentialDialog({
         initial.minimaxApiRegion = 'cn';
       } else if (provider.providerId === 'volcengine') {
         initial.volcengineRegion = 'cn-beijing';
+      } else if (provider.providerId === 'qoder') {
+        initial.qoderSite = 'global';
+      } else if (provider.providerId === 'zai') {
+        initial.zaiApiRegion = 'cn';
+      } else if (provider.providerId === 'alibaba') {
+        initial.alibabaVariant = 'global';
       }
       setFields(initial);
       setOpencodeMode('api');
@@ -467,6 +473,327 @@ export function CredentialDialog({
           </div>
         );
 
+      case 'qoder':
+        return (
+          <div className="space-y-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-foreground">
+                Site
+              </label>
+              <select
+                className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-sm text-foreground shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                value={fields.qoderSite || 'global'}
+                onChange={(e) => handleFieldChange('qoderSite', e.target.value)}
+              >
+                <option value="global">Global (qoder.com)</option>
+                <option value="cn">China (qoder.com.cn)</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-foreground">
+                Qoder Cookie
+              </label>
+              <Input
+                type="password"
+                placeholder="Paste Qoder session cookie"
+                value={fields.qoderCookie || ''}
+                onChange={(e) => handleFieldChange('qoderCookie', e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+          </div>
+        );
+
+      case 'cline':
+        return (
+          <div className="space-y-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-foreground">
+                Cline API Key
+              </label>
+              <Input
+                type="password"
+                placeholder="Enter Cline API key"
+                value={fields.clineApiKey || ''}
+                onChange={(e) => handleFieldChange('clineApiKey', e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+          </div>
+        );
+
+      case 'factory':
+        return (
+          <div className="space-y-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-foreground">
+                Factory Droid API Key
+              </label>
+              <Input
+                type="password"
+                placeholder="fk-..."
+                value={fields.factoryApiKey || ''}
+                onChange={(e) => handleFieldChange('factoryApiKey', e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+          </div>
+        );
+
+      case 'zed':
+        return (
+          <div className="space-y-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-foreground">
+                Zed Cookie
+              </label>
+              <Input
+                type="password"
+                placeholder="zed.session=..."
+                value={fields.zedCookie || ''}
+                onChange={(e) => handleFieldChange('zedCookie', e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+          </div>
+        );
+
+      case 'commandcode':
+        return (
+          <div className="space-y-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-foreground">
+                Command Code Cookie
+              </label>
+              <Input
+                type="password"
+                placeholder="Paste Command Code cookie"
+                value={fields.commandcodeCookie || ''}
+                onChange={(e) => handleFieldChange('commandcodeCookie', e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+          </div>
+        );
+
+      case 'zai':
+        return (
+          <div className="space-y-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-foreground">
+                API Region
+              </label>
+              <select
+                className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-sm text-foreground shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                value={fields.zaiApiRegion || 'cn'}
+                onChange={(e) => handleFieldChange('zaiApiRegion', e.target.value)}
+              >
+                <option value="cn">China (open.bigmodel.cn)</option>
+                <option value="global">International (z.ai)</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-foreground">
+                Z.ai / GLM API Key
+              </label>
+              <Input
+                type="password"
+                placeholder="API Key (id.secret)"
+                value={fields.zaiApiKey || ''}
+                onChange={(e) => handleFieldChange('zaiApiKey', e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+          </div>
+        );
+
+      case 'zaiteam':
+        return (
+          <div className="space-y-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-foreground">
+                GLM Team API Key
+              </label>
+              <Input
+                type="password"
+                placeholder="Team API key"
+                value={fields.zaiTeamApiKey || ''}
+                onChange={(e) => handleFieldChange('zaiTeamApiKey', e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-foreground">
+                Organization ID
+              </label>
+              <Input
+                type="text"
+                placeholder="Organization ID"
+                value={fields.zaiTeamOrganizationId || ''}
+                onChange={(e) => handleFieldChange('zaiTeamOrganizationId', e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-foreground">
+                Project ID
+              </label>
+              <Input
+                type="text"
+                placeholder="Project ID"
+                value={fields.zaiTeamProjectId || ''}
+                onChange={(e) => handleFieldChange('zaiTeamProjectId', e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+          </div>
+        );
+
+      case 'devin':
+        return (
+          <div className="space-y-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-foreground">
+                Organization
+              </label>
+              <Input
+                type="text"
+                placeholder="Organization slug or ID (optional)"
+                value={fields.devinOrganization || ''}
+                onChange={(e) => handleFieldChange('devinOrganization', e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-foreground">
+                Devin Bearer Token
+              </label>
+              <Input
+                type="password"
+                placeholder="Bearer token"
+                value={fields.devinBearerToken || ''}
+                onChange={(e) => handleFieldChange('devinBearerToken', e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+          </div>
+        );
+
+      case 'typesafe':
+        return (
+          <div className="space-y-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-foreground">
+                TypeSafe Cookie
+              </label>
+              <Input
+                type="password"
+                placeholder="Session cookie"
+                value={fields.typesafeCookie || ''}
+                onChange={(e) => handleFieldChange('typesafeCookie', e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+          </div>
+        );
+
+      case 'ollama':
+        return (
+          <div className="space-y-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-foreground">
+                Ollama Cookie
+              </label>
+              <Input
+                type="password"
+                placeholder="Session cookie"
+                value={fields.ollamaCookie || ''}
+                onChange={(e) => handleFieldChange('ollamaCookie', e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+          </div>
+        );
+
+      case 'trae':
+        return (
+          <div className="space-y-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-foreground">
+                Device ID
+              </label>
+              <Input
+                type="text"
+                placeholder="Device ID (optional)"
+                value={fields.traeDeviceId || ''}
+                onChange={(e) => handleFieldChange('traeDeviceId', e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-foreground">
+                Trae Access Token
+              </label>
+              <Input
+                type="password"
+                placeholder="Access token"
+                value={fields.traeAccessToken || ''}
+                onChange={(e) => handleFieldChange('traeAccessToken', e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+          </div>
+        );
+
+      case 'alibaba':
+        return (
+          <div className="space-y-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-foreground">
+                Variant
+              </label>
+              <select
+                className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-sm text-foreground shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                value={fields.alibabaVariant || 'global'}
+                onChange={(e) => handleFieldChange('alibabaVariant', e.target.value)}
+              >
+                <option value="global">Global</option>
+                <option value="cn">China</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-foreground">
+                Alibaba Cloud Cookie
+              </label>
+              <Input
+                type="password"
+                placeholder="Cookie string"
+                value={fields.alibabaCookie || ''}
+                onChange={(e) => handleFieldChange('alibabaCookie', e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+          </div>
+        );
+
+      case 'stepfun':
+        return (
+          <div className="space-y-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-foreground">
+                StepFun Token
+              </label>
+              <Input
+                type="password"
+                placeholder="StepFun token"
+                value={fields.stepfunToken || ''}
+                onChange={(e) => handleFieldChange('stepfunToken', e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+          </div>
+        );
+
       default:
         return (
           <div className="space-y-3">
@@ -518,22 +845,27 @@ export function CredentialDialog({
           <DialogFooter className="gap-2 pt-3">
             <Button
               type="button"
-              variant="ghost"
+              variant="outline"
               size="sm"
-              disabled={pending}
               onClick={onClose}
+              disabled={pending}
             >
               Cancel
             </Button>
             <Button
               type="submit"
-              variant="default"
               size="sm"
               disabled={pending}
-              className="gap-1.5"
+              className="gap-2"
             >
-              {pending && <Spinner size="xs" />}
-              Save Credential
+              {pending ? (
+                <>
+                  <Spinner className="size-3.5" />
+                  <span>Saving...</span>
+                </>
+              ) : (
+                <span>Save</span>
+              )}
             </Button>
           </DialogFooter>
         </form>

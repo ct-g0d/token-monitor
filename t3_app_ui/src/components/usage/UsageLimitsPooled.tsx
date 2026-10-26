@@ -13,7 +13,8 @@ import {
   type LimitPoolWindow,
   remainingPercent,
 } from "@t3tools/shared/usageLimits";
-import { AlertTriangleIcon, ChevronDownIcon, ClockIcon, ExternalLinkIcon, SlidersHorizontalIcon, TicketIcon } from "lucide-react";
+import { AlertTriangleIcon, ChevronDownIcon, ClockIcon, ExternalLinkIcon, PlusIcon, SlidersHorizontalIcon, TicketIcon } from "lucide-react";
+import { getProviderPresentation } from "~/components/usage/usageProviders";
 import { Fragment, type ReactNode, useMemo, useState } from "react";
 import { Atom } from "effect/reactivity";
 import { useAtomValue } from "@effect/atom-react";
@@ -68,6 +69,8 @@ function getProviderBarColor(driver: string): string {
   if (driver === "cursor") return "#8b8b8b";
   if (driver === "grok") return "#1d9bf0";
   if (driver === "opencode") return "#5b9bbd";
+  const presentation = getProviderPresentation(driver);
+  if (presentation.color) return presentation.color;
   return defaultBarColor(driver as any);
 }
 
@@ -79,6 +82,8 @@ function getProviderLabel(driver: string): string {
   if (driver === "cursor") return "Cursor";
   if (driver === "opencode") return "OpenCode";
   if (driver === "workbuddy") return "WorkBuddy";
+  const presentation = getProviderPresentation(driver);
+  if (presentation.label) return presentation.label;
   return providerClients.get(driver as any)?.label ?? driver;
 }
 
@@ -886,24 +891,7 @@ export function UsageLimitsPooled({
     !n.toLowerCase().includes("antigravity")
   );
 
-  // Collect providers in notConfigured state
-  const allProviders = [...presentations.values()].flatMap(
-    (p) => p.serverConfig?.providers ?? []
-  );
-  const seenDrivers = new Set<string>();
-  const notConfiguredDrivers: { driver: string; name: string }[] = [];
-  allProviders.forEach((p) => {
-    const d = String(p.driver);
-    if (seenDrivers.has(d)) return;
-    const isUnconfigured = (p as any).status === "notConfigured" || p.auth.status === "unauthenticated";
-    if (isUnconfigured && !pools.some((pool) => String(pool.driver) === d)) {
-      seenDrivers.add(d);
-      notConfiguredDrivers.push({
-        driver: d,
-        name: getProviderLabel(d),
-      });
-    }
-  });
+
 
   const externalLinks = collectExternalUsageLinks(presentations);
   const cursorPromptAt =
@@ -912,7 +900,14 @@ export function UsageLimitsPooled({
       pools.findIndex((pool) => pool.driver === "claudeAgent" || (pool.driver as any) === "claude"),
     ) + 1;
 
-  const openSettings = () => {
+  const openSettings = (openAddProvider = false) => {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("tm-open-settings", {
+          detail: { section: "accounts", openAddProvider },
+        }),
+      );
+    }
     if (typeof (window as any).tokenMonitor?.openSettings === "function") {
       (window as any).tokenMonitor.openSettings();
     } else {
@@ -923,10 +918,17 @@ export function UsageLimitsPooled({
 
   return (
     <div className="flex flex-col gap-8">
-      {pools.length === 0 && notices.length === 0 && !cursorPrompt && externalLinks.length === 0 && notConfiguredDrivers.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          No provider on the selected environments reports subscription limits.
-        </p>
+      {pools.length === 0 && notices.length === 0 && !cursorPrompt && externalLinks.length === 0 ? (
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border/60 py-12 px-4 text-center">
+          <p className="text-sm font-medium text-foreground">No providers configured</p>
+          <p className="mt-1 max-w-sm text-xs text-muted-foreground">
+            Connect an AI provider account to monitor subscription limits and rate windows in real time.
+          </p>
+          <Button size="sm" onClick={() => openSettings(true)} className="mt-4 gap-1.5">
+            <PlusIcon className="size-4" />
+            <span>Add Provider</span>
+          </Button>
+        </div>
       ) : null}
 
       {pools.map((pool, index) => (
@@ -938,35 +940,18 @@ export function UsageLimitsPooled({
 
       {cursorPromptAt === pools.length ? cursorPrompt : null}
 
-      {notConfiguredDrivers.length > 0 ? (
-        <section className="flex flex-col gap-3">
-          <h2 className="tm-label !text-foreground">
-            Unconfigured Providers
-          </h2>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {notConfiguredDrivers.map(({ driver, name }) => (
-              <div
-                key={driver}
-                className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/20 p-4"
-              >
-                <div className="flex items-center gap-3">
-                  <ProviderInstanceIcon
-                    driverKind={driver as any}
-                    displayName={name}
-                    className="size-5"
-                    iconClassName="size-4 text-foreground/80"
-                  />
-                  <div>
-                    <h3 className="text-sm font-medium text-foreground">{name}</h3>
-                    <p className="text-xs text-muted-foreground">Not configured</p>
-                  </div>
-                </div>
-                <Button size="xs" variant="outline" onClick={openSettings}>
-                  Add account
-                </Button>
-              </div>
-            ))}
+      {pools.length > 0 ? (
+        <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed border-border/70 bg-muted/15 p-4">
+          <div className="min-w-0 space-y-0.5">
+            <h3 className="text-sm font-medium text-foreground">Add Provider</h3>
+            <p className="text-xs text-muted-foreground">
+              Connect an AI provider account to monitor live usage and subscription limits.
+            </p>
           </div>
+          <Button size="sm" variant="outline" onClick={() => openSettings(true)} className="gap-1.5 shrink-0">
+            <PlusIcon className="size-4" />
+            <span>Add Provider</span>
+          </Button>
         </section>
       ) : null}
 

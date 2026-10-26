@@ -182,6 +182,19 @@ export function useProviderAccounts(settings: TokenMonitorSettingsState): Provid
     };
   }, []);
 
+  // Generic credential actions
+  const handleGenericSave = useCallback((providerId: string) => async (fields: Record<string, any>) => {
+    if (window.tokenMonitor?.limits?.saveCredential) {
+      await window.tokenMonitor.limits.saveCredential(providerId, fields);
+    }
+  }, []);
+
+  const handleGenericClear = useCallback((providerId: string) => async () => {
+    if (window.tokenMonitor?.limits?.clearCredential) {
+      await window.tokenMonitor.limits.clearCredential(providerId);
+    }
+  }, []);
+
   // Codex actions
   const handleCodexSignIn = useCallback(async () => {
     setCodexLoggingIn(true);
@@ -369,7 +382,7 @@ export function useProviderAccounts(settings: TokenMonitorSettingsState): Provid
 
   const handleCopilotSave = useCallback(async (fields: Record<string, any>) => {
     if (fields.token?.trim() && window.tokenMonitor?.limits?.saveCredential) {
-      await window.tokenMonitor.limits.saveCredential('copilot', { token: fields.token.trim() });
+      await window.tokenMonitor.limits.saveCredential('copilot', { copilotApiToken: fields.token.trim(), token: fields.token.trim() });
     }
   }, []);
 
@@ -381,7 +394,7 @@ export function useProviderAccounts(settings: TokenMonitorSettingsState): Provid
 
   // Cursor actions
   const handleCursorSave = useCallback(async (fields: Record<string, any>) => {
-    const token = fields.token?.trim();
+    const token = fields.token?.trim() || fields.cursorSessionToken?.trim();
     if (token && window.tokenMonitor?.cursor?.loginManual) {
       await window.tokenMonitor.cursor.loginManual(token);
       const s = await window.tokenMonitor.cursor.status();
@@ -453,7 +466,7 @@ export function useProviderAccounts(settings: TokenMonitorSettingsState): Provid
     if (!name) return;
     if (window.tokenMonitor?.opencode?.deleteProfile) {
       await window.tokenMonitor.opencode.deleteProfile(name);
-      const p = await window.tokenMonitor.opencode.getProfiles();
+      const p = await window.tokenMonitor?.opencode?.getProfiles();
       setOpencodeProfiles(extractProfilesMap(p));
     }
   }, []);
@@ -461,7 +474,7 @@ export function useProviderAccounts(settings: TokenMonitorSettingsState): Provid
   const handleOpencodeSetEnabled = useCallback(async (name: string, on: boolean) => {
     if (window.tokenMonitor?.opencode?.setProfileEnabled) {
       await window.tokenMonitor.opencode.setProfileEnabled(name, on);
-      const p = await window.tokenMonitor.opencode.getProfiles();
+      const p = await window.tokenMonitor?.opencode?.getProfiles();
       setOpencodeProfiles(extractProfilesMap(p));
     }
   }, []);
@@ -563,7 +576,7 @@ export function useProviderAccounts(settings: TokenMonitorSettingsState): Provid
     }
   }, []);
 
-  // Providers assembly
+  // Providers assembly (ordered according to LIMIT_PROVIDER_CATALOG)
   const providers: ProviderAccounts[] = [];
 
   // 1. Claude
@@ -619,7 +632,54 @@ export function useProviderAccounts(settings: TokenMonitorSettingsState): Provid
     },
   });
 
-  // 3. Antigravity
+  // 3. OpenCode
+  const opencodeAccountsList: AccountItem[] = Object.entries(opencodeProfiles).map(([name, prof]) => ({
+    id: name,
+    label: name,
+    enabled: prof.enabled !== false,
+    isActive: prof.isActive,
+  }));
+  providers.push({
+    providerId: 'opencode',
+    label: 'OpenCode',
+    icon: 'opencode',
+    authKind: 'apiKey',
+    status: opencodeAccountsList.length > 0 ? 'connected' : 'notConfigured',
+    accounts: opencodeAccountsList,
+    actions: {
+      saveCredential: handleOpencodeSave,
+      addAccount: handleOpencodeSave,
+      remove: handleOpencodeDelete,
+      setEnabled: handleOpencodeSetEnabled,
+      refresh: () => window.tokenMonitor?.opencode?.getProfiles?.().then((p: any) => setOpencodeProfiles(extractProfilesMap(p))),
+    },
+  });
+
+  // 4. Cursor
+  const cursorAccountsList: AccountItem[] = (cursorStatus?.accounts || []).map((acc: any) => ({
+    id: acc.id,
+    label: resolveAccountLabel(acc, maskEmails),
+    enabled: acc.enabled !== false,
+    isActive: (acc as any).isActive ?? acc.isDefault,
+  }));
+  const isCursorConfigured = cursorAccountsList.length > 0 || Boolean(settings.cursorSessionTokenConfigured || settings.cursorSessionToken === 'set');
+  providers.push({
+    providerId: 'cursor',
+    label: 'Cursor',
+    icon: 'cursor',
+    authKind: 'token',
+    status: isCursorConfigured ? 'connected' : 'notConfigured',
+    accounts: cursorAccountsList,
+    actions: {
+      saveCredential: handleCursorSave,
+      addAccount: (token: string) => handleCursorSave({ token }),
+      remove: handleCursorLogout,
+      setEnabled: handleCursorSetEnabled,
+      refresh: () => window.tokenMonitor?.cursor?.status?.().then((s: any) => setCursorStatus(s || null)),
+    },
+  });
+
+  // 5. Antigravity
   providers.push({
     providerId: 'antigravity',
     label: 'Google Antigravity',
@@ -643,90 +703,98 @@ export function useProviderAccounts(settings: TokenMonitorSettingsState): Provid
     },
   });
 
-  // 4. WorkBuddy
-  providers.push({
-    providerId: 'workbuddy',
-    label: 'WorkBuddy',
-    icon: 'workbuddy',
-    authKind: 'oauth',
-    status: workbuddyLoggingIn !== null ? 'pending' : workbuddyAccounts.length > 0 ? 'connected' : 'notConfigured',
-    accounts: workbuddyAccounts.map((acc: any) => ({
-      id: acc.id,
-      label: `${acc.realm ? `[${acc.realm.toUpperCase()}] ` : ''}${resolveAccountLabel(acc, maskEmails)}`,
-      enabled: acc.enabled !== false,
-      isActive: (acc as any).isActive ?? acc.isDefault,
-      realm: acc.realm,
-    })),
-    pendingDetail: workbuddyLoggingIn !== null
-      ? { message: workbuddyStatusMessage || `Opening WorkBuddy ${workbuddyLoggingIn.toUpperCase()} authentication...` }
-      : null,
-    actions: {
-      signIn: handleWorkBuddySignIn,
-      addAccount: handleWorkBuddySignIn,
-      cancel: handleWorkBuddyCancel,
-      remove: handleWorkBuddyRemove,
-      setEnabled: handleWorkBuddySetEnabled,
-      refresh: () => window.tokenMonitor?.workbuddy?.accounts?.().then((accs: any) => setWorkbuddyAccounts(accs || [])),
-    },
-  });
-
-  // 5. Notion
-  const isNotionConfigured = Boolean(
-    settings.notionCookieConfigured ||
-    settings.notionCookie === 'set' ||
-    settings.notionWorkspaceId
+  // 6. Cline
+  const isClineConfigured = Boolean(
+    settings.clineCredentialConfigured ||
+    settings.clineApiKeyConfigured ||
+    settings.clineApiKey === 'set'
   );
   providers.push({
-    providerId: 'notion',
-    label: 'Notion AI',
-    icon: 'notion',
-    authKind: 'cookie',
-    status: isNotionConfigured ? 'connected' : 'notConfigured',
-    accounts: isNotionConfigured
-      ? [
-          {
-            id: 'notion',
-            label: maskEmailIfNeeded(settings.notionWorkspaceId || 'Notion Workspace', maskEmails) || 'Notion Workspace',
-            enabled: true,
-            isActive: true,
-          },
-        ]
-      : [],
-    actions: {
-      saveCredential: handleNotionSave,
-      remove: handleNotionClear,
-    },
-  });
-
-  // 6. MiniMax
-  const isMinimaxConfigured = Boolean(
-    settings.minimaxApiKeyConfigured ||
-    settings.minimaxApiKey === 'set'
-  );
-  providers.push({
-    providerId: 'minimax',
-    label: 'MiniMax',
-    icon: 'minimax',
+    providerId: 'cline',
+    label: 'Cline',
+    icon: 'cline',
     authKind: 'apiKey',
-    status: isMinimaxConfigured ? 'connected' : 'notConfigured',
-    accounts: isMinimaxConfigured
+    status: isClineConfigured ? 'connected' : 'notConfigured',
+    accounts: isClineConfigured
+      ? [{ id: 'cline', label: 'Cline API Key', enabled: true, isActive: true }]
+      : [],
+    actions: {
+      saveCredential: handleGenericSave('cline'),
+      remove: handleGenericClear('cline'),
+    },
+  });
+
+  // 7. Factory Droid
+  const isFactoryConfigured = Boolean(
+    settings.factoryCredentialConfigured ||
+    settings.factoryApiKeyConfigured ||
+    settings.factoryApiKey === 'set'
+  );
+  providers.push({
+    providerId: 'factory',
+    label: 'Factory Droid',
+    icon: 'factory',
+    authKind: 'apiKey',
+    status: isFactoryConfigured ? 'connected' : 'notConfigured',
+    accounts: isFactoryConfigured
+      ? [{ id: 'factory', label: 'Factory API Key', enabled: true, isActive: true }]
+      : [],
+    actions: {
+      saveCredential: handleGenericSave('factory'),
+      remove: handleGenericClear('factory'),
+    },
+  });
+
+  // 8. Kimi
+  const isKimiConfigured = Boolean(
+    settings.kimiCredentialConfigured ||
+    settings.kimiApiKeyConfigured ||
+    settings.kimiWebAccessTokenConfigured ||
+    settings.kimiApiKey === 'set' ||
+    settings.kimiWebAccessToken === 'set'
+  );
+  providers.push({
+    providerId: 'kimi',
+    label: 'Kimi',
+    icon: 'kimi',
+    authKind: 'apiKey',
+    status: isKimiConfigured ? 'connected' : 'notConfigured',
+    accounts: isKimiConfigured
       ? [
           {
-            id: 'minimax',
-            label: settings.minimaxBillingMode === 'api' ? 'MiniMax API Plan' : 'MiniMax Token Plan',
+            id: 'kimi',
+            label: settings.kimiApiKeyConfigured ? 'Kimi Code API' : 'Kimi Web Session',
             enabled: true,
             isActive: true,
           },
         ]
       : [],
     actions: {
-      saveCredential: handleMiniMaxSave,
-      remove: handleMiniMaxClear,
+      saveCredential: handleKimiSave,
+      remove: handleKimiClear,
     },
   });
 
-  // 7. Copilot
+  // 9. Grok
+  const isGrokConfigured = Boolean(
+    settings.grokConfigured ||
+    settings.grokAutoDetected
+  );
+  providers.push({
+    providerId: 'grok',
+    label: 'Grok',
+    icon: 'grok',
+    authKind: 'local',
+    status: isGrokConfigured ? 'connected' : 'notConfigured',
+    accounts: isGrokConfigured
+      ? [{ id: 'grok', label: 'Grok Local CLI', enabled: true, isActive: true }]
+      : [],
+    actions: {},
+  });
+
+  // 10. Copilot
   const isCopilotConfigured = Boolean(
+    settings.copilotApiTokenConfigured ||
     settings.copilotTokenConfigured ||
     settings.copilotConfigured ||
     settings.copilotToken === 'set'
@@ -761,31 +829,47 @@ export function useProviderAccounts(settings: TokenMonitorSettingsState): Provid
     },
   });
 
-  // 8. Cursor
-  const cursorAccountsList: AccountItem[] = (cursorStatus?.accounts || []).map((acc: any) => ({
-    id: acc.id,
-    label: resolveAccountLabel(acc, maskEmails),
-    enabled: acc.enabled !== false,
-    isActive: (acc as any).isActive ?? acc.isDefault,
-  }));
-  const isCursorConfigured = cursorAccountsList.length > 0 || Boolean(settings.cursorSessionTokenConfigured || settings.cursorSessionToken === 'set');
+  // 11. Zed
+  const isZedConfigured = Boolean(
+    settings.zedCookieConfigured ||
+    settings.zedCookie === 'set'
+  );
   providers.push({
-    providerId: 'cursor',
-    label: 'Cursor',
-    icon: 'cursor',
-    authKind: 'token',
-    status: isCursorConfigured ? 'connected' : 'notConfigured',
-    accounts: cursorAccountsList,
+    providerId: 'zed',
+    label: 'Zed',
+    icon: 'zed',
+    authKind: 'cookie',
+    status: isZedConfigured ? 'connected' : 'notConfigured',
+    accounts: isZedConfigured
+      ? [{ id: 'zed', label: 'Zed Web Session', enabled: true, isActive: true }]
+      : [],
     actions: {
-      saveCredential: handleCursorSave,
-      addAccount: (token: string) => handleCursorSave({ token }),
-      remove: handleCursorLogout,
-      setEnabled: handleCursorSetEnabled,
-      refresh: () => window.tokenMonitor?.cursor?.status?.().then((s: any) => setCursorStatus(s || null)),
+      saveCredential: handleGenericSave('zed'),
+      remove: handleGenericClear('zed'),
     },
   });
 
-  // 9. MiMo
+  // 12. Command Code
+  const isCommandCodeConfigured = Boolean(
+    settings.commandcodeCookieConfigured ||
+    settings.commandcodeCookie === 'set'
+  );
+  providers.push({
+    providerId: 'commandcode',
+    label: 'Command Code',
+    icon: 'commandcode',
+    authKind: 'cookie',
+    status: isCommandCodeConfigured ? 'connected' : 'notConfigured',
+    accounts: isCommandCodeConfigured
+      ? [{ id: 'commandcode', label: 'Command Code Session', enabled: true, isActive: true }]
+      : [],
+    actions: {
+      saveCredential: handleGenericSave('commandcode'),
+      remove: handleGenericClear('commandcode'),
+    },
+  });
+
+  // 13. MiMo
   providers.push({
     providerId: 'mimo',
     label: 'Xiaomi MiMo',
@@ -807,30 +891,220 @@ export function useProviderAccounts(settings: TokenMonitorSettingsState): Provid
     },
   });
 
-  // 10. OpenCode
-  const opencodeAccountsList: AccountItem[] = Object.entries(opencodeProfiles).map(([name, prof]) => ({
-    id: name,
-    label: name,
-    enabled: prof.enabled !== false,
-    isActive: prof.isActive,
-  }));
+  // 14. Z.ai / GLM
+  const isZaiConfigured = Boolean(
+    settings.zaiApiKeyConfigured ||
+    settings.zaiApiKey === 'set'
+  );
   providers.push({
-    providerId: 'opencode',
-    label: 'OpenCode',
-    icon: 'opencode',
+    providerId: 'zai',
+    label: 'Z.ai / GLM',
+    icon: 'zai',
     authKind: 'apiKey',
-    status: opencodeAccountsList.length > 0 ? 'connected' : 'notConfigured',
-    accounts: opencodeAccountsList,
+    status: isZaiConfigured ? 'connected' : 'notConfigured',
+    accounts: isZaiConfigured
+      ? [{ id: 'zai', label: 'Z.ai Coding Plan', enabled: true, isActive: true }]
+      : [],
     actions: {
-      saveCredential: handleOpencodeSave,
-      addAccount: handleOpencodeSave,
-      remove: handleOpencodeDelete,
-      setEnabled: handleOpencodeSetEnabled,
-      refresh: () => window.tokenMonitor?.opencode?.getProfiles?.().then((p: any) => setOpencodeProfiles(extractProfilesMap(p))),
+      saveCredential: handleGenericSave('zai'),
+      remove: handleGenericClear('zai'),
     },
   });
 
-  // 11. OpenRouter
+  // 15. GLM Team
+  const isZaiTeamConfigured = Boolean(
+    settings.zaiTeamApiKeyConfigured ||
+    settings.zaiTeamApiKey === 'set'
+  );
+  providers.push({
+    providerId: 'zaiteam',
+    label: 'GLM Team',
+    icon: 'zaiteam',
+    authKind: 'apiKey',
+    status: isZaiTeamConfigured ? 'connected' : 'notConfigured',
+    accounts: isZaiTeamConfigured
+      ? [{ id: 'zaiteam', label: 'GLM Team Plan', enabled: true, isActive: true }]
+      : [],
+    actions: {
+      saveCredential: handleGenericSave('zaiteam'),
+      remove: handleGenericClear('zaiteam'),
+    },
+  });
+
+  // 16. Kiro
+  const isKiroConfigured = Boolean(
+    settings.kiroConfigured ||
+    settings.kiroAutoDetected
+  );
+  providers.push({
+    providerId: 'kiro',
+    label: 'Kiro',
+    icon: 'kiro',
+    authKind: 'local',
+    status: isKiroConfigured ? 'connected' : 'notConfigured',
+    accounts: isKiroConfigured
+      ? [{ id: 'kiro', label: 'Kiro CLI Session', enabled: true, isActive: true }]
+      : [],
+    actions: {},
+  });
+
+  // 17. WorkBuddy
+  providers.push({
+    providerId: 'workbuddy',
+    label: 'WorkBuddy',
+    icon: 'workbuddy',
+    authKind: 'oauth',
+    status: workbuddyLoggingIn !== null ? 'pending' : workbuddyAccounts.length > 0 ? 'connected' : 'notConfigured',
+    accounts: workbuddyAccounts.map((acc: any) => ({
+      id: acc.id,
+      label: `${acc.realm ? `[${acc.realm.toUpperCase()}] ` : ''}${resolveAccountLabel(acc, maskEmails)}`,
+      enabled: acc.enabled !== false,
+      isActive: (acc as any).isActive ?? acc.isDefault,
+      realm: acc.realm,
+    })),
+    pendingDetail: workbuddyLoggingIn !== null
+      ? { message: workbuddyStatusMessage || `Opening WorkBuddy ${workbuddyLoggingIn.toUpperCase()} authentication...` }
+      : null,
+    actions: {
+      signIn: handleWorkBuddySignIn,
+      addAccount: handleWorkBuddySignIn,
+      cancel: handleWorkBuddyCancel,
+      remove: handleWorkBuddyRemove,
+      setEnabled: handleWorkBuddySetEnabled,
+      refresh: () => window.tokenMonitor?.workbuddy?.accounts?.().then((accs: any) => setWorkbuddyAccounts(accs || [])),
+    },
+  });
+
+  // 18. Qoder
+  const isQoderConfigured = Boolean(
+    settings.qoderCookieConfigured ||
+    settings.qoderCookie === 'set' ||
+    settings.qoderAutoDetected
+  );
+  providers.push({
+    providerId: 'qoder',
+    label: 'Qoder',
+    icon: 'qoder',
+    authKind: 'cookie',
+    status: isQoderConfigured ? 'connected' : 'notConfigured',
+    accounts: isQoderConfigured
+      ? [
+          {
+            id: 'qoder',
+            label: settings.qoderSite === 'cn' ? 'Qoder (CN)' : 'Qoder (Global)',
+            enabled: true,
+            isActive: true,
+          },
+        ]
+      : [],
+    actions: {
+      saveCredential: handleGenericSave('qoder'),
+      remove: handleGenericClear('qoder'),
+    },
+  });
+
+  // 19. DeepSeek
+  const isDeepSeekConfigured = Boolean(
+    settings.deepseekApiKeyConfigured ||
+    settings.deepseekApiKey === 'set'
+  );
+  providers.push({
+    providerId: 'deepseek',
+    label: 'DeepSeek',
+    icon: 'deepseek',
+    authKind: 'apiKey',
+    status: isDeepSeekConfigured ? 'connected' : 'notConfigured',
+    accounts: isDeepSeekConfigured
+      ? [
+          {
+            id: 'deepseek',
+            label: 'DeepSeek API Key',
+            enabled: true,
+            isActive: true,
+          },
+        ]
+      : [],
+    actions: {
+      saveCredential: handleDeepSeekSave,
+      remove: handleDeepSeekClear,
+    },
+  });
+
+  // 20. Devin
+  const isDevinConfigured = Boolean(
+    settings.devinBearerTokenConfigured ||
+    settings.devinBearerToken === 'set'
+  );
+  providers.push({
+    providerId: 'devin',
+    label: 'Devin',
+    icon: 'devin',
+    authKind: 'token',
+    status: isDevinConfigured ? 'connected' : 'notConfigured',
+    accounts: isDevinConfigured
+      ? [
+          {
+            id: 'devin',
+            label: settings.devinOrganization ? `Devin (${settings.devinOrganization})` : 'Devin Session',
+            enabled: true,
+            isActive: true,
+          },
+        ]
+      : [],
+    actions: {
+      saveCredential: handleGenericSave('devin'),
+      remove: handleGenericClear('devin'),
+    },
+  });
+
+  // 21. MiniMax
+  const isMinimaxConfigured = Boolean(
+    settings.minimaxApiKeyConfigured ||
+    settings.minimaxApiKey === 'set'
+  );
+  providers.push({
+    providerId: 'minimax',
+    label: 'MiniMax',
+    icon: 'minimax',
+    authKind: 'apiKey',
+    status: isMinimaxConfigured ? 'connected' : 'notConfigured',
+    accounts: isMinimaxConfigured
+      ? [
+          {
+            id: 'minimax',
+            label: settings.minimaxBillingMode === 'api' ? 'MiniMax API Plan' : 'MiniMax Token Plan',
+            enabled: true,
+            isActive: true,
+          },
+        ]
+      : [],
+    actions: {
+      saveCredential: handleMiniMaxSave,
+      remove: handleMiniMaxClear,
+    },
+  });
+
+  // 22. TypeSafe
+  const isTypesafeConfigured = Boolean(
+    settings.typesafeCookieConfigured ||
+    settings.typesafeCookie === 'set'
+  );
+  providers.push({
+    providerId: 'typesafe',
+    label: 'TypeSafe',
+    icon: 'typesafe',
+    authKind: 'cookie',
+    status: isTypesafeConfigured ? 'connected' : 'notConfigured',
+    accounts: isTypesafeConfigured
+      ? [{ id: 'typesafe', label: 'TypeSafe Web Session', enabled: true, isActive: true }]
+      : [],
+    actions: {
+      saveCredential: handleGenericSave('typesafe'),
+      remove: handleGenericClear('typesafe'),
+    },
+  });
+
+  // 23. OpenRouter
   const openrouterAccountsList: AccountItem[] = Object.entries(openrouterProfiles).map(([name, prof]) => ({
     id: name,
     label: name,
@@ -853,60 +1127,7 @@ export function useProviderAccounts(settings: TokenMonitorSettingsState): Provid
     },
   });
 
-  // 12. Third-party
-  const thirdpartyAccountsList: AccountItem[] = Object.entries(thirdpartyProfiles).map(([name, prof]) => ({
-    id: name,
-    label: `${name}${prof.baseUrl ? ` (${prof.baseUrl})` : ''}`,
-    enabled: prof.enabled !== false,
-    isActive: prof.isActive,
-  }));
-  providers.push({
-    providerId: 'thirdparty',
-    label: 'Third-party Endpoints',
-    icon: 'thirdparty',
-    authKind: 'apiKey',
-    status: thirdpartyAccountsList.length > 0 ? 'connected' : 'notConfigured',
-    accounts: thirdpartyAccountsList,
-    actions: {
-      saveCredential: handleThirdpartySave,
-      addAccount: handleThirdpartySave,
-      remove: handleThirdpartyDelete,
-      setEnabled: handleThirdpartySetEnabled,
-      refresh: () => window.tokenMonitor?.thirdparty?.getProfiles?.().then((p: any) => setThirdpartyProfiles(extractProfilesMap(p))),
-    },
-  });
-
-  // 13. Kimi
-  const isKimiConfigured = Boolean(
-    settings.kimiCredentialConfigured ||
-    settings.kimiApiKeyConfigured ||
-    settings.kimiWebAccessTokenConfigured ||
-    settings.kimiApiKey === 'set' ||
-    settings.kimiWebAccessToken === 'set'
-  );
-  providers.push({
-    providerId: 'kimi',
-    label: 'Kimi',
-    icon: 'kimi',
-    authKind: 'apiKey',
-    status: isKimiConfigured ? 'connected' : 'notConfigured',
-    accounts: isKimiConfigured
-      ? [
-          {
-            id: 'kimi',
-            label: settings.kimiApiKeyConfigured ? 'Kimi Code API' : 'Kimi Web Session',
-            enabled: true,
-            isActive: true,
-          },
-        ]
-      : [],
-    actions: {
-      saveCredential: handleKimiSave,
-      remove: handleKimiClear,
-    },
-  });
-
-  // 14. Volcengine
+  // 24. Volcengine Ark
   const isVolcengineConfigured = Boolean(
     settings.volcengineCredentialsConfigured ||
     settings.volcengineAccessKeyIdConfigured ||
@@ -934,30 +1155,134 @@ export function useProviderAccounts(settings: TokenMonitorSettingsState): Provid
     },
   });
 
-  // 15. DeepSeek
-  const isDeepSeekConfigured = Boolean(
-    settings.deepseekApiKeyConfigured ||
-    settings.deepseekApiKey === 'set'
+  // 25. Ollama
+  const isOllamaConfigured = Boolean(
+    settings.ollamaCookieConfigured ||
+    settings.ollamaCookie === 'set'
   );
   providers.push({
-    providerId: 'deepseek',
-    label: 'DeepSeek',
-    icon: 'deepseek',
-    authKind: 'apiKey',
-    status: isDeepSeekConfigured ? 'connected' : 'notConfigured',
-    accounts: isDeepSeekConfigured
+    providerId: 'ollama',
+    label: 'Ollama',
+    icon: 'ollama',
+    authKind: 'cookie',
+    status: isOllamaConfigured ? 'connected' : 'notConfigured',
+    accounts: isOllamaConfigured
+      ? [{ id: 'ollama', label: 'Ollama Web Session', enabled: true, isActive: true }]
+      : [],
+    actions: {
+      saveCredential: handleGenericSave('ollama'),
+      remove: handleGenericClear('ollama'),
+    },
+  });
+
+  // 26. Trae CN
+  const isTraeConfigured = Boolean(
+    settings.traeAccessTokenConfigured ||
+    settings.traeAccessToken === 'set'
+  );
+  providers.push({
+    providerId: 'trae',
+    label: 'Trae CN',
+    icon: 'trae',
+    authKind: 'token',
+    status: isTraeConfigured ? 'connected' : 'notConfigured',
+    accounts: isTraeConfigured
+      ? [{ id: 'trae', label: 'Trae CN Session', enabled: true, isActive: true }]
+      : [],
+    actions: {
+      saveCredential: handleGenericSave('trae'),
+      remove: handleGenericClear('trae'),
+    },
+  });
+
+  // 27. Alibaba Cloud
+  const isAlibabaConfigured = Boolean(
+    settings.alibabaCookieConfigured ||
+    settings.alibabaCookie === 'set'
+  );
+  providers.push({
+    providerId: 'alibaba',
+    label: 'Alibaba Cloud',
+    icon: 'alibaba',
+    authKind: 'cookie',
+    status: isAlibabaConfigured ? 'connected' : 'notConfigured',
+    accounts: isAlibabaConfigured
+      ? [{ id: 'alibaba', label: 'Alibaba Cloud Token Plan', enabled: true, isActive: true }]
+      : [],
+    actions: {
+      saveCredential: handleGenericSave('alibaba'),
+      remove: handleGenericClear('alibaba'),
+    },
+  });
+
+  // 28. StepFun
+  const isStepfunConfigured = Boolean(
+    settings.stepfunTokenConfigured ||
+    settings.stepfunToken === 'set'
+  );
+  providers.push({
+    providerId: 'stepfun',
+    label: 'StepFun',
+    icon: 'stepfun',
+    authKind: 'token',
+    status: isStepfunConfigured ? 'connected' : 'notConfigured',
+    accounts: isStepfunConfigured
+      ? [{ id: 'stepfun', label: 'StepFun Session', enabled: true, isActive: true }]
+      : [],
+    actions: {
+      saveCredential: handleGenericSave('stepfun'),
+      remove: handleGenericClear('stepfun'),
+    },
+  });
+
+  // 29. Notion AI
+  const isNotionConfigured = Boolean(
+    settings.notionCookieConfigured ||
+    settings.notionCookie === 'set' ||
+    settings.notionWorkspaceId
+  );
+  providers.push({
+    providerId: 'notion',
+    label: 'Notion AI',
+    icon: 'notion',
+    authKind: 'cookie',
+    status: isNotionConfigured ? 'connected' : 'notConfigured',
+    accounts: isNotionConfigured
       ? [
           {
-            id: 'deepseek',
-            label: 'DeepSeek API Key',
+            id: 'notion',
+            label: maskEmailIfNeeded(settings.notionWorkspaceId || 'Notion Workspace', maskEmails) || 'Notion Workspace',
             enabled: true,
             isActive: true,
           },
         ]
       : [],
     actions: {
-      saveCredential: handleDeepSeekSave,
-      remove: handleDeepSeekClear,
+      saveCredential: handleNotionSave,
+      remove: handleNotionClear,
+    },
+  });
+
+  // 30. Third-party Endpoints
+  const thirdpartyAccountsList: AccountItem[] = Object.entries(thirdpartyProfiles).map(([name, prof]) => ({
+    id: name,
+    label: `${name}${prof.baseUrl ? ` (${prof.baseUrl})` : ''}`,
+    enabled: prof.enabled !== false,
+    isActive: prof.isActive,
+  }));
+  providers.push({
+    providerId: 'thirdparty',
+    label: 'Third-party Endpoints',
+    icon: 'thirdparty',
+    authKind: 'apiKey',
+    status: thirdpartyAccountsList.length > 0 ? 'connected' : 'notConfigured',
+    accounts: thirdpartyAccountsList,
+    actions: {
+      saveCredential: handleThirdpartySave,
+      addAccount: handleThirdpartySave,
+      remove: handleThirdpartyDelete,
+      setEnabled: handleThirdpartySetEnabled,
+      refresh: () => window.tokenMonitor?.thirdparty?.getProfiles?.().then((p: any) => setThirdpartyProfiles(extractProfilesMap(p))),
     },
   });
 
