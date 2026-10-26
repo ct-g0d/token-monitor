@@ -490,9 +490,6 @@ Object.assign(els, {
   appUpdatePopoverRelease: document.getElementById('appUpdatePopoverRelease'),
   appUpdatePopoverClose: document.getElementById('appUpdatePopoverClose'),
   appUpdateInstalled: document.getElementById('appUpdateInstalled'),
-  automaticAppUpdatesRow: document.getElementById('automaticAppUpdatesRow'),
-  automaticAppUpdatesInput: document.getElementById('automaticAppUpdatesInput'),
-  automaticAppUpdatesNote: document.getElementById('automaticAppUpdatesNote'),
   appUpdateLatest: document.getElementById('appUpdateLatest'),
   appUpdateCheckButton: document.getElementById('appUpdateCheckButton'),
   appUpdateViewReleaseButton: document.getElementById('appUpdateViewReleaseButton'),
@@ -1596,19 +1593,6 @@ function renderSettingsAppUpdateRow() {
   }
 }
 
-function renderAutomaticAppUpdateControl() {
-  if (!els.automaticAppUpdatesInput) return;
-  const control = appUpdatePresentationApi.automaticAppUpdateControlState({
-    preferenceEnabled: state.settings?.automaticAppUpdates,
-    updateState: state.appUpdate
-  });
-  els.automaticAppUpdatesInput.checked = control.checked;
-  els.automaticAppUpdatesInput.disabled = control.disabled;
-  els.automaticAppUpdatesRow?.classList.toggle('is-disabled', control.unavailable);
-  if (els.automaticAppUpdatesNote) {
-    els.automaticAppUpdatesNote.textContent = t(control.descriptionKey);
-  }
-}
 
 function compactAge(value) {
   const date = value ? new Date(value) : null;
@@ -8921,7 +8905,6 @@ function syncSettingsForm() {
   }
   if (els.wslScanInput) els.wslScanInput.checked = state.settings.wslScanEnabled !== false;
   if (els.sessionUsageArchiveInput) els.sessionUsageArchiveInput.checked = state.settings.sessionUsageArchiveEnabled !== false;
-  renderAutomaticAppUpdateControl();
   allTimeSessions.ensure();
   renderSessionUsageArchiveStatus();
   const exportAutoOn = Boolean(state.settings.exportAutoEnabled);
@@ -12181,7 +12164,6 @@ async function init() {
     state.appUpdate = payload;
     renderAppUpdatePill();
     renderSettingsAppUpdateRow();
-    renderAutomaticAppUpdateControl();
     if (els.appUpdatePopover.matches(':popover-open')) renderAppUpdatePopover(payload);
   });
   if (state.appInfo?.loginItemSupported) {
@@ -12989,7 +12971,6 @@ els.showTrayProviderBadgeInput.addEventListener('change', () => {
 els.windowToggleShortcutValue?.addEventListener('click', startWindowShortcutRecording);
 els.windowToggleShortcutClearButton?.addEventListener('click', () => setWindowToggleShortcut('').catch(() => {}));
 els.startAtLoginInput?.addEventListener('change', () => saveSettings({ startAtLogin: els.startAtLoginInput.checked }));
-els.automaticAppUpdatesInput?.addEventListener('change', () => saveSettings({ automaticAppUpdates: els.automaticAppUpdatesInput.checked }));
 els.glassInput.addEventListener('change', saveAppearanceFromControls);
 els.blurInput.addEventListener('change', saveAppearanceFromControls);
 els.backgroundImageOpacityInput?.addEventListener('change', saveAppearanceFromControls);

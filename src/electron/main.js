@@ -203,7 +203,6 @@ const {
   mergeLatestReleaseMetadata,
   providerUpdateCheckAvailability,
   resolveAppUpdateCheckError,
-  shouldDownloadAutomaticAppUpdate,
   shouldSkipAppUpdateCheck,
   updateInstallQuitPolicy
 } = require('../shared/appUpdater');
@@ -7013,7 +7012,7 @@ async function runAppUpdateCheck({ force = false, bypassCooldown = false } = {})
       }
       sendAppUpdatePush();
     }
-    return maybeDownloadAutomaticAppUpdate(deriveAppUpdateState());
+    return deriveAppUpdateState();
   }
   const block = settings?.appUpdate || {};
   if (!bypassCooldown && shouldSkipAppUpdateCheck({
@@ -7023,7 +7022,7 @@ async function runAppUpdateCheck({ force = false, bypassCooldown = false } = {})
     dismissedVersion: block.dismissedVersion,
     currentVersion: app.getVersion()
   })) {
-    return maybeDownloadAutomaticAppUpdate(deriveAppUpdateState());
+    return deriveAppUpdateState();
   }
   const checkTask = (async () => {
     appUpdateCheckInFlight = true;
@@ -7068,16 +7067,9 @@ async function runAppUpdateCheck({ force = false, bypassCooldown = false } = {})
   } finally {
     if (appUpdateCheckPromise === checkTask) appUpdateCheckPromise = null;
   }
-  return maybeDownloadAutomaticAppUpdate(deriveAppUpdateState());
+  return deriveAppUpdateState();
 }
 
-async function maybeDownloadAutomaticAppUpdate(updateState) {
-  if (!shouldDownloadAutomaticAppUpdate({
-    automaticAppUpdates: settings?.automaticAppUpdates,
-    updateState
-  })) return updateState;
-  return downloadAndPrepareAppUpdate();
-}
 
 function maybeRunBackgroundUpdateCheck() {
   runAppUpdateCheck({ force: false }).catch(() => {});
@@ -7805,7 +7797,6 @@ app.whenReady().then(() => {
     const previousCompactTokenUnits = settings.compactTokenUnits;
     const previousLanguage = settings.language;
     const previousStartAtLogin = settings.startAtLogin;
-    const previousAutomaticAppUpdates = settings.automaticAppUpdates;
     const previousCustomModelPricing = JSON.stringify(settings.customModelPricing || []);
     const normalizedCurrency = patch.currency !== undefined ? normalizeSettingCurrency(patch.currency, settings.currency) : normalizeSettingCurrency(settings.currency);
     const normalizedPatch = { ...patch, currency: normalizedCurrency };
@@ -8025,9 +8016,6 @@ app.whenReady().then(() => {
     if (settings.startAtLogin !== previousStartAtLogin) {
       settings.startAtLogin = applyLoginItem(settings.startAtLogin);
       saveSettings({ throwOnError: true });
-    }
-    if (settings.automaticAppUpdates && !previousAutomaticAppUpdates) {
-      runAppUpdateCheck({ bypassCooldown: true }).catch(() => {});
     }
     if (patch.zoomFactor !== undefined) applyZoomFactor();
     if (settings.discordRpcEnabled && !previousDiscordRpcEnabled) {
