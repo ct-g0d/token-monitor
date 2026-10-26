@@ -53,7 +53,9 @@
 - [x] **Task 10 (`**`)**: Redesign arrangement for effective space utilization when window shrinks (ref: `image_ae57f434-ad0c-4afd-a216-435691072403`).
   - *Branch:* `t3/responsive-layout-arrangement`
   - *Status:* Completed; redesigned shell and page arrangement with responsive sidebar rail (w-16 to w-216), fluid typography on Totals, responsive activity stats, container query optimizations on limits, and compact padding when window shrinks down to 640x450.
-- [ ] **Task 11 (`*`)**: Align percentage number in the progress bar to be on the same line as the label text (ref: `image_d7258227-3749-4f9f-bf6b-d81d7d3f3f60`).
+- [x] **Task 11 (`*`)**: Align percentage number in the progress bar to be on the same line as its label text (ref: `image_d7258227-3749-4f9f-bf6b-d81d7d3f3f60`).
+  - *Branch:* `t3/align-limit-bar-percentages`
+  - *Status:* Completed; aligned progress bar percentage values on the same line as window label text with baseline alignment across responsive views while preserving container query thresholds and provider-specific layouts.
 - [ ] **Task 12 (`**`)**: Redesign status page + integrate Tibo reset forecasts.
 - [x] **Task 13 (`*`)**: Ensure language setting applies globally across the app.
   - *Branch:* `t3/global-language-setting`
