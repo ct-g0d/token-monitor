@@ -3,8 +3,14 @@ import { cn } from "~/lib/utils";
 import type { Icon } from "./Icons";
 import {
   AntigravityIcon,
+  AzureDevOpsIcon,
+  BitbucketIcon,
   ClaudeAI,
   CursorIcon,
+  ForgejoIcon,
+  GitCafeIcon,
+  GitHubIcon,
+  GitLabIcon,
   KiroIcon,
   OpenAI,
   TraeIcon,
@@ -789,6 +795,162 @@ export const ZaiIcon: Icon = ({ className, ...props }) => (
   </svg>
 );
 
+export const GroqIcon: Icon = ({ className, ...props }) => (
+  <svg
+    {...props}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    className={cn("size-4 shrink-0", className)}
+    aria-hidden="true"
+  >
+    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10c4.14 0 7.7-2.52 9.24-6.13h-4.38c-1.12 1.4-2.85 2.3-4.86 2.3-3.41 0-6.17-2.76-6.17-6.17S8.59 5.83 12 5.83c2.01 0 3.74.9 4.86 2.3h4.38C19.7 4.52 16.14 2 12 2z" fill="#f55036" />
+  </svg>
+);
+
+export const PerplexityIcon: Icon = ({ className, ...props }) => (
+  <svg
+    {...props}
+    viewBox="0 0 24 24"
+    fill="none"
+    className={cn("size-4 shrink-0", className)}
+    aria-hidden="true"
+  >
+    <path d="M12 2v8M12 14v8M2 12h8M14 12h8M4.93 4.93l5.66 5.66M13.41 13.41l5.66 5.66M4.93 19.07l5.66-5.66M13.41 10.59l5.66-5.66" stroke="#20808d" strokeWidth="2.5" strokeLinecap="round" />
+  </svg>
+);
+
+export const BedrockIcon: Icon = ({ className, ...props }) => (
+  <svg
+    {...props}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    className={cn("size-4 shrink-0", className)}
+    aria-hidden="true"
+  >
+    <path d="M12 2L3 7.5v9L12 22l9-5.5v-9L12 2zm0 2.2l6.8 4.1-3.2 2-6.8-4.2 3.2-1.9zm-7.2 5.8l6.2 3.8v7.4l-6.2-3.8v-7.4zm14.4 7.4l-6.2 3.8v-7.4l6.2-3.8v7.4z" fill="#ff9900" />
+  </svg>
+);
+
+export const VertexIcon: Icon = ({ className, ...props }) => (
+  <svg
+    {...props}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    className={cn("size-4 shrink-0", className)}
+    aria-hidden="true"
+  >
+    <path d="M12 2L4 12l8 10 8-10L12 2zm0 3.5L17.2 12 12 18.5 6.8 12 12 5.5z" fill="#4285f4" />
+  </svg>
+);
+
+export const TogetherIcon: Icon = ({ className, ...props }) => (
+  <svg
+    {...props}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    className={cn("size-4 shrink-0", className)}
+    aria-hidden="true"
+  >
+    <circle cx="8" cy="12" r="6" fill="#0f6fff" fillOpacity="0.85" /><circle cx="16" cy="12" r="6" fill="#0f6fff" fillOpacity="0.85" />
+  </svg>
+);
+
+export const CerebrasIcon: Icon = ({ className, ...props }) => (
+  <svg
+    {...props}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    className={cn("size-4 shrink-0", className)}
+    aria-hidden="true"
+  >
+    <path d="M12 2L2 9.5 5 22h14l3-12.5L12 2zm0 3.8l6.4 4.8-1.9 8.4H7.5l-1.9-8.4L12 5.8z" fill="#ff6f00" />
+  </svg>
+);
+
+export const FireworksIcon: Icon = ({ className, ...props }) => (
+  <svg
+    {...props}
+    viewBox="0 0 24 24"
+    fill="none"
+    className={cn("size-4 shrink-0", className)}
+    aria-hidden="true"
+  >
+    <path d="M12 1v5M12 18v5M1 12h5M18 12h5M4.22 4.22l3.54 3.54M16.24 16.24l3.54 3.54M4.22 19.78l3.54-3.54M16.24 7.76l3.54-3.54" stroke="#ff4f00" strokeWidth="2.5" strokeLinecap="round" />
+  </svg>
+);
+
+export const SambanovaIcon: Icon = ({ className, ...props }) => (
+  <svg
+    {...props}
+    viewBox="0 0 24 24"
+    fill="none"
+    className={cn("size-4 shrink-0", className)}
+    aria-hidden="true"
+  >
+    <path d="M18 4H6a2 2 0 00-2 2v4a2 2 0 002 2h12a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2" stroke="#f58220" strokeWidth="3" strokeLinecap="round" />
+  </svg>
+);
+
+export const HyperbolicIcon: Icon = ({ className, ...props }) => (
+  <svg
+    {...props}
+    viewBox="0 0 24 24"
+    fill="none"
+    className={cn("size-4 shrink-0", className)}
+    aria-hidden="true"
+  >
+    <path d="M5 4v16M19 4v16M5 12h14" stroke="#26b5ce" strokeWidth="3.5" strokeLinecap="round" />
+  </svg>
+);
+
+export const Ai21Icon: Icon = ({ className, ...props }) => (
+  <svg
+    {...props}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    className={cn("size-4 shrink-0", className)}
+    aria-hidden="true"
+  >
+    <path d="M4 18l5-12h2l5 12h-2.5l-1.2-3H7.7l-1.2 3H4zm4.5-5.2h3.1L10 8.5 8.5 12.8zM17 6h3v12h-3V6z" fill="#7142cf" />
+  </svg>
+);
+
+export const ReplicateIcon: Icon = ({ className, ...props }) => (
+  <svg
+    {...props}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    className={cn("size-4 shrink-0", className)}
+    aria-hidden="true"
+  >
+    <path d="M4 4h16v4H4V4zm0 6h11v4H4v-4zm0 6h7v4H4v-4z" />
+  </svg>
+);
+
+export const UpstageIcon: Icon = ({ className, ...props }) => (
+  <svg
+    {...props}
+    viewBox="0 0 24 24"
+    fill="none"
+    className={cn("size-4 shrink-0", className)}
+    aria-hidden="true"
+  >
+    <circle cx="12" cy="12" r="5" fill="#6528f7" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.2 2.2M16.9 16.9l2.2 2.2M4.9 19.1l2.2-2.2M16.9 7.1l2.2-2.2" stroke="#6528f7" strokeWidth="2.5" strokeLinecap="round" />
+  </svg>
+);
+
+export const VllmIcon: Icon = ({ className, ...props }) => (
+  <svg
+    {...props}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    className={cn("size-4 shrink-0", className)}
+    aria-hidden="true"
+  >
+    <path d="M4 5l8 14 8-14h-4l-4 7.5L8 5H4z" fill="#5865f2" />
+  </svg>
+);
+
 export const MimoIcon: Icon = XiaomiIcon;
 
 const getCatalog = (): Record<string, Icon> => ({
@@ -856,6 +1018,29 @@ const getCatalog = (): Record<string, Icon> => ({
   nvidia: NvidiaIcon,
   newapi: NewApiIcon,
   sub2api: Sub2ApiIcon,
+  openai: OpenAI,
+  chatgpt: OpenAI,
+  anthropic: ClaudeAI,
+  github: GitHubIcon,
+  gitlab: GitLabIcon,
+  azure: AzureDevOpsIcon,
+  azuredevops: AzureDevOpsIcon,
+  bitbucket: BitbucketIcon,
+  forgejo: ForgejoIcon,
+  gitcafe: GitCafeIcon,
+  groq: GroqIcon,
+  cerebras: CerebrasIcon,
+  vertex: VertexIcon,
+  bedrock: BedrockIcon,
+  together: TogetherIcon,
+  hyperbolic: HyperbolicIcon,
+  sambanova: SambanovaIcon,
+  fireworks: FireworksIcon,
+  perplexity: PerplexityIcon,
+  ai21: Ai21Icon,
+  replicate: ReplicateIcon,
+  upstage: UpstageIcon,
+  vllm: VllmIcon,
 });
 
 let _catalogCache: Record<string, Icon> | null = null;

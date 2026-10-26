@@ -21,6 +21,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { usePrimarySettings } from "~/hooks/useSettings";
 import { cn } from "~/lib/utils";
 import { formatUpcomingTimestamp } from "~/timestampFormat";
+import { ProviderDriverKind } from "@t3tools/contracts";
 import { ProviderInstanceIcon } from "~/components/chat/ProviderInstanceIcon";
 import { providerClients } from "~/components/settings/providerDriverMeta";
 import { RedactedSensitiveText } from "~/components/settings/RedactedSensitiveText";
@@ -773,19 +774,36 @@ export function UsageLimitsFilter({
           ? "No limits"
           : `${visibleLimitCount} limits`;
 
+  const singleVisibleOption =
+    visibleLimitKeys !== null && visibleLimitKeys.size === 1
+      ? limitOptions.find(([k]) => visibleLimitKeys.has(k))
+      : limitOptions.length === 1
+        ? limitOptions[0]
+        : null;
+  const singleProvider = singleVisibleOption ? singleVisibleOption[0].split(":")[0] : null;
+
   if (limitOptions.length === 0) return null;
 
   return (
     <Menu>
       <MenuTrigger
         render={<InlineButton />}
-        className="group/usage-limits min-w-0 max-w-full gap-1.5"
+        className="group/usage-limits min-w-0 max-w-full gap-1.5 flex items-center"
         aria-label="Choose visible limits"
       >
-        <SlidersHorizontalIcon
-          className="size-3.5 shrink-0 text-muted-foreground opacity-70 transition-opacity group-hover/usage-limits:opacity-100 group-focus-visible/usage-limits:opacity-100"
-          aria-hidden
-        />
+        {singleProvider ? (
+          <ProviderInstanceIcon
+            driverKind={ProviderDriverKind.make(singleProvider)}
+            displayName={singleVisibleOption?.[1] ?? ""}
+            className="size-3.5 shrink-0"
+            iconClassName="size-3.5"
+          />
+        ) : (
+          <SlidersHorizontalIcon
+            className="size-3.5 shrink-0 text-muted-foreground opacity-70 transition-opacity group-hover/usage-limits:opacity-100 group-focus-visible/usage-limits:opacity-100"
+            aria-hidden
+          />
+        )}
         <span className="min-w-0 truncate">{limitFilterLabel}</span>
         <ChevronDownIcon
           className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/usage-limits:opacity-100 group-focus-visible/usage-limits:opacity-100 group-data-popup-open/usage-limits:opacity-100"
@@ -803,21 +821,32 @@ export function UsageLimitsFilter({
           All limits
         </MenuCheckboxItem>
         <MenuSeparator />
-        {limitOptions.map(([key, label]) => (
-          <MenuCheckboxItem
-            key={key}
-            checked={!hiddenLimitKeys.has(key)}
-            closeOnClick={false}
-            onCheckedChange={(checked) => {
-              const next = new Set(hiddenLimitKeys);
-              if (checked) next.delete(key);
-              else next.add(key);
-              setHiddenLimitKeys(next);
-            }}
-          >
-            {label}
-          </MenuCheckboxItem>
-        ))}
+        {limitOptions.map(([key, label]) => {
+          const provider = key.split(":")[0];
+          return (
+            <MenuCheckboxItem
+              key={key}
+              checked={!hiddenLimitKeys.has(key)}
+              closeOnClick={false}
+              onCheckedChange={(checked) => {
+                const next = new Set(hiddenLimitKeys);
+                if (checked) next.delete(key);
+                else next.add(key);
+                setHiddenLimitKeys(next);
+              }}
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                <ProviderInstanceIcon
+                  driverKind={ProviderDriverKind.make(provider)}
+                  displayName={label}
+                  className="size-3.5 shrink-0"
+                  iconClassName="size-3.5"
+                />
+                <span className="truncate">{label}</span>
+              </span>
+            </MenuCheckboxItem>
+          );
+        })}
       </MenuPopup>
     </Menu>
   );
