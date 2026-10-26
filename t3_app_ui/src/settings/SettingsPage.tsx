@@ -5,7 +5,6 @@ import { GeneralSettings } from './GeneralSettings';
 import { AppearanceSettings } from './AppearanceSettings';
 import { WindowSettings } from './WindowSettings';
 import { CollectionSettings } from './CollectionSettings';
-import { SyncSettings } from './SyncSettings';
 import { LimitsSettings } from './LimitsSettings';
 import { useTokenMonitorSettings } from './useSettings';
 
@@ -14,7 +13,6 @@ const SETTINGS_SECTIONS = [
   ['appearance', 'Appearance'],
   ['window', 'Window'],
   ['collection', 'Collection'],
-  ['sync', 'Sync'],
   ['accounts', 'Accounts'],
 ] as const;
 
@@ -63,9 +61,6 @@ export function SettingsPage() {
             </section>
             <section ref={(node) => { sectionRefs.current.collection = node; }}>
               <CollectionSettings settings={settings} updateSettings={updateSettings} />
-            </section>
-            <section ref={(node) => { sectionRefs.current.sync = node; }}>
-              <SyncSettings settings={settings} updateSettings={updateSettings} refreshSettings={refreshSettings} />
             </section>
             <section ref={(node) => { sectionRefs.current.accounts = node; }} className="flex flex-col gap-3">
               <div className="px-1">
