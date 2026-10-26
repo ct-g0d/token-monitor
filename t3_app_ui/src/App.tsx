@@ -39,6 +39,15 @@ export function App() {
   // Ensure persisted settings (language, theme, etc.) load and apply globally across the app
   useTokenMonitorSettings();
 
+  const [limitsSeq, setLimitsSeq] = useState(0);
+
+  const handleSelectView = (view: MainView) => {
+    if (view === 'limits') {
+      setLimitsSeq((seq) => seq + 1);
+    }
+    setActiveView(view);
+  };
+
   // Sync view state back to main process
   useEffect(() => {
     window.tokenMonitor?.setViewState?.({ breakdown: BREAKDOWN[activeView] });
@@ -46,7 +55,13 @@ export function App() {
 
   // View and settings requests from main/tray
   useEffect(() => {
-    const offView = window.tokenMonitor?.onOpenView?.((view: string) => setActiveView(viewFor(view)));
+    const offView = window.tokenMonitor?.onOpenView?.((view: string) => {
+      const nextView = viewFor(view);
+      if (nextView === 'limits') {
+        setLimitsSeq((seq) => seq + 1);
+      }
+      setActiveView(nextView);
+    });
     const offSettings = window.tokenMonitor?.onOpenSettings?.(() => setActiveView('settings'));
     return () => {
       offView?.();
@@ -65,10 +80,15 @@ export function App() {
   return (
     <SettingsScopeProvider search={{}} onChange={() => {}}>
       <div className="relative h-screen w-screen overflow-hidden bg-background text-foreground select-none">
-        <Sidebar active={activeView} onSelect={setActiveView} />
+        <Sidebar active={activeView} onSelect={handleSelectView} />
 
         <main key={activeView} className="tm-view-in absolute inset-y-0 right-0 left-[216px] flex flex-col overflow-hidden">
-          {(activeView === 'usage' || activeView === 'limits') && <UsagePage mode={activeView} />}
+          {(activeView === 'usage' || activeView === 'limits') && (
+            <UsagePage
+              key={activeView === 'limits' ? `limits-${limitsSeq}` : 'usage'}
+              mode={activeView}
+            />
+          )}
           {activeView === 'status' && <ServiceStatusView />}
           {activeView === 'settings' && <SettingsPage />}
         </main>

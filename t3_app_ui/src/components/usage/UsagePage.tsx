@@ -192,6 +192,7 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
   const showingLimits = mode === "limits";
   const metric: UsageMetric = preferences.metric === "cost" ? "cost" : "tokens";
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isLimitsLoading, setIsLimitsLoading] = useState(showingLimits);
   const [limitsNow, setLimitsNow] = useState(() => Date.now());
   const refreshingRef = useRef(false);
   const [priceDialog, setPriceDialog] = useState<{ readonly model?: string } | null>(null);
@@ -320,9 +321,15 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
     if (showingLimits) {
       refreshingRef.current = true;
       setIsRefreshing(true);
-      void refreshLimits().finally(() => {
+      setIsLimitsLoading(true);
+      const statsPromise = typeof window !== "undefined" && window.tokenMonitor?.getStats
+        ? window.tokenMonitor.getStats({ force: true, awaitLimits: true, feedback: true }).catch(() => {})
+        : Promise.resolve();
+      const minDelay = new Promise((resolve) => setTimeout(resolve, 250));
+      void Promise.all([refreshLimits(), statsPromise, minDelay]).finally(() => {
         refreshingRef.current = false;
         setIsRefreshing(false);
+        setIsLimitsLoading(false);
       });
       return;
     }
@@ -359,14 +366,49 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
         .join(","),
     [presentations],
   );
-  const autoRefreshLimits = useEffectEvent(() => {
-    const hasProviders = [...presentations].some(
-      ([, presentation]) => (presentation.serverConfig?.providers?.length ?? 0) > 0,
-    );
-    void refreshLimits(!hasProviders ? false : true);
-  });
   useEffect(() => {
-    if (showingLimits && connectedLimitsEnvironments) autoRefreshLimits();
+    if (!showingLimits) return;
+    let cancelled = false;
+    setIsLimitsLoading(true);
+
+    const loadLimits = async () => {
+      try {
+        const refreshPromise = settlePromise(() =>
+          Promise.all(
+            Array.from(presentations, ([environmentId, presentation]) => {
+              if (presentation.connection.phase === "connected" && presentation.serverConfig !== null) {
+                return refreshUsageLimits(
+                  environmentId,
+                  () => refreshProviders({ environmentId, input: {} }),
+                  false,
+                  true,
+                );
+              }
+            }),
+          ),
+        ).then(() => {
+          setLimitsNow(Date.now());
+        });
+
+        const statsPromise = typeof window !== "undefined" && window.tokenMonitor?.getStats
+          ? window.tokenMonitor.getStats({ force: true, awaitLimits: true }).catch(() => {})
+          : Promise.resolve();
+
+        const minDelay = new Promise((resolve) => setTimeout(resolve, 250));
+
+        await Promise.all([refreshPromise, statsPromise, minDelay]);
+      } finally {
+        if (!cancelled) {
+          setIsLimitsLoading(false);
+        }
+      }
+    };
+
+    void loadLimits();
+
+    return () => {
+      cancelled = true;
+    };
   }, [showingLimits, connectedLimitsEnvironments]);
 
   const days = useMemo(
@@ -426,13 +468,13 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
       <Button
         onClick={refreshWindow}
         aria-label="Refresh limits"
-        aria-busy={isRefreshing}
-        disabled={isRefreshing}
+        aria-busy={isRefreshing || isLimitsLoading}
+        disabled={isRefreshing || isLimitsLoading}
         size="icon-sm"
         variant="ghost"
         className="shrink-0"
       >
-        <RefreshIcon size="sm" refreshing={isRefreshing} />
+        <RefreshIcon size="sm" refreshing={isRefreshing || isLimitsLoading} />
       </Button>
     </div>
   ) : (
@@ -517,7 +559,9 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
 
         <ScrollArea className="min-h-0 flex-1">
           <div className="flex w-full max-w-[1200px] flex-col gap-6 px-10 pt-4 pb-12">
-            {selectedEnvironments.length === 0 ? (
+            {showingLimits && isLimitsLoading ? (
+              <LimitsSkeleton />
+            ) : selectedEnvironments.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 {`Connect an environment to see ${showingLimits ? "limits" : "usage"}.`}
               </p>
@@ -1378,6 +1422,41 @@ function UsageProviderFilter({
         ))}
       </MenuPopup>
     </Menu>
+  );
+}
+
+function LimitsSkeleton() {
+  return (
+    <div className="flex flex-col gap-8" data-slot="limits-skeleton">
+      {[1, 2].map((section) => (
+        <section key={section} className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <Skeleton shape="pill" className="size-5 shrink-0" />
+              <Skeleton className="h-4 w-28" />
+              <Skeleton shape="pill" className="h-4 w-16" />
+            </div>
+            <Skeleton className="h-4 w-20" />
+          </div>
+          <div className="grid items-center gap-x-6 gap-y-3 rounded-lg border border-border/60 p-4 md:grid-cols-[11rem_minmax(0,1fr)]">
+            <div className="flex flex-col gap-1.5">
+              <Skeleton className="h-3.5 w-20" />
+              <div className="flex items-baseline gap-2">
+                <Skeleton className="h-7 w-16" />
+                <Skeleton className="h-3 w-10" />
+              </div>
+            </div>
+            <div className="flex flex-col gap-2">
+              <Skeleton shape="pill" className="h-6 w-full" />
+              <div className="flex items-center justify-between">
+                <Skeleton className="h-3 w-24" />
+                <Skeleton className="h-3 w-16" />
+              </div>
+            </div>
+          </div>
+        </section>
+      ))}
+    </div>
   );
 }
 
