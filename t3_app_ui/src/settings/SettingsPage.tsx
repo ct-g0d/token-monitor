@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { ScrollArea } from '~/components/ui/scroll-area';
 import { PageHeader } from '../components/shell/PageHeader';
 import { GeneralSettings } from './GeneralSettings';
@@ -16,15 +16,35 @@ const SETTINGS_SECTIONS = [
   ['accounts', 'Accounts'],
 ] as const;
 
+type SectionId = (typeof SETTINGS_SECTIONS)[number][0];
+
 export function SettingsPage() {
   const { settings, updateSettings, refreshSettings, refreshCurrencyRates } = useTokenMonitorSettings();
-  const [activeSection, setActiveSection] = useState<(typeof SETTINGS_SECTIONS)[number][0]>('general');
+  const [activeSection, setActiveSection] = useState<SectionId>('general');
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const isJumpingRef = useRef(false);
+  const jumpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const jumpTo = (id: (typeof SETTINGS_SECTIONS)[number][0]) => {
+  const getViewport = useCallback((): HTMLElement | null => {
+    return (
+      contentRef.current?.closest<HTMLElement>('[data-slot="scroll-area-viewport"]') ??
+      contentRef.current?.parentElement ??
+      null
+    );
+  }, []);
+
+  const jumpTo = useCallback((id: SectionId) => {
     setActiveSection(id);
+    isJumpingRef.current = true;
+    if (jumpTimerRef.current) {
+      clearTimeout(jumpTimerRef.current);
+    }
+    jumpTimerRef.current = setTimeout(() => {
+      isJumpingRef.current = false;
+    }, 800);
     sectionRefs.current[id]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
+  }, []);
 
   useEffect(() => {
     const handleOpenSection = (e: any) => {
@@ -35,7 +55,110 @@ export function SettingsPage() {
     };
     window.addEventListener('tm-open-settings', handleOpenSection);
     return () => window.removeEventListener('tm-open-settings', handleOpenSection);
-  }, []);
+  }, [jumpTo]);
+
+  useEffect(() => {
+    const viewport = getViewport();
+    if (!viewport) return;
+
+    const updateActiveSection = () => {
+      if (isJumpingRef.current) return;
+
+      const { scrollTop, scrollHeight, clientHeight } = viewport;
+
+      // Bottom boundary: reached the end of the scroll container
+      if (scrollTop + clientHeight >= scrollHeight - 20) {
+        setActiveSection(SETTINGS_SECTIONS[SETTINGS_SECTIONS.length - 1][0]);
+        return;
+      }
+
+      // Top boundary: near the top of the scroll container
+      if (scrollTop <= 20) {
+        setActiveSection(SETTINGS_SECTIONS[0][0]);
+        return;
+      }
+
+      const viewportRect = viewport.getBoundingClientRect();
+      const triggerOffset = 120; // px threshold from viewport top
+      let matchedSection: SectionId = SETTINGS_SECTIONS[0][0];
+
+      for (const [id] of SETTINGS_SECTIONS) {
+        const el = sectionRefs.current[id];
+        if (el) {
+          const rect = el.getBoundingClientRect();
+          if (rect.top - viewportRect.top <= triggerOffset) {
+            matchedSection = id;
+          }
+        }
+      }
+
+      setActiveSection((prev) => (prev === matchedSection ? prev : matchedSection));
+    };
+
+    let rafId: number | null = null;
+    const handleScroll = () => {
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        updateActiveSection();
+      });
+    };
+
+    const handleUserInteraction = () => {
+      if (isJumpingRef.current) {
+        isJumpingRef.current = false;
+        if (jumpTimerRef.current) {
+          clearTimeout(jumpTimerRef.current);
+          jumpTimerRef.current = null;
+        }
+      }
+    };
+
+    let observer: IntersectionObserver | null = null;
+    if (typeof IntersectionObserver !== 'undefined') {
+      observer = new IntersectionObserver(
+        () => {
+          handleScroll();
+        },
+        {
+          root: viewport,
+          rootMargin: '0px 0px -60% 0px',
+          threshold: [0, 0.25, 0.5, 0.75, 1],
+        }
+      );
+
+      for (const [id] of SETTINGS_SECTIONS) {
+        const el = sectionRefs.current[id];
+        if (el) {
+          observer.observe(el);
+        }
+      }
+    }
+
+    viewport.addEventListener('scroll', handleScroll, { passive: true });
+    viewport.addEventListener('wheel', handleUserInteraction, { passive: true });
+    viewport.addEventListener('touchmove', handleUserInteraction, { passive: true });
+    window.addEventListener('resize', handleScroll);
+
+    // Initial check on mount
+    handleScroll();
+
+    return () => {
+      if (observer) {
+        observer.disconnect();
+      }
+      viewport.removeEventListener('scroll', handleScroll);
+      viewport.removeEventListener('wheel', handleUserInteraction);
+      viewport.removeEventListener('touchmove', handleUserInteraction);
+      window.removeEventListener('resize', handleScroll);
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
+      if (jumpTimerRef.current) {
+        clearTimeout(jumpTimerRef.current);
+      }
+    };
+  }, [getViewport]);
 
   return (
     <div className="flex h-full flex-col">
@@ -48,6 +171,7 @@ export function SettingsPage() {
                 key={id}
                 type="button"
                 onClick={() => jumpTo(id)}
+                aria-current={activeSection === id ? 'true' : undefined}
                 className={`rounded-md px-3 py-2 text-left text-xs transition-colors ${
                   activeSection === id
                     ? 'bg-muted font-semibold text-foreground'
@@ -60,20 +184,41 @@ export function SettingsPage() {
           </nav>
         </aside>
         <ScrollArea className="min-h-0 flex-1">
-          <div className="flex max-w-[720px] flex-col gap-10 px-6 pt-2 pb-12 sm:px-10 select-text">
-            <section ref={(node) => { sectionRefs.current.general = node; }}>
+          <div ref={contentRef} className="flex max-w-[720px] flex-col gap-10 px-6 pt-2 pb-12 sm:px-10 select-text">
+            <section
+              id="settings-section-general"
+              data-section="general"
+              ref={(node) => { sectionRefs.current.general = node; }}
+            >
               <GeneralSettings settings={settings} updateSettings={updateSettings} refreshCurrencyRates={refreshCurrencyRates} />
             </section>
-            <section ref={(node) => { sectionRefs.current.appearance = node; }}>
+            <section
+              id="settings-section-appearance"
+              data-section="appearance"
+              ref={(node) => { sectionRefs.current.appearance = node; }}
+            >
               <AppearanceSettings settings={settings} updateSettings={updateSettings} />
             </section>
-            <section ref={(node) => { sectionRefs.current.window = node; }}>
+            <section
+              id="settings-section-window"
+              data-section="window"
+              ref={(node) => { sectionRefs.current.window = node; }}
+            >
               <WindowSettings settings={settings} updateSettings={updateSettings} />
             </section>
-            <section ref={(node) => { sectionRefs.current.collection = node; }}>
+            <section
+              id="settings-section-collection"
+              data-section="collection"
+              ref={(node) => { sectionRefs.current.collection = node; }}
+            >
               <CollectionSettings settings={settings} updateSettings={updateSettings} />
             </section>
-            <section ref={(node) => { sectionRefs.current.accounts = node; }} className="flex flex-col gap-3">
+            <section
+              id="settings-section-accounts"
+              data-section="accounts"
+              ref={(node) => { sectionRefs.current.accounts = node; }}
+              className="flex flex-col gap-3"
+            >
               <div className="px-1">
                 <h2 className="tm-label !text-foreground">Accounts</h2>
                 <p className="text-xs text-muted-foreground">Sign in to show live limits.</p>
