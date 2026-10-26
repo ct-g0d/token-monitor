@@ -290,7 +290,11 @@ function PoolSegment({
         render={
           <button
             type="button"
-            style={{ gridColumn: index, gridRow: 1 }}
+            style={
+              isCodex
+                ? { gridColumn: "1 / -1", gridRow: index }
+                : { gridColumn: index, gridRow: 1 }
+            }
             aria-label={`${account.displayName ?? (account.email ? accountInitials(account.email) : account.driver)}: ${remaining}% left${resetsIn ? `, ${resetsIn}` : ""}${credits ? `, ${credits} reset ${credits === 1 ? "credit" : "credits"} banked` : ""}`}
             className={cn(
               "relative min-w-0 cursor-pointer overflow-hidden rounded-md bg-muted text-start outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background data-[popup-open]:ring-1 data-[popup-open]:ring-inset data-[popup-open]:ring-border",
@@ -522,8 +526,12 @@ function PoolBar({
   return (
     <div className="@container/pool min-w-0">
       <div
-        className="grid gap-x-1 gap-y-1"
-        style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))` }}
+        className={cn("grid gap-x-1 gap-y-1", isCodex && columns.length > 1 && "gap-y-1.5")}
+        style={{
+          gridTemplateColumns: isCodex
+            ? "minmax(0, 1fr)"
+            : `repeat(${columns.length}, minmax(0, 1fr))`,
+        }}
       >
         {columns.map((member, position) =>
           member.window ? (
