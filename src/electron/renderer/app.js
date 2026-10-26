@@ -360,7 +360,7 @@ state.projectSettingsExpanded = false;
 state.sessionSettingsExpanded = false;
 state.homeActivitySettingsExpanded = false;
 state.settingsSections = Object.fromEntries(SETTINGS_SECTION_IDS.map((id) => [id, false]));
-const defaultAppearance = { glassOpacity: 68, glassBlur: 32, backgroundImageOpacity: 28, zoomFactor: 1, systemGlass: true, windowsBackdrop: 'acrylic', macBackdrop: 'vibrancy', reduceMotion: 'system', showLiveDot: true, showToolIcons: true, titleIconOnly: true, showCompactTotalTokens: false, showLiveTokenRate: false, liveTokenRateScope: 'all', compactTokenUnits: 'western', settingsInTitlebar: false };
+const defaultAppearance = { glassOpacity: 68, glassBlur: 32, zoomFactor: 1, systemGlass: true, windowsBackdrop: 'acrylic', macBackdrop: 'vibrancy', reduceMotion: 'system', showLiveDot: true, showToolIcons: true, titleIconOnly: true, showCompactTotalTokens: false, showLiveTokenRate: false, liveTokenRateScope: 'all', compactTokenUnits: 'western', settingsInTitlebar: false };
 let nativeMaterialState = glassRenderingApi.normalizeNativeMaterialState();
 let nativeMaterialRevision = 0;
 let appearancePreview = {};
@@ -377,9 +377,6 @@ const els = {
 };
 Object.assign(els, {
   glassInputNote: document.getElementById('glassInputNote'),
-  backgroundImageOpacityRow: document.getElementById('backgroundImageOpacityRow'),
-  backgroundImageOpacityInput: document.getElementById('backgroundImageOpacityInput'),
-  resetBackgroundImageOpacityButton: document.getElementById('resetBackgroundImageOpacityButton'),
   blurInputNote: document.getElementById('blurInputNote'),
   fixedPeriodMessage: document.getElementById('fixedPeriodMessage'),
   toolDetailFooter: document.getElementById('toolDetailFooter'),
@@ -522,9 +519,6 @@ Object.assign(els, {
   mainSettingsSummary: document.getElementById('mainSettingsSummary'),
   windowSettingsSummary: document.getElementById('windowSettingsSummary'),
   appearanceSettingsSummary: document.getElementById('appearanceSettingsSummary'),
-  backgroundImageStatus: document.getElementById('backgroundImageStatus'),
-  chooseBackgroundImageButton: document.getElementById('chooseBackgroundImageButton'),
-  clearBackgroundImageButton: document.getElementById('clearBackgroundImageButton'),
   subscriptionsSettingsSummary: document.getElementById('subscriptionsSettingsSummary'),
   themePresetChips: document.getElementById('themePresetChips'),
   themeColorGrid: document.getElementById('themeColorGrid'),
@@ -7217,8 +7211,6 @@ function applyAppearanceSettings(settings) {
     liquidGlassSupported: nativeMaterialState.liquidGlassSupported
   });
   document.documentElement.style.setProperty('--glass-alpha', opacity.toFixed(2));
-  const imageOpacity = clamp(Number(settings?.backgroundImageOpacity ?? defaultAppearance.backgroundImageOpacity), 0, 100) / 100;
-  document.documentElement.style.setProperty('--background-image-alpha', imageOpacity.toFixed(2));
   document.documentElement.style.setProperty('--line-alpha', (0.1 + depth * 0.09).toFixed(3));
   document.documentElement.style.setProperty('--line-strong-alpha', (0.18 + depth * 0.14).toFixed(3));
   document.documentElement.style.setProperty('--control-alpha', (0.03 + depth * 0.045).toFixed(3));
@@ -7278,88 +7270,7 @@ function applyAppearanceSettings(settings) {
   
   document.documentElement.classList.toggle('is-mac-legacy', isMacLegacyRadius);
   document.body.classList.toggle('is-mac-legacy', isMacLegacyRadius);
-  syncBackgroundImageStatus();
   updateTitleFit();
-}
-
-let backgroundImageActive = false;
-let backgroundImageBusy = false;
-let backgroundImageError = false;
-let backgroundImageRequest = 0;
-let backgroundImageObjectUrl = null;
-
-function syncBackgroundImageStatus() {
-  if (els.backgroundImageStatus) {
-    els.backgroundImageStatus.textContent = t(backgroundImageError
-      ? 'settings.appearance.backgroundImageError'
-      : backgroundImageActive
-        ? (nativeMaterialState.reducedTransparency || nativeMaterialState.type === 'opaque'
-          ? 'settings.appearance.backgroundImageAccessibilityHidden'
-          : nativeMaterialState.type === 'liquid-glass'
-            ? 'settings.appearance.backgroundImageNativeOverlay'
-            : 'settings.appearance.backgroundImageActive')
-        : 'settings.appearance.backgroundImageNone');
-  }
-  els.clearBackgroundImageButton?.classList.toggle('hidden', !backgroundImageActive);
-  els.backgroundImageOpacityRow?.classList.toggle('hidden', !backgroundImageActive);
-  if (els.chooseBackgroundImageButton) els.chooseBackgroundImageButton.disabled = backgroundImageBusy;
-  if (els.clearBackgroundImageButton) els.clearBackgroundImageButton.disabled = backgroundImageBusy;
-}
-
-function applyBackgroundImage(bytes) {
-  // The PNG is carried over IPC as bytes and shown through a blob: URL. A
-  // data: URL is not an option: Blink silently truncates CSS values set via
-  // setProperty() at 2 MiB, which corrupted the url("data:...") value and made
-  // larger saved images render as nothing at all.
-  const buffer = bytes instanceof Uint8Array && bytes.byteLength > 0 ? bytes : null;
-  backgroundImageActive = buffer !== null;
-  if (backgroundImageObjectUrl) {
-    URL.revokeObjectURL(backgroundImageObjectUrl);
-    backgroundImageObjectUrl = null;
-  }
-  if (backgroundImageActive) {
-    backgroundImageObjectUrl = URL.createObjectURL(new Blob([buffer], { type: 'image/png' }));
-    els.shell.style.setProperty('--custom-background-image', `url("${backgroundImageObjectUrl}")`);
-  } else {
-    els.shell.style.removeProperty('--custom-background-image');
-  }
-  els.shell.classList.toggle('has-custom-background', backgroundImageActive);
-  backgroundImageError = false;
-  syncBackgroundImageStatus();
-}
-
-async function loadBackgroundImage() {
-  const request = ++backgroundImageRequest;
-  try {
-    const bytes = await window.tokenMonitor.getBackgroundImage();
-    if (request === backgroundImageRequest) applyBackgroundImage(bytes);
-  } catch (_) {
-    if (request !== backgroundImageRequest) return;
-    backgroundImageError = true;
-    syncBackgroundImageStatus();
-  }
-}
-
-async function changeBackgroundImage(clear = false) {
-  if (backgroundImageBusy) return;
-  backgroundImageBusy = true;
-  backgroundImageRequest += 1;
-  syncBackgroundImageStatus();
-  try {
-    if (clear) {
-      await window.tokenMonitor.clearBackgroundImage();
-      applyBackgroundImage(null);
-    } else {
-      const result = await window.tokenMonitor.chooseBackgroundImage();
-      if (!result?.canceled && result?.bytes) applyBackgroundImage(result.bytes);
-    }
-  } catch (_) {
-    backgroundImageError = true;
-    syncBackgroundImageStatus();
-  } finally {
-    backgroundImageBusy = false;
-    syncBackgroundImageStatus();
-  }
 }
 
 const themePresetsApi = window.TokenMonitorThemePresets;
@@ -8014,7 +7925,6 @@ function appearancePatchFromControls() {
     settingsInTitlebar: Boolean(els.swapSettingsRefreshInput.checked),
     glassOpacity: Number(els.glassInput.value === '' ? defaultAppearance.glassOpacity : els.glassInput.value),
     glassBlur: Number(els.blurInput.value === '' ? defaultAppearance.glassBlur : els.blurInput.value),
-    backgroundImageOpacity: Number(els.backgroundImageOpacityInput?.value || defaultAppearance.backgroundImageOpacity),
     zoomFactor: Number(els.zoomInput.value === '' ? defaultAppearance.zoomFactor * 100 : els.zoomInput.value) / 100
   };
 }
@@ -8117,7 +8027,6 @@ function syncSliderRow(input) {
 function syncSliderRows() {
   syncSliderRow(els.glassInput);
   syncSliderRow(els.blurInput);
-  syncSliderRow(els.backgroundImageOpacityInput);
   syncSliderRow(els.zoomInput);
 }
 
@@ -8981,7 +8890,6 @@ function syncSettingsForm() {
   }
   els.glassInput.value = String(state.settings.glassOpacity ?? 68);
   els.blurInput.value = String(state.settings.glassBlur ?? 32);
-  if (els.backgroundImageOpacityInput) els.backgroundImageOpacityInput.value = String(state.settings.backgroundImageOpacity ?? defaultAppearance.backgroundImageOpacity);
   els.zoomInput.value = String(Math.round((Number(state.settings.zoomFactor) || 1) * 100));
   syncSliderRows();
   renderExternalProviderStatus('volcengine');
@@ -12680,18 +12588,9 @@ els.resetDepthButton.addEventListener('click', async () => {
   applyAppearanceFromControls();
   await saveSettings({ glassBlur: defaultAppearance.glassBlur });
 });
-els.resetBackgroundImageOpacityButton?.addEventListener('click', async () => {
-  els.backgroundImageOpacityInput.value = String(defaultAppearance.backgroundImageOpacity);
-  applyAppearanceFromControls();
-  await saveSettings({ backgroundImageOpacity: defaultAppearance.backgroundImageOpacity });
-});
 els.glassInput.addEventListener('input', applyAppearanceFromControls);
 els.blurInput.addEventListener('input', applyAppearanceFromControls);
-els.backgroundImageOpacityInput?.addEventListener('input', applyAppearanceFromControls);
 els.zoomInput.addEventListener('input', applyAppearanceFromControls);
-els.chooseBackgroundImageButton?.addEventListener('click', () => { void changeBackgroundImage(); });
-els.clearBackgroundImageButton?.addEventListener('click', () => { void changeBackgroundImage(true); });
-void loadBackgroundImage();
 els.resetThemeColorsButton?.addEventListener('click', () => commitThemeColors({}));
 els.resetVendorColorsButton?.addEventListener('click', () => commitVendorColors({}));
 els.textSizeInput?.addEventListener('change', async () => {
@@ -12973,7 +12872,6 @@ els.windowToggleShortcutClearButton?.addEventListener('click', () => setWindowTo
 els.startAtLoginInput?.addEventListener('change', () => saveSettings({ startAtLogin: els.startAtLoginInput.checked }));
 els.glassInput.addEventListener('change', saveAppearanceFromControls);
 els.blurInput.addEventListener('change', saveAppearanceFromControls);
-els.backgroundImageOpacityInput?.addEventListener('change', saveAppearanceFromControls);
 els.zoomInput.addEventListener('change', saveAppearanceFromControls);
 els.resetZoomButton.addEventListener('click', async () => {
   els.zoomInput.value = String(Math.round(defaultAppearance.zoomFactor * 100));

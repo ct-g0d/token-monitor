@@ -66,7 +66,9 @@
 - [x] **Task 17 (`*`)**: Unify and clean up excessive options in the Theme & Glass Effects settings section.
   - *Branch:* `t3/unify-theme-glass-options`
   - *Status:* Completed; streamlined Theme & Glass Effects options by platform-gating backdrop material selectors to the host operating system, conditionally concealing inactive backdrop controls when native system glass is disabled, adding reset-to-default shortcuts with canonical backend defaults (68% opacity, 32% blur, 100% zoom), and preserving canonical theme and Edge Dock settings.
-- [ ] **Task 18 (`*`)**: Delete background image settings.
+- [x] **Task 18 (`*`)**: Delete background image settings.
+  - *Branch:* `t3/remove-background-image-settings`
+  - *Status:* Completed; deleted background image settings and their UI across React and HTML presentation, removed dead presentation wiring, and updated settings parity expectations while preserving glass, theme, and backend compatibility.
 - [ ] **Task 19 (`*`)**: Unify interface fonts & display fonts settings and fix application so changes take effect.
 - [x] **Task 20 (`*`)**: Delete app subscription settings and UI.
   - *Branch:* `t3/remove-subscription-settings-ui`

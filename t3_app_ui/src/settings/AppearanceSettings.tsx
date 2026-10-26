@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { SettingRow, SettingSection } from './SettingsComponents';
 import { Switch } from '~/components/ui/switch';
 import { Button } from '~/components/ui/button';
@@ -14,30 +14,6 @@ const selectClass =
   'h-8 rounded-md border border-input bg-background px-2.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
 
 export function AppearanceSettings({ settings, updateSettings }: AppearanceSettingsProps) {
-  const [bgPath, setBgPath] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined' && window.tokenMonitor?.getBackgroundImage) {
-      window.tokenMonitor.getBackgroundImage().then((path: string) => {
-        setBgPath(path || null);
-      }).catch(() => {});
-    }
-  }, []);
-
-  const handleChooseBg = async () => {
-    if (typeof window !== 'undefined' && window.tokenMonitor?.chooseBackgroundImage) {
-      const selected = await window.tokenMonitor.chooseBackgroundImage();
-      if (selected) setBgPath(selected);
-    }
-  };
-
-  const handleClearBg = async () => {
-    if (typeof window !== 'undefined' && window.tokenMonitor?.clearBackgroundImage) {
-      await window.tokenMonitor.clearBackgroundImage();
-      setBgPath(null);
-    }
-  };
-
   // Font preset resolution
   const interfaceFont = settings.interfaceFontFamily || '';
   const displayFont = settings.displayFontFamily || '';
@@ -219,48 +195,6 @@ export function AppearanceSettings({ settings, updateSettings }: AppearanceSetti
             </div>
           }
         />
-      </SettingSection>
-
-      <SettingSection title="Background Image" description="Custom image backdrop beneath dashboard cards.">
-        <SettingRow
-          title="Image Source"
-          description={bgPath ? `Current: ${bgPath}` : 'No background image configured.'}
-          control={
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={handleChooseBg}>
-                Choose image...
-              </Button>
-              {bgPath && (
-                <Button variant="ghost" size="sm" onClick={handleClearBg} className="text-xs">
-                  Remove
-                </Button>
-              )}
-            </div>
-          }
-        />
-
-        {bgPath && (
-          <SettingRow
-            title="Image Opacity"
-            description="Blend transparency of the background wallpaper (0 - 100)."
-            control={
-              <div className="flex items-center gap-2">
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  step="1"
-                  value={settings.backgroundImageOpacity ?? 30}
-                  onChange={(e) => updateSettings({ backgroundImageOpacity: parseInt(e.target.value, 10) })}
-                  className="w-28 accent-primary"
-                />
-                <span className="text-xs text-muted-foreground w-8 tabular-nums">
-                  {settings.backgroundImageOpacity ?? 30}%
-                </span>
-              </div>
-            }
-          />
-        )}
       </SettingSection>
 
       <SettingSection title="Typography & Metrics" description="Configure UI fonts, text scale, and live rate measurement mode.">
