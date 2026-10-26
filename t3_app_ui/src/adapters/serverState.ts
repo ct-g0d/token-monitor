@@ -1,3 +1,4 @@
+import { toUsagePriceOverrides, applyPriceOverridesPatch, applyModelAliasesPatch } from "./pricingTargetHelpers";
 import { Atom, AsyncResult } from "effect/reactivity";
 import {
   DEFAULT_SERVER_SETTINGS,
@@ -44,28 +45,7 @@ export const environmentServerConfigsAtom = Atom.make<ReadonlyMap<EnvironmentId,
 
 export const updateOutdatedServer = async () => ({ _tag: "Success" as const, value: undefined });
 
-function parseUnitPrice(val: any): number | undefined {
-  if (val === undefined || val === null || val === "") return undefined;
-  const n = Number(val);
-  return Number.isFinite(n) && n >= 0 ? n : undefined;
-}
 
-function toUsagePriceOverrides(customModelPricing: any[] | undefined): Record<string, any> {
-  if (!Array.isArray(customModelPricing)) return {};
-  const overrides: Record<string, any> = {};
-  for (const item of customModelPricing) {
-    if (!item?.modelId) continue;
-    const modelId = String(item.modelId).trim();
-    if (!modelId) continue;
-    overrides[modelId] = {
-      ...(item.inputPerM !== undefined ? { inputCostPerMillionTokens: item.inputPerM } : {}),
-      ...(item.outputPerM !== undefined ? { outputCostPerMillionTokens: item.outputPerM } : {}),
-      ...(item.cacheReadPerM !== undefined ? { cacheReadCostPerMillionTokens: item.cacheReadPerM } : {}),
-      ...(item.cacheWritePerM !== undefined ? { cacheWriteCostPerMillionTokens: item.cacheWritePerM } : {}),
-    };
-  }
-  return overrides;
-}
 
 export const serverSettingsAtom = Atom.make<ServerSettings>(DEFAULT_SERVER_SETTINGS);
 export const primaryServerSettingsAtom = serverSettingsAtom;
@@ -73,10 +53,15 @@ export const primaryServerSettingsAtom = serverSettingsAtom;
 export function syncSettingsToPricing(settings: any) {
   if (!settings) return;
   const priceOverrides = toUsagePriceOverrides(settings.customModelPricing);
+  const modelAliases =
+    settings.modelAliases && typeof settings.modelAliases === "object" && !Array.isArray(settings.modelAliases)
+      ? { ...settings.modelAliases }
+      : {};
   const current = appAtomRegistry.get(serverSettingsAtom);
   appAtomRegistry.set(serverSettingsAtom, {
     ...current,
     usagePriceOverrides: priceOverrides,
+    usageModelAliases: modelAliases,
   });
 }
 
@@ -123,70 +108,38 @@ export const serverEnvironment = {
 
   // Commands
   updateSettings: async ({ input }: any) => {
-    if (typeof window !== "undefined" && window.tokenMonitor && input?.patch?.usagePriceOverrides) {
+    if (
+      typeof window !== "undefined" &&
+      window.tokenMonitor &&
+      (input?.patch?.usagePriceOverrides || input?.patch?.usageModelAliases)
+    ) {
       try {
-        const overrides = input.patch.usagePriceOverrides;
+        const patch: Record<string, any> = {};
         const settings = await window.tokenMonitor.getSettings().catch(() => ({}));
-        let existingPricing = Array.isArray((settings as any)?.customModelPricing)
-          ? [...(settings as any).customModelPricing]
-          : [];
 
-        for (const [modelId, rates] of Object.entries(overrides)) {
-          if (rates === null) {
-            existingPricing = existingPricing.filter((e: any) => e.modelId !== modelId);
-          } else {
-            const r: any = rates;
-            const idx = existingPricing.findIndex((p: any) => p.modelId === modelId);
-            const existingEntry = idx >= 0 ? existingPricing[idx] : { modelId };
-
-            // User requirement: preserve cacheWrite1hPerM and other unknown fields of an existing entry
-            // when editing it, and leave rates the user didn't set undefined instead of converting to 0.
-            const newEntry: Record<string, any> = {
-              ...existingEntry,
-              modelId,
-            };
-
-            const inputRate = parseUnitPrice(r.inputCostPerMillionTokens);
-            if (inputRate !== undefined) {
-              newEntry.inputPerM = inputRate;
-            } else if ("inputCostPerMillionTokens" in r) {
-              delete newEntry.inputPerM;
-            }
-
-            const outputRate = parseUnitPrice(r.outputCostPerMillionTokens);
-            if (outputRate !== undefined) {
-              newEntry.outputPerM = outputRate;
-            } else if ("outputCostPerMillionTokens" in r) {
-              delete newEntry.outputPerM;
-            }
-
-            const cacheReadRate = parseUnitPrice(r.cacheReadCostPerMillionTokens);
-            if (cacheReadRate !== undefined) {
-              newEntry.cacheReadPerM = cacheReadRate;
-            } else if ("cacheReadCostPerMillionTokens" in r) {
-              delete newEntry.cacheReadPerM;
-            }
-
-            const cacheWriteRate = parseUnitPrice(r.cacheWriteCostPerMillionTokens);
-            if (cacheWriteRate !== undefined) {
-              newEntry.cacheWritePerM = cacheWriteRate;
-            } else if ("cacheWriteCostPerMillionTokens" in r) {
-              delete newEntry.cacheWritePerM;
-            }
-
-            if (idx >= 0) {
-              existingPricing[idx] = newEntry;
-            } else {
-              existingPricing.push(newEntry);
-            }
-          }
+        if (input.patch.usagePriceOverrides) {
+          patch.customModelPricing = applyPriceOverridesPatch(
+            (settings as any)?.customModelPricing || [],
+            input.patch.usagePriceOverrides,
+          );
         }
 
-        await window.tokenMonitor.updateSettings({ customModelPricing: existingPricing });
-        syncSettingsToPricing({ customModelPricing: existingPricing });
+        if (input.patch.usageModelAliases) {
+          patch.modelAliases = applyModelAliasesPatch(
+            (settings as any)?.modelAliases,
+            input.patch.usageModelAliases,
+          );
+        }
+
+        await window.tokenMonitor.updateSettings(patch);
+        const updated = {
+          ...settings,
+          ...patch,
+        };
+        syncSettingsToPricing(updated);
         return { _tag: "Success" as const, value: undefined };
       } catch (err) {
-        console.error("Failed to update customModelPricing via tokenMonitor:", err);
+        console.error("Failed to update pricing / alias settings via tokenMonitor:", err);
         return { _tag: "Failure" as const, cause: { error: err } };
       }
     }

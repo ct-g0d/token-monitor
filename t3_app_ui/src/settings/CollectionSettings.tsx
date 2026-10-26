@@ -4,6 +4,7 @@ import { Switch } from '~/components/ui/switch';
 import { Button } from '~/components/ui/button';
 import { Input } from '~/components/ui/input';
 import { Spinner } from '~/components/ui/spinner';
+import { UsagePriceOverrides } from '~/components/usage/UsagePriceOverrides';
 import type { TokenMonitorSettingsState, CustomPricingEntry } from './types';
 
 const CLIENT_CATALOG = [
@@ -61,6 +62,7 @@ export function CollectionSettings({ settings, updateSettings }: CollectionSetti
   const [aliasTarget, setAliasTarget] = useState('');
 
   // Custom Pricing state
+  const [priceDialogOpen, setPriceDialogOpen] = useState(false);
   const [pricingModelId, setPricingModelId] = useState('');
   const [pricingInput, setPricingInput] = useState('');
   const [pricingOutput, setPricingOutput] = useState('');
@@ -498,7 +500,19 @@ export function CollectionSettings({ settings, updateSettings }: CollectionSetti
         </div>
       </SettingSection>
 
-      <SettingSection title="Custom Model Pricing" description="Override pricing per million tokens ($/1M tokens).">
+      <SettingSection
+        title="Custom Model Pricing"
+        description="Override pricing per million tokens ($/1M tokens) or configure mappings."
+        action={
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setPriceDialogOpen(true)}
+          >
+            Manage Model Prices...
+          </Button>
+        }
+      >
         <div className="p-3 space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
             <Input
@@ -536,6 +550,8 @@ export function CollectionSettings({ settings, updateSettings }: CollectionSetti
                     <span className="font-mono font-medium text-foreground">{item.modelId}</span>
                     <span className="ml-3 text-muted-foreground tabular-nums">
                       Input: ${item.inputPerM} / 1M · Output: ${item.outputPerM} / 1M
+                      {item.cacheReadPerM !== undefined ? ` · Cache read: $${item.cacheReadPerM} / 1M` : ''}
+                      {item.cacheWritePerM !== undefined ? ` · Cache write: $${item.cacheWritePerM} / 1M` : ''}
                     </span>
                   </div>
                   <Button
@@ -552,6 +568,13 @@ export function CollectionSettings({ settings, updateSettings }: CollectionSetti
           )}
         </div>
       </SettingSection>
+      {priceDialogOpen && (
+        <UsagePriceOverrides
+          onOpenChange={(open) => {
+            if (!open) setPriceDialogOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 }

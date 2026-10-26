@@ -59,18 +59,18 @@ const priceTargetsAtom = Atom.make((get): readonly UsagePriceTarget[] =>
             : "denied";
     return {
       environmentId,
-      label: environment.entry.target.label,
+      label: environment?.entry?.target?.label ?? "Environment",
       prices: settings?.usagePriceOverrides ?? null,
       aliases:
-        environment.serverConfig?.environment.capabilities.usageModelAliases === true
+        environment?.serverConfig?.environment?.capabilities?.usageModelAliases === true
           ? (settings?.usageModelAliases ?? null)
           : null,
       unavailable:
-        environment.connection.phase !== "connected"
+        environment?.connection?.phase !== "connected"
           ? "Offline"
           : settings === null
             ? "Prices not loaded"
-            : environment.serverConfig?.environment.capabilities.usagePriceOverrides !== true
+            : environment?.serverConfig?.environment?.capabilities?.usagePriceOverrides !== true
               ? "Update server to edit prices"
               : access === "pending"
                 ? "Checking permissions…"
@@ -94,13 +94,13 @@ type SaveAttempt = {
 };
 
 export function UsagePriceOverrides({
-  usage,
-  initialSelectedEnvironmentIds,
+  usage = [],
+  initialSelectedEnvironmentIds = null,
   initialModel,
   onOpenChange,
 }: {
-  readonly usage: readonly EnvironmentUsageStatus[];
-  readonly initialSelectedEnvironmentIds: ReadonlySet<EnvironmentId> | null;
+  readonly usage?: readonly EnvironmentUsageStatus[];
+  readonly initialSelectedEnvironmentIds?: ReadonlySet<EnvironmentId> | null;
   readonly initialModel?: string | undefined;
   readonly onOpenChange: (open: boolean) => void;
 }) {
@@ -135,11 +135,11 @@ export function UsagePriceOverrides({
   const models = [
     ...new Set([
       ...customModels,
-      ...usage
+      ...(usage ?? [])
         .filter((environment) =>
           selected.some((target) => target.environmentId === environment.environmentId),
         )
-        .flatMap((environment) => environment.summary?.buckets.map((bucket) => bucket.model) ?? []),
+        .flatMap((environment) => environment.summary?.buckets?.map((bucket) => bucket.model)?.filter(Boolean) ?? []),
     ]),
   ].sort();
   const newModels = new Set(
@@ -619,3 +619,5 @@ export function UsagePriceOverrides({
     </Dialog>
   );
 }
+
+export { priceTargetsAtom };
