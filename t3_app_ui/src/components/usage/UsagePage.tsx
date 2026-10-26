@@ -699,6 +699,23 @@ function UsageOverview({
     () => `${60 / (activeProviders.length + 2)}%`,
     [activeProviders.length],
   );
+  const windowActiveDays = useMemo(
+    () =>
+      merged.daily.filter((d) =>
+        metric === "cost" ? d.costUsd > 0 : d.totalTokens > 0,
+      ).length,
+    [merged.daily, metric],
+  );
+  const windowPeak = useMemo(
+    () =>
+      merged.daily.reduce(
+        (max, d) =>
+          Math.max(max, metric === "cost" ? d.costUsd : d.totalTokens),
+        0,
+      ),
+    [merged.daily, metric],
+  );
+
 
   return (
     <div aria-busy={loadingPartial} className="flex flex-col gap-10 pb-10">
@@ -847,8 +864,9 @@ function UsageOverview({
         metric={metric}
         sinceDay={shownWindow.sinceDay}
         untilDay={shownWindow.untilDay}
-        activeDays={activeDays}
-        peakTokens={peakDayTokens}
+        activeDays={windowActiveDays}
+        peakValue={windowPeak}
+        peakTokens={metric === "tokens" ? windowPeak : undefined}
       />
 
       <section className="flex flex-col gap-3 border-t border-border pt-8">
