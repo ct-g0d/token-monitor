@@ -53,7 +53,9 @@
 - [ ] **Task 12 (`**`)**: Redesign status page + integrate Tibo reset forecasts.
 - [ ] **Task 13 (`*`)**: Ensure language setting applies globally across the app.
 - [ ] **Task 14 (`*`)**: Remove automatic app updates UI and logic since this is a local project.
-- [ ] **Task 15 (`*`)**: Restrict currency options to CNY and USD only.
+- [x] **Task 15 (`*`)**: Restrict currency options to CNY and USD only.
+  - *Branch:* `t3/restrict-currency-options`
+  - *Status:* Completed; restricted currency options to CNY and USD across React and HTML settings while ensuring robust default handling, stored settings migration, and backward compatibility.
 - [ ] **Task 16 (`*`)**: Remove redundant color theme selector overlapping with the top theme control in settings.
 - [ ] **Task 17 (`*`)**: Unify and clean up excessive options in the Theme & Glass Effects settings section.
 - [ ] **Task 18 (`*`)**: Delete background image settings.
