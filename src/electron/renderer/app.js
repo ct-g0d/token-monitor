@@ -1308,7 +1308,7 @@ function compactMonthLabel(label) {
   return new Intl.DateTimeFormat(currentLocale(), { month: 'short', timeZone: 'UTC' })
     .format(new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, 1)));
 }
-function currentCurrency() { return currencyApi.normalizeCurrency(state.settings?.currency); }
+function currentCurrency() { return (currencyApi.normalizeSettingCurrency || currencyApi.normalizeCurrency)(state.settings?.currency); }
 function formatCost(value, unpricedTokens) {
   return usageAttributionRowsApi.usageCostLabel(value, unpricedTokens,
     (cost) => currencyApi.formatCurrencyFromUsd(cost, currentCurrency()), formatNumber, t('usage.unpricedTokens'));
@@ -3440,7 +3440,7 @@ function renderSubscriptionPickers() {
 
   const currencySelect = els.subscriptionCurrencyInput;
   if (currencySelect && currencySelect.options.length === 0) {
-    for (const code of currencyApi.CURRENCY_CODES) {
+    for (const code of (currencyApi.SETTING_CURRENCY_CODES || ['USD', 'CNY'])) {
       const option = document.createElement('option');
       option.value = code;
       option.textContent = code;

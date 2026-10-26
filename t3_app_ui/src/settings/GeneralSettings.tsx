@@ -20,16 +20,6 @@ export const selectClass =
 const COMMON_CURRENCIES = [
   { code: 'USD', symbol: '$', name: 'US Dollar' },
   { code: 'CNY', symbol: '¥', name: 'Chinese Yuan' },
-  { code: 'EUR', symbol: '€', name: 'Euro' },
-  { code: 'GBP', symbol: '£', name: 'British Pound' },
-  { code: 'JPY', symbol: '¥', name: 'Japanese Yen' },
-  { code: 'KRW', symbol: '₩', name: 'South Korean Won' },
-  { code: 'HKD', symbol: 'HK$', name: 'Hong Kong Dollar' },
-  { code: 'TWD', symbol: 'NT$', name: 'New Taiwan Dollar' },
-  { code: 'CAD', symbol: 'CA$', name: 'Canadian Dollar' },
-  { code: 'AUD', symbol: 'A$', name: 'Australian Dollar' },
-  { code: 'SGD', symbol: 'S$', name: 'Singapore Dollar' },
-  { code: 'CHF', symbol: 'CHF', name: 'Swiss Franc' },
 ];
 
 export function GeneralSettings({ settings, updateSettings, refreshCurrencyRates }: GeneralSettingsProps) {
@@ -443,7 +433,7 @@ export function GeneralSettings({ settings, updateSettings, refreshCurrencyRates
             Custom Exchange Rates (Relative to 1 USD)
           </h4>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {['CNY', 'EUR', 'GBP', 'JPY', 'KRW', 'HKD'].map((code) => (
+            {['CNY'].map((code) => (
               <div key={code} className="space-y-1">
                 <label className="tm-label">{code}</label>
                 <Input

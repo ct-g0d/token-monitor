@@ -15,6 +15,7 @@
     CNY: Object.freeze({ code: 'CNY', symbol: '¥', rate: 6.8 })
   });
   const CURRENCY_CODES = Object.freeze(Object.keys(CURRENCY_RATES));
+  const SETTING_CURRENCY_CODES = Object.freeze(['USD', 'CNY']);
 
   function defaultRateMap() {
     const map = {};
@@ -58,6 +59,13 @@
     return Object.prototype.hasOwnProperty.call(CURRENCY_RATES, fallbackCode) ? fallbackCode : 'USD';
   }
 
+  function normalizeSettingCurrency(value, fallback = 'USD') {
+    const code = String(value || '').trim().toUpperCase();
+    if (SETTING_CURRENCY_CODES.includes(code)) return code;
+    const fallbackCode = String(fallback || '').trim().toUpperCase();
+    return SETTING_CURRENCY_CODES.includes(fallbackCode) ? fallbackCode : 'USD';
+  }
+
   function convertUsd(value, currency = 'USD') {
     const amount = Number(value || 0);
     const code = normalizeCurrency(currency);
@@ -79,9 +87,11 @@
   return {
     CURRENCY_CODES,
     CURRENCY_RATES,
+    SETTING_CURRENCY_CODES,
     convertUsd,
     formatCurrencyFromUsd,
     normalizeCurrency,
+    normalizeSettingCurrency,
     configureRates,
     resolveEffectiveRates
   };

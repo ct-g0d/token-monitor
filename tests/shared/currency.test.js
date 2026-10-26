@@ -5,9 +5,11 @@ const test = require('node:test');
 
 const {
   CURRENCY_CODES,
+  SETTING_CURRENCY_CODES,
   convertUsd,
   formatCurrencyFromUsd,
   normalizeCurrency,
+  normalizeSettingCurrency,
   configureRates,
   resolveEffectiveRates
 } = require('../../src/shared/currency');
@@ -18,6 +20,29 @@ test('currency options keep USD as the default first option', () => {
   assert.equal(normalizeCurrency(''), 'USD');
   assert.equal(normalizeCurrency('twd'), 'TWD');
   assert.equal(normalizeCurrency('jpy'), 'USD');
+});
+
+test('settings currency options are strictly restricted to CNY and USD', () => {
+  assert.deepEqual(SETTING_CURRENCY_CODES, ['USD', 'CNY']);
+  assert.equal(normalizeSettingCurrency('USD'), 'USD');
+  assert.equal(normalizeSettingCurrency('usd'), 'USD');
+  assert.equal(normalizeSettingCurrency('CNY'), 'CNY');
+  assert.equal(normalizeSettingCurrency('cny'), 'CNY');
+  assert.equal(normalizeSettingCurrency(''), 'USD');
+  assert.equal(normalizeSettingCurrency(null), 'USD');
+  assert.equal(normalizeSettingCurrency(undefined), 'USD');
+});
+
+test('settings currency migration gracefully coerces legacy or unsupported currencies to USD', () => {
+  // Legacy currencies previously selectable in options must migrate to USD without crashing
+  assert.equal(normalizeSettingCurrency('TWD'), 'USD');
+  assert.equal(normalizeSettingCurrency('HKD'), 'USD');
+  assert.equal(normalizeSettingCurrency('EUR'), 'USD');
+  assert.equal(normalizeSettingCurrency('GBP'), 'USD');
+  assert.equal(normalizeSettingCurrency('JPY'), 'USD');
+  // Fallback parameter handling
+  assert.equal(normalizeSettingCurrency('invalid', 'CNY'), 'CNY');
+  assert.equal(normalizeSettingCurrency('invalid', 'TWD'), 'USD');
 });
 
 test('converts USD costs into supported display currencies (built-in defaults)', () => {

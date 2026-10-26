@@ -253,7 +253,7 @@ async function probeOpenCodeApiKey(apiKey) {
 const openrouterLimits = require('../shared/providers/openrouter/limits');
 const thirdPartyLimits = require('../shared/providers/thirdparty/limits');
 const subscriptionDisplay = require('../shared/subscriptionDisplay');
-const { normalizeCurrency, resolveEffectiveRates, configureRates } = require('../shared/currency');
+const { normalizeCurrency, normalizeSettingCurrency, resolveEffectiveRates, configureRates } = require('../shared/currency');
 const { normalizeCompactTokenUnits } = require('../shared/compactTokens');
 const { fetchRates, isCacheStale } = require('../shared/exchangeRates');
 const {
@@ -720,7 +720,7 @@ function defaultSettings() {
     trayCustomLayout: createDefaultTrayLayout(),
     showTrayProviderBadge: false,
     windowToggleShortcut: '',
-    currency: normalizeCurrency(process.env.TOKEN_MONITOR_CURRENCY || 'USD'),
+    currency: normalizeSettingCurrency(process.env.TOKEN_MONITOR_CURRENCY || 'USD'),
     currencyRates: {},
     startAtLogin: false,
     automaticAppUpdates: false,
@@ -2710,7 +2710,7 @@ function readSettings() {
     }
     merged.hubMode = normalizeHubMode(merged.hubMode, 'local', process.platform);
     merged.language = normalizeLanguageSetting(merged.language);
-    merged.currency = normalizeCurrency(merged.currency);
+    merged.currency = normalizeSettingCurrency(merged.currency);
     merged.currencyRates = normalizeCurrencyOverrides(merged.currencyRates);
     merged.vendorColors = migrateVendorColors(merged.vendorColors);
     merged.cursorDisabledAccountIds = normalizeCursorDisabledAccountIds(merged.cursorDisabledAccountIds);
@@ -7807,7 +7807,7 @@ app.whenReady().then(() => {
     const previousStartAtLogin = settings.startAtLogin;
     const previousAutomaticAppUpdates = settings.automaticAppUpdates;
     const previousCustomModelPricing = JSON.stringify(settings.customModelPricing || []);
-    const normalizedCurrency = patch.currency !== undefined ? normalizeCurrency(patch.currency, settings.currency) : normalizeCurrency(settings.currency);
+    const normalizedCurrency = patch.currency !== undefined ? normalizeSettingCurrency(patch.currency, settings.currency) : normalizeSettingCurrency(settings.currency);
     const normalizedPatch = { ...patch, currency: normalizedCurrency };
     delete normalizedPatch.windowMaximized;
     delete normalizedPatch.workbuddyEndpoint;
