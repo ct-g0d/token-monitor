@@ -708,29 +708,67 @@ function UsageOverview({
         </p>
       ))}
       <section className="flex flex-col gap-8">
-        <div className="flex items-center gap-2">
-          <h2 className="text-sm font-medium text-foreground">Totals</h2>
-          {metric === "cost" && merged.costQuality.unpricedShare > 0 ? (
-            <Popover>
-              <PopoverTrigger
-                openOnHover
-                render={<InlineButton tone="muted" />}
-                aria-label="Unpriced usage details"
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-medium text-foreground">Totals</h2>
+            {metric === "cost" && merged.costQuality.unpricedShare > 0 ? (
+              <Popover>
+                <PopoverTrigger
+                  openOnHover
+                  render={<InlineButton tone="muted" />}
+                  aria-label="Unpriced usage details"
+                >
+                  <InfoIcon className="size-3" aria-hidden />
+                </PopoverTrigger>
+                <PopoverPopup side="top" tooltipStyle>
+                  API estimate excludes {formatPercent(merged.costQuality.unpricedShare)} unpriced records.
+                </PopoverPopup>
+              </Popover>
+            ) : null}
+          </div>
+          <div className="flex flex-wrap items-end justify-between gap-x-12 gap-y-6">
+            <div className="flex flex-col gap-2">
+              <span
+                className={cn(
+                  "text-[112px] leading-[0.8] font-bold text-foreground tabular-nums",
+                  figureClass(loadingPartial),
+                )}
               >
-                <InfoIcon className="size-3" aria-hidden />
-              </PopoverTrigger>
-              <PopoverPopup side="top" tooltipStyle>
-                API estimate excludes {formatPercent(merged.costQuality.unpricedShare)} unpriced records.
-              </PopoverPopup>
-            </Popover>
-          ) : null}
-        </div>
-        <div className="grid grid-cols-2 gap-x-6 gap-y-4 py-1 md:grid-cols-5">
-          <Metric loading={loadingPartial} label="Processed tokens" value={formatTokens(merged.totalTokens)} />
-          <Metric loading={loadingPartial} label="Cached input" value={formatTokens(merged.cachedInputTokens)} />
-          <Metric loading={loadingPartial} label="Uncached input" value={formatTokens(merged.uncachedInputTokens)} />
-          <Metric loading={loadingPartial} label="Output" value={formatTokens(merged.outputTokens)} />
-          <Metric loading={loadingPartial} label="Cache savings" value={formatUsd(merged.costQuality.cacheSavingsUsd)} />
+                {metric === "cost" ? formatUsd(merged.costUsd) : formatTokens(merged.totalTokens)}
+              </span>
+              <span className="tm-label inline-flex items-center gap-1">
+                <span className={figureClass(loadingPartial)}>
+                  {metric === "cost"
+                    ? `${formatTokens(merged.totalTokens)} tokens · API estimate`
+                    : hasWindowSessions && merged.sessions > 0
+                      ? `${formatUsd(merged.costUsd)} · ${formatCount(merged.sessions)} sessions`
+                      : `${formatUsd(merged.costUsd)} · —`}
+                </span>
+                {metric === "cost" && merged.costQuality.unpricedShare > 0 && (
+                  <Popover>
+                    <PopoverTrigger
+                      openOnHover
+                      render={<InlineButton tone="muted" />}
+                      aria-label="Unpriced usage details"
+                    >
+                      <InfoIcon className="size-3" aria-hidden />
+                    </PopoverTrigger>
+                    <PopoverPopup side="top" tooltipStyle>
+                      API estimate excludes {formatPercent(merged.costQuality.unpricedShare)} unpriced
+                      records.
+                    </PopoverPopup>
+                  </Popover>
+                )}
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-8 border-l border-border pl-10">
+              <Metric loading={loadingPartial} label="Processed tokens" value={formatTokens(merged.totalTokens)} />
+              <Metric loading={loadingPartial} label="Cached input" value={formatTokens(merged.cachedInputTokens)} />
+              <Metric loading={loadingPartial} label="Uncached input" value={formatTokens(merged.uncachedInputTokens)} />
+              <Metric loading={loadingPartial} label="Output" value={formatTokens(merged.outputTokens)} />
+              <Metric loading={loadingPartial} label="Cache savings" value={formatUsd(merged.costQuality.cacheSavingsUsd)} />
+            </div>
+          </div>
         </div>
         <UsageProviderChart
           providers={activeProviders}
@@ -1308,11 +1346,19 @@ function UsageSkeleton() {
         </div>
       </section>
 
-      <section className="flex flex-col gap-2">
+      <section className="flex flex-col gap-4">
         <h2 className="text-sm font-medium text-foreground">Totals</h2>
-        <MetricSkeletons
-          labels={["Processed tokens", "Cached input", "Uncached input", "Output", "Cache savings"]}
-        />
+        <div className="flex flex-wrap items-end justify-between gap-x-12 gap-y-6">
+          <div className="flex flex-col gap-2">
+            <Skeleton className="h-24 w-64" />
+            <Skeleton className="h-4 w-40" />
+          </div>
+          <div className="flex flex-wrap gap-8 border-l border-border pl-10">
+            <MetricSkeletons
+              labels={["Processed tokens", "Cached input", "Uncached input", "Output", "Cache savings"]}
+            />
+          </div>
+        </div>
       </section>
 
       <section className="grid gap-x-12 gap-y-8 lg:grid-cols-2">
@@ -1336,11 +1382,11 @@ function UsageSkeleton() {
 
 function MetricSkeletons({ labels }: { readonly labels: readonly string[] }) {
   return (
-    <div className="grid grid-cols-2 gap-x-6 gap-y-4 py-1 md:grid-cols-5">
+    <div className="flex flex-wrap gap-8">
       {labels.map((label) => (
-        <div key={label} className="flex flex-col gap-0.5">
+        <div key={label} className="flex min-w-0 flex-col gap-0.5">
           <span className="tm-label">{label}</span>
-          <Skeleton className="h-6 w-16" />
+          <Skeleton className="h-7 w-20" />
         </div>
       ))}
     </div>
