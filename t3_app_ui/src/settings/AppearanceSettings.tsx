@@ -4,6 +4,7 @@ import { Switch } from '~/components/ui/switch';
 import { Button } from '~/components/ui/button';
 import { Input } from '~/components/ui/input';
 import type { TokenMonitorSettingsState } from './types';
+import { fontSettingsApi } from './fontSettingsBridge';
 
 interface AppearanceSettingsProps {
   settings: TokenMonitorSettingsState;
@@ -14,24 +15,13 @@ const selectClass =
   'h-8 rounded-md border border-input bg-background px-2.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
 
 export function AppearanceSettings({ settings, updateSettings }: AppearanceSettingsProps) {
-  // Font preset resolution
+  // Unified font preset resolution via shared fontSettingsApi
   const interfaceFont = settings.interfaceFontFamily || '';
   const displayFont = settings.displayFontFamily || '';
-
-  const getInterfacePreset = (val: string) => {
-    if (!val) return 'app';
-    if (val.includes('system-ui')) return 'system';
-    if (val.includes('SFMono') || val.includes('Liberation Mono')) return 'mono';
-    return 'custom';
-  };
-
-  const getDisplayPreset = (val: string) => {
-    if (!val) return 'follow';
-    if (val.includes('SF Pro Display')) return 'app';
-    if (val.includes('system-ui')) return 'system';
-    if (val.includes('SFMono') || val.includes('Liberation Mono')) return 'mono';
-    return 'custom';
-  };
+  const rawFont =
+    interfaceFont ||
+    (displayFont && !displayFont.includes('SF Pro Display') ? displayFont : '');
+  const activePreset = fontSettingsApi.presetForFontFamily(rawFont, 'interface');
 
   const isMac = typeof navigator !== 'undefined' && /Macintosh|Mac OS X/.test(navigator.userAgent);
   const isWindows = typeof navigator !== 'undefined' && /Windows NT/.test(navigator.userAgent);
@@ -215,64 +205,57 @@ export function AppearanceSettings({ settings, updateSettings }: AppearanceSetti
         />
 
         <SettingRow
-          title="Interface Font"
-          description="Primary font family used for UI typography."
+          title="Font Family"
+          description="Primary font family applied across interface labels, metrics, and displays."
           control={
             <div className="flex flex-col gap-1.5 items-end">
-              <select
-                value={getInterfacePreset(interfaceFont)}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  if (val === 'app') updateSettings({ interfaceFontFamily: '' });
-                  else if (val === 'system') updateSettings({ interfaceFontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' });
-                  else if (val === 'mono') updateSettings({ interfaceFontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace' });
-                }}
-                className={selectClass}
-              >
-                <option value="app">App Monospace (Default)</option>
-                <option value="system">System UI</option>
-                <option value="mono">Monospace</option>
-                <option value="custom">Custom font...</option>
-              </select>
-              {getInterfacePreset(interfaceFont) === 'custom' && (
+              <div className="flex items-center gap-1.5">
+                <select
+                  value={activePreset}
+                  onChange={(e) => {
+                    const preset = e.target.value;
+                    const family = fontSettingsApi.fontFamilyForPreset(preset, rawFont, 'interface');
+                    updateSettings({
+                      interfaceFontFamily: family,
+                      displayFontFamily: family,
+                    });
+                  }}
+                  className={selectClass}
+                >
+                  <option value="app">App Default</option>
+                  <option value="system">System UI</option>
+                  <option value="mono">Monospace</option>
+                  <option value="custom">Custom font...</option>
+                </select>
+                {activePreset !== 'app' && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                    title="Reset to default"
+                    onClick={() => {
+                      const family = fontSettingsApi.fontFamilyForPreset('app', '', 'interface');
+                      updateSettings({
+                        interfaceFontFamily: family,
+                        displayFontFamily: family,
+                      });
+                    }}
+                  >
+                    ↺
+                  </Button>
+                )}
+              </div>
+              {activePreset === 'custom' && (
                 <Input
-                  placeholder="e.g. Inter, Roboto"
-                  value={interfaceFont}
-                  onChange={(e) => updateSettings({ interfaceFontFamily: e.target.value })}
-                  className="h-7 w-48 text-xs"
-                />
-              )}
-            </div>
-          }
-        />
-
-        <SettingRow
-          title="Display Font"
-          description="Font used for numbers, large metrics, and headings."
-          control={
-            <div className="flex flex-col gap-1.5 items-end">
-              <select
-                value={getDisplayPreset(displayFont)}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  if (val === 'follow') updateSettings({ displayFontFamily: '' });
-                  else if (val === 'app') updateSettings({ displayFontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif' });
-                  else if (val === 'system') updateSettings({ displayFontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' });
-                  else if (val === 'mono') updateSettings({ displayFontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace' });
-                }}
-                className={selectClass}
-              >
-                <option value="follow">Follow Interface Font</option>
-                <option value="app">App Display (Default)</option>
-                <option value="system">System UI</option>
-                <option value="mono">Monospace</option>
-                <option value="custom">Custom font...</option>
-              </select>
-              {getDisplayPreset(displayFont) === 'custom' && (
-                <Input
-                  placeholder="e.g. SF Pro Display, Arial"
-                  value={displayFont}
-                  onChange={(e) => updateSettings({ displayFontFamily: e.target.value })}
+                  placeholder="e.g. Inter, Roboto, Cascadia Code"
+                  value={rawFont}
+                  onChange={(e) => {
+                    const val = fontSettingsApi.fontFamilyForPreset('custom', e.target.value, 'interface');
+                    updateSettings({
+                      interfaceFontFamily: val,
+                      displayFontFamily: val,
+                    });
+                  }}
                   className="h-7 w-48 text-xs"
                 />
               )}
@@ -399,8 +382,7 @@ export function AppearanceSettings({ settings, updateSettings }: AppearanceSetti
             </select>
           }
         />
-
-        </SettingSection>
+      </SettingSection>
 
       <SettingSection title="Custom Theme & Vendor Colors" description="Color overrides for interface elements and model vendors.">
         <SettingRow

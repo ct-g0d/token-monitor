@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { LimitAccountForms, TokenMonitorSettingsState } from './types';
 import { i18n, resolveLocale, t } from '../i18n';
+import { fontSettingsApi } from './fontSettingsBridge';
 
 export { t, resolveLocale };
 
@@ -52,6 +53,34 @@ export function applyLanguage(languageChoice?: string) {
   } catch (_) {}
 }
 
+export function applyFontSettings(settings?: Partial<TokenMonitorSettingsState>) {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  const source = settings || {};
+  const result = fontSettingsApi.applyFontSettings(document, source);
+  if (!result) return;
+  const { interfaceFont, displayFont, textSize, textScale } = result;
+
+  try {
+    window.localStorage.setItem('tokenmonitor:font-family', interfaceFont);
+    window.localStorage.setItem('t3code:font-family', interfaceFont);
+    window.localStorage.setItem('tokenmonitor:text-size', textSize);
+  } catch (_) {}
+
+  try {
+    window.dispatchEvent(
+      new CustomEvent('tokenmonitor:fontchange', {
+        detail: {
+          font: interfaceFont,
+          interfaceFont,
+          displayFont,
+          textSize,
+          textScale,
+        },
+      })
+    );
+  } catch (_) {}
+}
+
 export function useTokenMonitorSettings() {
   const [settings, setSettings] = useState<TokenMonitorSettingsState>({});
   const [accountForms, setAccountForms] = useState<LimitAccountForms>([]);
@@ -85,6 +114,7 @@ export function useTokenMonitorSettings() {
         if (persistedSettings.language) {
           applyLanguage(persistedSettings.language);
         }
+        applyFontSettings(persistedSettings);
       }
     } catch (err: any) {
       setError(err?.message || 'Failed to load settings');
@@ -110,6 +140,7 @@ export function useTokenMonitorSettings() {
           if (persistedSettings.language) {
             applyLanguage(persistedSettings.language);
           }
+          applyFontSettings(persistedSettings);
         }
       });
       return () => {
@@ -130,6 +161,10 @@ export function useTokenMonitorSettings() {
     }
   }, [settings.language]);
 
+  useEffect(() => {
+    applyFontSettings(settings);
+  }, [settings.interfaceFontFamily, settings.displayFontFamily, settings.textSize]);
+
   const updateSettings = useCallback(async (patch: Partial<TokenMonitorSettingsState>) => {
     setSettings((prev) => ({ ...prev, ...patch }));
     if (patch.theme !== undefined) {
@@ -137,6 +172,13 @@ export function useTokenMonitorSettings() {
     }
     if (patch.language !== undefined) {
       applyLanguage(patch.language);
+    }
+    if (
+      patch.interfaceFontFamily !== undefined ||
+      patch.displayFontFamily !== undefined ||
+      patch.textSize !== undefined
+    ) {
+      applyFontSettings({ ...settings, ...patch });
     }
     try {
       if (typeof window !== 'undefined' && window.tokenMonitor?.updateSettings) {
@@ -148,7 +190,7 @@ export function useTokenMonitorSettings() {
       loadSettings();
       throw err;
     }
-  }, [loadSettings]);
+  }, [loadSettings, settings]);
 
   const refreshCurrencyRates = useCallback(async () => {
     const refreshed = await window.tokenMonitor?.refreshCurrencyRates?.();

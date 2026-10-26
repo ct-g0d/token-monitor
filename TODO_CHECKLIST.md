@@ -48,7 +48,7 @@
 - [x] **Task 7 (`*`)**: When clicking limits, show loading first, then empty state if no limits exist, or transition directly from loading to limits.
   - *Branch:* `t3/limits-loading-empty-state-1`
   - *Status:* Completed; implemented loading skeleton on clicking limits and refreshing, empty state when no limits exist, and direct transition to limit pools when limits exist.
-- [ ] **Task 8 (`***`)**: In limits page (and settings/globally), expand supported providers, and change unconfigured boxes into an "Add Provider" action.
+- [ ] **Task 8 (`***`)**: In limits page (and settings/globally), expand supported providers, and change unconfigured boxes into an \"Add Provider\" action.
 - [ ] **Task 9 (`*`)**: Codex monthly, weekly, and session limits: expand to full width of the bar instead of half-and-half (ref: `image_af4c2e80-7068-487e-baa3-dba56aa88c57`).
 - [x] **Task 10 (`**`)**: Redesign arrangement for effective space utilization when window shrinks (ref: `image_ae57f434-ad0c-4afd-a216-435691072403`).
   - *Branch:* `t3/responsive-layout-arrangement`
@@ -71,7 +71,9 @@
 - [x] **Task 18 (`*`)**: Delete background image settings.
   - *Branch:* `t3/remove-background-image-settings`
   - *Status:* Completed; deleted background image settings and their UI across React and HTML presentation, removed dead presentation wiring, and updated settings parity expectations while preserving glass, theme, and backend compatibility.
-- [ ] **Task 19 (`*`)**: Unify interface fonts & display fonts settings and fix application so changes take effect.
+- [x] **Task 19 (`*`)**: Unify interface fonts & display fonts settings and fix application so changes take effect.
+  - *Branch:* `t3/unify-font-settings`
+  - *Status:* Completed; consolidated separate interface and display font family controls into a unified Font Family setting with presets (App Default, System UI, Monospace, Custom), reset shortcut, and live CSS property application (--font-sans, --ui-font, --display-font, --tm-display, --font-mono, and text scaling) across the app, preserving persisted settings compatibility and existing renderer contracts.
 - [x] **Task 20 (`*`)**: Delete app subscription settings and UI.
   - *Branch:* `t3/remove-subscription-settings-ui`
   - *Status:* Completed; removed subscription settings presentation and navigation wiring.

@@ -1,10 +1,13 @@
 'use strict';
 
 (function exposeFontSettings(root, factory) {
-  const api = factory();
+  const api = factory(root);
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (root) root.TokenMonitorFontSettings = api;
-})(typeof window !== 'undefined' ? window : null, function createFontSettingsApi() {
+  if (typeof globalThis !== 'undefined' && !globalThis.TokenMonitorFontSettings) {
+    globalThis.TokenMonitorFontSettings = api;
+  }
+})(typeof window !== 'undefined' ? window : null, function createFontSettingsApi(rootWindow) {
   const DEFAULT_INTERFACE_FONT = 'ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace';
   const DEFAULT_DASHBOARD_INTERFACE_FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
   const DEFAULT_DISPLAY_FONT = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif';
@@ -64,6 +67,43 @@
     return normalizeFontFamily(FONT_PRESETS[preset]);
   }
 
+  function applyFontSettings(targetDoc, settings = {}, options = {}) {
+    const doc = targetDoc || (rootWindow && rootWindow.document ? rootWindow.document : null);
+    if (!doc || !doc.documentElement) return null;
+    const { interfaceFont, displayFont } = resolveEffectiveFontSettings(settings, options);
+    const textSize = normalizeTextSize(settings?.textSize);
+    const textScale = textScaleForSize(textSize);
+
+    const root = doc.documentElement;
+    const style = root.style;
+    if (style && typeof style.setProperty === 'function') {
+      style.setProperty('--ui-font', interfaceFont);
+      style.setProperty('--display-font', displayFont);
+      style.setProperty('--font-sans', interfaceFont);
+      style.setProperty('--tm-display', `${displayFont}, var(--font-sans)`);
+      const isMono =
+        interfaceFont === DEFAULT_INTERFACE_FONT ||
+        /monospace|SFMono|Liberation Mono|ui-monospace/i.test(interfaceFont);
+      if (isMono) {
+        style.setProperty('--font-mono', interfaceFont);
+      } else if (typeof style.removeProperty === 'function') {
+        style.removeProperty('--font-mono');
+      }
+      style.setProperty('--ui-text-scale', String(textScale));
+      style.fontSize = textScale !== 1.0 ? `${Math.round(textScale * 100)}%` : '';
+    }
+
+    if (root.dataset) {
+      root.dataset.textSize = textSize;
+    }
+
+    if (doc.body && doc.body.style) {
+      doc.body.style.fontFamily = interfaceFont;
+    }
+
+    return { interfaceFont, displayFont, textSize, textScale };
+  }
+
   return {
     DEFAULT_DASHBOARD_INTERFACE_FONT,
     DEFAULT_DISPLAY_FONT,
@@ -76,6 +116,7 @@
     fontFamilyForPreset,
     normalizeFontFamily,
     presetForFontFamily,
-    resolveEffectiveFontSettings
+    resolveEffectiveFontSettings,
+    applyFontSettings
   };
 });
