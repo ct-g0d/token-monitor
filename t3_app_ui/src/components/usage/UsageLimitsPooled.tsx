@@ -13,8 +13,16 @@ import {
   type LimitPoolWindow,
   remainingPercent,
 } from "@t3tools/shared/usageLimits";
-import { AlertTriangleIcon, ChevronDownIcon, ClockIcon, ExternalLinkIcon, PlusIcon, SlidersHorizontalIcon, TicketIcon } from "lucide-react";
+import { AlertTriangleIcon, ChevronDownIcon, ClockIcon, ExternalLinkIcon, Gauge, PlusIcon, SlidersHorizontalIcon, TicketIcon } from "lucide-react";
 import { getProviderPresentation } from "~/components/usage/usageProviders";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "~/components/ui/empty";
 import { Fragment, type ReactNode, useMemo, useState } from "react";
 import { Atom } from "effect/reactivity";
 import { useAtomValue } from "@effect/atom-react";
@@ -926,25 +934,36 @@ export function UsageLimitsPooled({
 
   return (
     <div className="flex flex-col gap-8">
-      {pools.length === 0 && notices.length === 0 && !cursorPrompt && externalLinks.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border/60 py-12 px-4 text-center">
-          <p className="text-sm font-medium text-foreground">No providers configured</p>
-          <p className="mt-1 max-w-sm text-xs text-muted-foreground">
-            Connect an AI provider account to monitor subscription limits and rate windows in real time.
-          </p>
-          <Button size="sm" onClick={() => openSettings(true)} className="mt-4 gap-1.5">
-            <PlusIcon className="size-4" />
-            <span>Add Provider</span>
-          </Button>
-        </div>
-      ) : null}
-
-      {pools.map((pool, index) => (
-        <Fragment key={pool.driver}>
-          {index === cursorPromptAt ? cursorPrompt : null}
-          <PoolSection pool={pool} now={now} visibleLimitKeys={visibleLimitKeys} />
-        </Fragment>
-      ))}
+      {pools.length === 0 ? (
+        <Empty className="py-12 border border-dashed rounded-lg border-border/60" data-slot="limits-empty-state">
+          <EmptyMedia variant="icon">
+            <Gauge className="size-4.5 text-muted-foreground" aria-hidden />
+          </EmptyMedia>
+          <EmptyHeader>
+            <EmptyTitle>No Limits Configured</EmptyTitle>
+            <EmptyDescription>
+              No connected providers are currently reporting quota or subscription limits.
+            </EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <Button
+              size="sm"
+              onClick={() => openSettings(true)}
+              className="gap-1.5"
+            >
+              <PlusIcon className="size-4" />
+              <span>Add Provider</span>
+            </Button>
+          </EmptyContent>
+        </Empty>
+      ) : (
+        pools.map((pool, index) => (
+          <Fragment key={pool.driver}>
+            {index === cursorPromptAt ? cursorPrompt : null}
+            <PoolSection pool={pool} now={now} visibleLimitKeys={visibleLimitKeys} />
+          </Fragment>
+        ))
+      )}
 
       {cursorPromptAt === pools.length ? cursorPrompt : null}
 
