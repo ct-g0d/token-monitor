@@ -82,7 +82,7 @@ test('General settings places integrations after the complete App Updates group'
   const html = read('index.html');
   const general = html.match(/<div id="generalSettingsDetails"[\s\S]*?<div id="mainSettingsDetails"/)?.[0] || '';
 
-  assert.ok(general.indexOf('id="startupGroup"') < general.indexOf('id="automaticAppUpdatesRow"'));
+  assert.ok(general.indexOf('id="startupGroup"') < general.indexOf('id="appUpdateInstalled"'));
   assert.ok(general.indexOf('id="appUpdateMessage"') < general.indexOf('id="discordRpcInput"'));
   assert.ok(general.indexOf('id="discordRpcInput"') < general.indexOf('id="advancedSettingsGroup"'));
 });

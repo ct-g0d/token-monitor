@@ -221,19 +221,13 @@ export function GeneralSettings({ settings, updateSettings, refreshCurrencyRates
         />
 
         <SettingRow
-          title="Automatic updates"
+          title="App updates"
           description={updateMessage ?? undefined}
           control={
-            <>
-              <Button variant="outline" size="xs" disabled={checkingUpdate} onClick={handleCheckUpdate}>
-                {checkingUpdate ? <Spinner className="mr-1 size-3.5" /> : null}
-                Check now
-              </Button>
-              <Switch
-                checked={settings.automaticAppUpdates !== false}
-                onCheckedChange={(checked) => updateSettings({ automaticAppUpdates: checked })}
-              />
-            </>
+            <Button variant="outline" size="xs" disabled={checkingUpdate} onClick={handleCheckUpdate}>
+              {checkingUpdate ? <Spinner className="mr-1 size-3.5" /> : null}
+              Check now
+            </Button>
           }
         />
       </SettingSection>

@@ -52,7 +52,7 @@
 - [ ] **Task 11 (`*`)**: Align percentage number in the progress bar to be on the same line as the label text (ref: `image_d7258227-3749-4f9f-bf6b-d81d7d3f3f60`).
 - [ ] **Task 12 (`**`)**: Redesign status page + integrate Tibo reset forecasts.
 - [ ] **Task 13 (`*`)**: Ensure language setting applies globally across the app.
-- [ ] **Task 14 (`*`)**: Remove automatic app updates UI and logic since this is a local project.
+- [x] **Task 14 (`*`)**: Remove automatic app updates UI and logic since this is a local project.
 - [x] **Task 15 (`*`)**: Restrict currency options to CNY and USD only.
   - *Branch:* `t3/restrict-currency-options`
   - *Status:* Completed; restricted currency options to CNY and USD across React and HTML settings while ensuring robust default handling, stored settings migration, and backward compatibility.
