@@ -331,7 +331,11 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
     }
     refreshingRef.current = true;
     setIsRefreshing(true);
-    void refresh(nextWindow).finally(() => {
+    const tm = typeof window !== "undefined" ? window.tokenMonitor : null;
+    const forcePromise = tm?.getStats
+      ? tm.getStats({ force: true, forceHistory: true, forceSelfSync: true, feedback: true }).catch(() => {})
+      : Promise.resolve();
+    void Promise.all([forcePromise, refresh(nextWindow)]).finally(() => {
       refreshingRef.current = false;
       setIsRefreshing(false);
     });
@@ -393,15 +397,34 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
       effectiveWindow.untilDay,
     ],
   );
-  const headerControls = (
+  const headerControls = showingLimits ? (
     <>
       <div className="flex h-8 items-center gap-3 rounded-[3px] px-3.5 shadow-[inset_0_0_0_1px_var(--border)] [&_*]:font-mono [&_*]:text-[11px] [&_*]:tracking-[0.06em] [&_*]:uppercase">
-      <UsageProviderFilter
-        availableProviders={selectableProviders}
-        hiddenProviders={hiddenProviders}
-        onChange={(next) => updatePreferences({ hiddenProviders: next })}
-      />
-      {showingLimits ? null : (
+        <UsageProviderFilter
+          availableProviders={selectableProviders}
+          hiddenProviders={hiddenProviders}
+          onChange={(next) => updatePreferences({ hiddenProviders: next })}
+        />
+      </div>
+      <Button
+        onClick={refreshWindow}
+        aria-label="Refresh limits"
+        aria-busy={isRefreshing}
+        disabled={isRefreshing}
+        size="icon-sm"
+        variant="ghost"
+      >
+        <RefreshIcon size="sm" refreshing={isRefreshing} />
+      </Button>
+    </>
+  ) : (
+    <div className="flex shrink-0 items-center gap-2 mr-28 mt-5 [-webkit-app-region:no-drag]">
+      <div className="flex h-8 items-center gap-3 rounded-[3px] px-3.5 shadow-[inset_0_0_0_1px_var(--border)] [&_*]:font-mono [&_*]:text-[11px] [&_*]:tracking-[0.06em] [&_*]:uppercase">
+        <UsageProviderFilter
+          availableProviders={selectableProviders}
+          hiddenProviders={hiddenProviders}
+          onChange={(next) => updatePreferences({ hiddenProviders: next })}
+        />
         <Menu>
           <MenuTrigger
             render={<InlineButton />}
@@ -420,10 +443,7 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
             </MenuItem>
           </MenuPopup>
         </Menu>
-      )}
       </div>
-      {showingLimits ? null : (
-      <>
       <ToggleGroup
         aria-label="Usage metric"
         variant="segmented"
@@ -454,19 +474,17 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
           </Toggle>
         ))}
       </ToggleGroup>
-      </>
-      )}
       <Button
         onClick={refreshWindow}
-        aria-label={showingLimits ? "Refresh limits" : "Refresh usage"}
+        aria-label="Refresh usage"
         aria-busy={isRefreshing}
-        disabled={isRefreshing || (!showingLimits && !canReadDiagnostics)}
+        disabled={isRefreshing}
         size="icon-sm"
         variant="ghost"
       >
         <RefreshIcon size="sm" refreshing={isRefreshing} />
       </Button>
-    </>
+    </div>
   );
 
   return (
