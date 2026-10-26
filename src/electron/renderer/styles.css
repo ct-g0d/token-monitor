@@ -94,41 +94,6 @@ input, textarea, [contenteditable="true"] {
   -webkit-backdrop-filter: var(--glass-filter);
   backdrop-filter: var(--glass-filter);
 }
-/* The image is its own layer over the glass, never a replacement for it: the
-   shell keeps its glass (or the native material below it) and the image's
-   opacity is a separate setting, so either can be tuned without the other. */
-.shell.has-custom-background::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background-image: linear-gradient(rgba(var(--glass-rgb), 0.18), rgba(var(--glass-rgb), 0.18)), var(--custom-background-image);
-  background-position: center;
-  background-size: cover;
-  opacity: var(--background-image-alpha, 0.28);
-}
-html.native-material-opaque .shell.has-custom-background::before,
-html.native-reduced-transparency .shell.has-custom-background::before {
-  display: none;
-}
-.background-image-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 6px;
-}
-.background-image-actions button {
-  min-height: 26px;
-  padding: 4px 7px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: rgba(var(--overlay-rgb), var(--control-alpha));
-  color: var(--text);
-  cursor: pointer;
-}
-.background-image-actions button:hover { border-color: var(--line-strong); }
-.background-image-actions button:disabled { opacity: 0.5; cursor: default; }
 /* Native macOS material supplies the window backdrop. Keep the app's own
    outer shell clear so it does not stack a second tint, blur, or shadow over it. */
 html.native-liquid-glass .shell,

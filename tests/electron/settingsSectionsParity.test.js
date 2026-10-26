@@ -50,7 +50,6 @@ const OG_RENDERER_SETTINGS_KEYS = [
   'glassOpacity',
   'glassBlur',
   'zoomFactor',
-  'backgroundImageOpacity',
   'textSize',
   'interfaceFontFamily',
   'displayFontFamily',
@@ -164,7 +163,7 @@ test('settings sections parity: all backend-supported settings keys are present 
     `The following ${missingKeys.length} settings keys are missing from t3_app_ui/src/settings/*.tsx: ${missingKeys.join(', ')}`
   );
 
-assert.equal(OG_RENDERER_SETTINGS_KEYS.length, 97);
+  assert.equal(OG_RENDERER_SETTINGS_KEYS.length, 96);
 });
 
 test('settings sections parity: none of the 22 upstream-only keys appear in React settings', () => {

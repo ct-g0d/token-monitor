@@ -111,7 +111,6 @@ export interface TokenMonitorSettingsState {
   glassOpacity?: number;
   glassBlur?: number;
   zoomFactor?: number;
-  backgroundImageOpacity?: number;
   interfaceFontFamily?: string;
   displayFontFamily?: string;
   textSize?: 'standard' | 'larger' | 'largest';
