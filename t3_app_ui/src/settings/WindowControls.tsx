@@ -78,7 +78,7 @@ export function WindowControls() {
         aria-label="Minimize"
         data-control="minimize"
         onClick={handleMinimize}
-        className="inline-flex h-10 w-9 items-center justify-center text-muted-foreground hover:bg-muted/80 hover:text-foreground transition-colors cursor-pointer shrink-0 [-webkit-app-region:no-drag]"
+        className="inline-flex h-10 w-11 items-center justify-center text-muted-foreground hover:bg-muted/80 hover:text-foreground transition-colors cursor-pointer shrink-0 [-webkit-app-region:no-drag]"
       >
         <MinusIcon className="size-3.5" />
       </button>
@@ -90,7 +90,7 @@ export function WindowControls() {
         aria-label={isMax ? 'Restore' : 'Maximize'}
         data-control="maximize"
         onClick={handleMaximize}
-        className="inline-flex h-10 w-9 items-center justify-center text-muted-foreground hover:bg-muted/80 hover:text-foreground transition-colors cursor-pointer shrink-0 [-webkit-app-region:no-drag]"
+        className="inline-flex h-10 w-11 items-center justify-center text-muted-foreground hover:bg-muted/80 hover:text-foreground transition-colors cursor-pointer shrink-0 [-webkit-app-region:no-drag]"
       >
         {isMax ? <CopyIcon className="size-3" /> : <SquareIcon className="size-3" />}
       </button>
@@ -102,7 +102,7 @@ export function WindowControls() {
         aria-label="Close"
         data-control="close"
         onClick={handleClose}
-        className="inline-flex h-10 w-9 items-center justify-center text-muted-foreground hover:bg-destructive hover:text-destructive-foreground transition-colors cursor-pointer shrink-0 [-webkit-app-region:no-drag]"
+        className="inline-flex h-10 w-11 items-center justify-center text-muted-foreground hover:bg-destructive hover:text-destructive-foreground transition-colors cursor-pointer shrink-0 [-webkit-app-region:no-drag]"
       >
         <XIcon className="size-3.5" />
       </button>

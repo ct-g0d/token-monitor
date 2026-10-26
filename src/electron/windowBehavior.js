@@ -42,14 +42,14 @@ function hasOwn(object, key) {
   return Object.prototype.hasOwnProperty.call(object || {}, key);
 }
 
-function normalizeWindowBehavior(value, fallback = 'floating') {
+function normalizeWindowBehavior(value, fallback = 'normal') {
   const normalized = String(value || '').trim().toLowerCase();
   if (WINDOW_BEHAVIORS.has(normalized)) return normalized;
   const fallbackMode = String(fallback || '').trim().toLowerCase();
-  return WINDOW_BEHAVIORS.has(fallbackMode) ? fallbackMode : 'floating';
+  return WINDOW_BEHAVIORS.has(fallbackMode) ? fallbackMode : 'normal';
 }
 
-function modeFromSettings(settings = {}, fallback = 'floating') {
+function modeFromSettings(settings = {}, fallback = 'normal') {
   if (hasOwn(settings, 'windowBehavior')) {
     return normalizeWindowBehavior(settings.windowBehavior, fallback);
   }
