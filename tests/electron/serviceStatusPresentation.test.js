@@ -6,7 +6,9 @@ const test = require('node:test');
 const {
   affectedComponentNames,
   agoBucket,
-  statusHeadline
+  statusHeadline,
+  summarizeResetForecast,
+  overallSystemStatus
 } = require('../../src/electron/renderer/serviceStatusPresentation');
 
 test('affectedComponentNames splits names into a visible slice and overflow count', () => {
@@ -67,4 +69,66 @@ test('agoBucket buckets into seconds, minutes, and hours', () => {
   assert.deepEqual(agoBucket(65_000), { unit: 'minutes', value: 1 });
   assert.deepEqual(agoBucket(3_600_000), { unit: 'hours', value: 1 });
   assert.deepEqual(agoBucket(7_500_000), { unit: 'hours', value: 2 });
+});
+
+test('summarizeResetForecast formats scheduled, active, inactive, and disabled states', () => {
+  const scheduled = summarizeResetForecast({
+    status: 'scheduled',
+    scheduledFor: '2026-10-28T04:00:00Z',
+    scheduledResetType: 'banked'
+  });
+  assert.equal(scheduled.status, 'scheduled');
+  assert.equal(scheduled.headline, 'Scheduled Banked Reset');
+  assert.equal(scheduled.detail, '2026-10-28T04:00:00Z');
+  assert.equal(scheduled.badgeTone, 'ok');
+
+  const active = summarizeResetForecast({
+    status: 'active',
+    chancePercent: 75.4,
+    expiresAt: '2026-10-29T12:00:00Z'
+  });
+  assert.equal(active.status, 'active');
+  assert.equal(active.headline, '75% Chance');
+  assert.equal(active.badgeTone, 'signal');
+
+  const inactive = summarizeResetForecast({
+    status: 'inactive',
+    latestResetAt: '2026-10-26T18:00:00Z'
+  });
+  assert.equal(inactive.status, 'inactive');
+  assert.equal(inactive.headline, 'No Active Signal');
+  assert.equal(inactive.badgeTone, 'nominal');
+
+  const disabled = summarizeResetForecast({ status: 'disabled' });
+  assert.equal(disabled.status, 'disabled');
+  assert.equal(disabled.headline, 'Forecast Disabled');
+
+  const unavailable = summarizeResetForecast(null);
+  assert.equal(unavailable.status, 'unavailable');
+  assert.equal(unavailable.badgeTone, 'unknown');
+});
+
+test('overallSystemStatus computes aggregate health and incident counts', () => {
+  const operational = overallSystemStatus([
+    { id: 'claude', status: 'ok', incidentCount: 0 },
+    { id: 'openai', status: 'ok', incidentCount: 0 }
+  ]);
+  assert.equal(operational.tone, 'ok');
+  assert.equal(operational.label, 'All Systems Operational');
+  assert.equal(operational.totalMonitored, 2);
+  assert.equal(operational.activeIncidents, 0);
+
+  const degraded = overallSystemStatus([
+    { id: 'claude', status: 'degraded', incidentTitle: 'Elevated latency', incidentCount: 1 },
+    { id: 'openai', status: 'ok', incidentCount: 0 }
+  ]);
+  assert.equal(degraded.tone, 'degraded');
+  assert.equal(degraded.label, '1 Active Incident');
+  assert.equal(degraded.activeIncidents, 1);
+
+  const outage = overallSystemStatus([
+    { id: 'cursor', status: 'outage', incidentCount: 1 }
+  ]);
+  assert.equal(outage.tone, 'outage');
+  assert.equal(outage.label, 'Service Outage Detected');
 });

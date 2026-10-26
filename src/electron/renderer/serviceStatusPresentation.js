@@ -37,5 +37,88 @@
     return { unit: 'hours', value: Math.floor(total / 3600) };
   }
 
-  return { affectedComponentNames, agoBucket, statusHeadline };
+  // Summarize Tibo reset forecast state for high-level status displays
+  function summarizeResetForecast(forecast) {
+    if (!forecast || typeof forecast !== 'object') {
+      return { status: 'unavailable', headline: 'Unavailable', detail: '', badgeTone: 'unknown' };
+    }
+    const status = String(forecast.status || '').toLowerCase();
+    if (status === 'scheduled') {
+      const typeLabel = forecast.scheduledResetType === 'banked' ? 'Banked Reset' : 'Regular Reset';
+      return {
+        status: 'scheduled',
+        headline: `Scheduled ${typeLabel}`,
+        detail: forecast.scheduledFor || '',
+        badgeTone: 'ok',
+        resetType: forecast.scheduledResetType || 'regular'
+      };
+    }
+    if (status === 'active') {
+      const chance = Number.isFinite(forecast.chancePercent) ? `${Math.round(forecast.chancePercent)}% Chance` : 'Active Watch';
+      return {
+        status: 'active',
+        headline: chance,
+        detail: forecast.predictedAt || forecast.expiresAt || '',
+        badgeTone: 'signal',
+        chancePercent: forecast.chancePercent
+      };
+    }
+    if (status === 'inactive') {
+      return {
+        status: 'inactive',
+        headline: 'No Active Signal',
+        detail: forecast.latestResetAt || '',
+        badgeTone: 'nominal'
+      };
+    }
+    if (status === 'disabled') {
+      return {
+        status: 'disabled',
+        headline: 'Forecast Disabled',
+        detail: '',
+        badgeTone: 'muted'
+      };
+    }
+    return {
+      status: 'unavailable',
+      headline: forecast.error ? 'Telemetry Unavailable' : 'No Signal Detected',
+      detail: forecast.error || '',
+      badgeTone: 'unknown'
+    };
+  }
+
+  // Overall aggregate status across all monitored service providers and optional forecast
+  function overallSystemStatus(providers = [], forecast = null) {
+    const list = Array.isArray(providers) ? providers : [];
+    const hasOutage = list.some((p) => p.status === 'outage');
+    const hasDegraded = list.some((p) => p.status === 'degraded');
+    const hasUnknown = list.some((p) => p.status === 'unknown');
+    const activeIncidents = list.reduce((acc, p) => acc + (p.incidentCount || (p.incidentTitle ? 1 : 0)), 0);
+    const activeMaintenance = list.reduce((acc, p) => acc + (p.maintenanceCount || 0), 0);
+
+    let tone = 'ok';
+    let label = 'All Systems Operational';
+
+    if (hasOutage) {
+      tone = 'outage';
+      label = 'Service Outage Detected';
+    } else if (hasDegraded) {
+      tone = 'degraded';
+      label = activeIncidents > 0 ? `${activeIncidents} Active Incident${activeIncidents > 1 ? 's' : ''}` : 'Degraded Performance';
+    } else if (list.length === 0 || hasUnknown) {
+      tone = list.length === 0 ? 'unknown' : 'degraded';
+      label = list.length === 0 ? 'Telemetry Unavailable' : 'Partial Telemetry';
+    }
+
+    return {
+      tone,
+      label,
+      totalMonitored: list.length,
+      activeIncidents,
+      activeMaintenance,
+      hasForecast: Boolean(forecast && forecast.status && forecast.status !== 'unavailable' && forecast.status !== 'disabled')
+    };
+  }
+
+  return { affectedComponentNames, agoBucket, statusHeadline, summarizeResetForecast, overallSystemStatus };
 });
