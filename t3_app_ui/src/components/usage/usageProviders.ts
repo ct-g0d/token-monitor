@@ -318,6 +318,8 @@ function generateDynamicPresentation(providerId: string): UsageProviderPresentat
 
 export function getProviderPresentation(providerId: string): UsageProviderPresentation {
   const key = String(providerId || "").trim().toLowerCase();
+  if (key === "claude" || key === "claudeagent") return KNOWN_PROVIDERS.claude;
+  if (key === "qoder" || key === "qodercn") return KNOWN_PROVIDERS[key] || KNOWN_PROVIDERS.qoder;
   return KNOWN_PROVIDERS[key] || generateDynamicPresentation(key);
 }
 

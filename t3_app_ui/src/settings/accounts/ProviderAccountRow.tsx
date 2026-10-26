@@ -36,7 +36,7 @@ const PROVIDER_COLOR_CLASSES: Record<string, string> = {
   zed: 'text-[#4173e7]',
 };
 
-function getProviderIcon(providerId: string) {
+export function getProviderIcon(providerId: string) {
   const norm = String(providerId || '').toLowerCase().trim();
   const IconComponent = getProviderIconComponent(norm);
   if (IconComponent) {
@@ -251,24 +251,18 @@ export function ProviderAccountRow({ provider }: ProviderAccountRowProps) {
                       )}
                     </div>
 
-                    <div className="flex shrink-0 items-center gap-2.5">
+                    <div className="flex items-center gap-2">
                       {actions.setEnabled && (
                         <Switch
-                          size="sm"
                           checked={acc.enabled}
-                          onCheckedChange={(checked) =>
-                            actions.setEnabled?.(acc.id, checked)
-                          }
-                          aria-label={`Enable or disable ${acc.label}`}
+                          onCheckedChange={(on) => actions.setEnabled?.(acc.id, on)}
                         />
                       )}
                       {actions.remove && (
                         <Button
-                          size="icon-sm"
-                          variant="ghost"
-                          className="size-7 text-muted-foreground hover:text-destructive"
+                          size="icon-xs"
+                          variant="ghost-destructive"
                           onClick={() => actions.remove?.(acc.id)}
-                          aria-label={`Remove ${acc.label}`}
                           title="Remove account"
                         >
                           <Trash2Icon className="size-3.5" />
@@ -280,16 +274,14 @@ export function ProviderAccountRow({ provider }: ProviderAccountRowProps) {
               </div>
             ) : !isPending ? (
               <div className="flex items-center justify-between py-1 text-xs text-muted-foreground">
-                <span>No accounts connected yet.</span>
-                {authKind !== 'oauth' && authKind !== 'deviceCode' && (
+                <span>No accounts configured for this provider.</span>
+                {actions.saveCredential && (
                   <Button
-                    size="sm"
+                    size="xs"
                     variant="ghost"
-                    className="h-6 gap-1 px-2 text-xs"
                     onClick={() => setCredentialDialogOpen(true)}
                   >
-                    <KeyRoundIcon className="size-3" />
-                    Enter credentials
+                    Set credentials
                   </Button>
                 )}
               </div>

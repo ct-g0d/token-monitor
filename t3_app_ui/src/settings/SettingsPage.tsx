@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { ScrollArea } from '~/components/ui/scroll-area';
 import { PageHeader } from '../components/shell/PageHeader';
 import { GeneralSettings } from './GeneralSettings';
@@ -25,6 +25,17 @@ export function SettingsPage() {
     setActiveSection(id);
     sectionRefs.current[id]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
+
+  useEffect(() => {
+    const handleOpenSection = (e: any) => {
+      const section = e?.detail?.section;
+      if (section && SETTINGS_SECTIONS.some(([id]) => id === section)) {
+        jumpTo(section);
+      }
+    };
+    window.addEventListener('tm-open-settings', handleOpenSection);
+    return () => window.removeEventListener('tm-open-settings', handleOpenSection);
+  }, []);
 
   return (
     <div className="flex h-full flex-col">

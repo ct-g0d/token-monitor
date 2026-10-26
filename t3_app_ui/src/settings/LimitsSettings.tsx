@@ -1,11 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { SettingRow, SettingSection } from './SettingsComponents';
 import { selectClass } from './GeneralSettings';
 import { Switch } from '~/components/ui/switch';
 import { Button } from '~/components/ui/button';
+import { PlusIcon } from 'lucide-react';
 import type { TokenMonitorSettingsState } from './types';
-import { useProviderAccounts } from '../adapters/accountsState';
+import { useProviderAccounts, type ProviderAccounts } from '../adapters/accountsState';
 import { ProviderAccountRow } from './accounts/ProviderAccountRow';
+import { AddProviderDialog } from './accounts/AddProviderDialog';
+import { CredentialDialog } from './accounts/CredentialDialog';
 
 interface LimitsSettingsProps {
   settings: TokenMonitorSettingsState;
@@ -19,8 +22,12 @@ export function LimitsSettings({ settings, updateSettings, refreshSettings }: Li
   const [claudeOrgId, setClaudeOrgId] = useState(settings.claudeWebOrganizationId || '');
   const [claudeOrgStatus, setClaudeOrgStatus] = useState<string | null>(null);
 
-  // Hook providing normalized provider accounts for all 15 providers
+  // Hook providing normalized provider accounts for all providers
   const providers = useProviderAccounts(settings);
+
+  // Add Provider & Credential dialog state
+  const [addProviderDialogOpen, setAddProviderDialogOpen] = useState(false);
+  const [activeCredentialProvider, setActiveCredentialProvider] = useState<ProviderAccounts | null>(null);
 
   // Claude actions
   const handleLoadClaudeOrganizations = async () => {
@@ -55,6 +62,35 @@ export function LimitsSettings({ settings, updateSettings, refreshSettings }: Li
   const availableProviders = providers.filter(
     (p) => !(p.status === 'connected' || p.status === 'pending' || p.accounts.length > 0)
   );
+
+  // Listen for navigation triggers from limits or elsewhere
+  useEffect(() => {
+    const handleOpenSettings = (e: any) => {
+      if (e?.detail?.openAddProvider) {
+        setAddProviderDialogOpen(true);
+      }
+      if (e?.detail?.providerId) {
+        const found = providers.find((p) => p.providerId === e.detail.providerId);
+        if (found) {
+          handleSelectProvider(found);
+        }
+      }
+    };
+    window.addEventListener('tm-open-settings', handleOpenSettings);
+    return () => window.removeEventListener('tm-open-settings', handleOpenSettings);
+  }, [providers]);
+
+  const handleSelectProvider = (provider: ProviderAccounts) => {
+    if (provider.authKind === 'oauth' || provider.authKind === 'deviceCode') {
+      if (provider.actions.signIn) {
+        provider.actions.signIn();
+      } else if (provider.actions.addAccount) {
+        provider.actions.addAccount();
+      }
+    } else {
+      setActiveCredentialProvider(provider);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -169,12 +205,23 @@ export function LimitsSettings({ settings, updateSettings, refreshSettings }: Li
         description="Manage sign-in status and credentials for AI providers."
       >
         <div className="p-3 space-y-5">
-          {signedInProviders.length > 0 && (
+          {signedInProviders.length > 0 ? (
             <div className="space-y-2.5">
               <div className="flex items-center justify-between">
                 <h3 className="tm-label flex items-center gap-1.5 !text-foreground">
                   Signed in <span className="tabular-nums text-muted-foreground">({signedInProviders.length})</span>
                 </h3>
+                {availableProviders.length > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1.5 text-xs"
+                    onClick={() => setAddProviderDialogOpen(true)}
+                  >
+                    <PlusIcon className="size-3.5" />
+                    <span>Add Provider</span>
+                  </Button>
+                )}
               </div>
               <div className="space-y-2">
                 {signedInProviders.map((provider) => (
@@ -182,22 +229,41 @@ export function LimitsSettings({ settings, updateSettings, refreshSettings }: Li
                 ))}
               </div>
             </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border/80 py-8 text-center">
+              <p className="text-sm font-medium text-foreground">No providers connected yet</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Connect an AI provider account to track live token usage and subscription limits.
+              </p>
+              <div className="mt-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => setAddProviderDialogOpen(true)}
+                >
+                  <PlusIcon className="size-4" />
+                  <span>Add Provider</span>
+                </Button>
+              </div>
+            </div>
           )}
-
-          <div className="space-y-2.5">
-            <div className="flex items-center justify-between">
-              <h3 className="tm-label flex items-center gap-1.5 !text-foreground">
-                Available <span className="tabular-nums text-muted-foreground">({availableProviders.length})</span>
-              </h3>
-            </div>
-            <div className="space-y-2">
-              {availableProviders.map((provider) => (
-                <ProviderAccountRow key={provider.providerId} provider={provider} />
-              ))}
-            </div>
-          </div>
         </div>
       </SettingSection>
+
+      <AddProviderDialog
+        open={addProviderDialogOpen}
+        availableProviders={availableProviders}
+        onClose={() => setAddProviderDialogOpen(false)}
+        onSelectProvider={handleSelectProvider}
+      />
+
+      <CredentialDialog
+        open={Boolean(activeCredentialProvider)}
+        provider={activeCredentialProvider}
+        onClose={() => setActiveCredentialProvider(null)}
+        onSuccess={refreshSettings}
+      />
     </div>
   );
 }
