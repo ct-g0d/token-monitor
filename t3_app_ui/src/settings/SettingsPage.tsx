@@ -4,6 +4,7 @@ import { PageHeader } from '../components/shell/PageHeader';
 import { GeneralSettings } from './GeneralSettings';
 import { AppearanceSettings } from './AppearanceSettings';
 import { WindowSettings } from './WindowSettings';
+import { HoverBarSettings } from './HoverBarSettings';
 import { CollectionSettings } from './CollectionSettings';
 import { LimitsSettings } from './LimitsSettings';
 import { useTokenMonitorSettings, t } from './useSettings';
@@ -12,6 +13,7 @@ const SETTINGS_SECTIONS = [
   ['general', 'General', 'settings.general.title'],
   ['appearance', 'Appearance', 'settings.appearance.title'],
   ['window', 'Window', 'settings.window.title'],
+  ['hover-bar', 'Hover Bar', 'settings.display.edgeDock'],
   ['collection', 'Collection', 'settings.collection.title'],
   ['accounts', 'Accounts', 'settings.accounts.title'],
 ] as const;
@@ -48,7 +50,10 @@ export function SettingsPage() {
 
   useEffect(() => {
     const handleOpenSection = (e: any) => {
-      const section = e?.detail?.section;
+      let section = e?.detail?.section;
+      if (section === 'edge-dock' || section === 'hoverbar' || section === 'hover_bar') {
+        section = 'hover-bar';
+      }
       if (section && SETTINGS_SECTIONS.some(([id]) => id === section)) {
         jumpTo(section);
       }
@@ -205,6 +210,13 @@ export function SettingsPage() {
               ref={(node) => { sectionRefs.current.window = node; }}
             >
               <WindowSettings settings={settings} updateSettings={updateSettings} />
+            </section>
+            <section
+              id="settings-section-hover-bar"
+              data-section="hover-bar"
+              ref={(node) => { sectionRefs.current['hover-bar'] = node; }}
+            >
+              <HoverBarSettings settings={settings} updateSettings={updateSettings} />
             </section>
             <section
               id="settings-section-collection"

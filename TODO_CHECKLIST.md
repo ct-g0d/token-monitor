@@ -71,4 +71,6 @@
 - [x] **Task 22 (`*`)**: Make settings sidebar active highlight track scroll position (scrollspy) rather than remaining on general.
   - *Branch:* `t3/settings-sidebar-scrollspy`
   - *Status:* Completed; added viewport scrollspy and IntersectionObserver to track and highlight the visible section in settings sidebar.
-- [ ] **Task 23 (`***`)**: Add a dedicated settings panel for the hover bar.
+- [x] **Task 23 (`***`)**: Add a dedicated settings panel for the hover bar.
+  - *Branch:* `t3/hover-bar-settings-panel`
+  - *Status:* Completed; added dedicated HoverBarSettings panel to React settings navigation with full edge dock configuration.
