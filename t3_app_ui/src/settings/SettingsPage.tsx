@@ -5,7 +5,6 @@ import { GeneralSettings } from './GeneralSettings';
 import { AppearanceSettings } from './AppearanceSettings';
 import { WindowSettings } from './WindowSettings';
 import { CollectionSettings } from './CollectionSettings';
-import { SubscriptionsSettings } from './SubscriptionsSettings';
 import { SyncSettings } from './SyncSettings';
 import { LimitsSettings } from './LimitsSettings';
 import { useTokenMonitorSettings } from './useSettings';
@@ -15,7 +14,6 @@ const SETTINGS_SECTIONS = [
   ['appearance', 'Appearance'],
   ['window', 'Window'],
   ['collection', 'Collection'],
-  ['subscriptions', 'Subscriptions'],
   ['sync', 'Sync'],
   ['accounts', 'Accounts'],
 ] as const;
@@ -65,9 +63,6 @@ export function SettingsPage() {
             </section>
             <section ref={(node) => { sectionRefs.current.collection = node; }}>
               <CollectionSettings settings={settings} updateSettings={updateSettings} />
-            </section>
-            <section ref={(node) => { sectionRefs.current.subscriptions = node; }}>
-              <SubscriptionsSettings settings={settings} updateSettings={updateSettings} refreshSettings={refreshSettings} />
             </section>
             <section ref={(node) => { sectionRefs.current.sync = node; }}>
               <SyncSettings settings={settings} updateSettings={updateSettings} refreshSettings={refreshSettings} />

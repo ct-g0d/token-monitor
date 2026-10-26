@@ -58,7 +58,9 @@
 - [ ] **Task 17 (`*`)**: Unify and clean up excessive options in the Theme & Glass Effects settings section.
 - [ ] **Task 18 (`*`)**: Delete background image settings.
 - [ ] **Task 19 (`*`)**: Unify interface fonts & display fonts settings and fix application so changes take effect.
-- [ ] **Task 20 (`*`)**: Delete app subscription settings and UI.
+- [x] **Task 20 (`*`)**: Delete app subscription settings and UI.
+  - *Branch:* `t3/remove-subscription-settings-ui`
+  - *Status:* Completed; removed subscription settings presentation and navigation wiring.
 - [ ] **Task 21 (`*`)**: Delete sync strategy settings.
 - [ ] **Task 22 (`*`)**: Make settings sidebar active highlight track scroll position (scrollspy) rather than remaining on general.
 - [ ] **Task 23 (`***`)**: Add a dedicated settings panel for the hover bar.
