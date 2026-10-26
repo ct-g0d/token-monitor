@@ -113,9 +113,17 @@ function NavButton({
 export function Sidebar({ active, onSelect }: { active: MainView; onSelect: (view: MainView) => void }) {
   const live = useLive();
 
+  const handleTitleDoubleClick = () => {
+    const tm = window.tokenMonitor;
+    (tm?.toggleMaximize || tm?.dashboard?.toggleMaximize)?.();
+  };
+
   return (
     <aside className="absolute inset-y-0 left-0 z-40 flex w-[216px] flex-col border-r border-border bg-[var(--tm-sidebar)] select-none">
-      <div className="flex h-14 shrink-0 items-center gap-2.5 px-4 [-webkit-app-region:drag]">
+      <div
+        className="flex h-14 shrink-0 items-center gap-2.5 px-4 [-webkit-app-region:drag]"
+        onDoubleClick={handleTitleDoubleClick}
+      >
         <span className="size-2.5 bg-foreground" />
         <span className="tm-label !text-[11px] !text-foreground">Token Monitor</span>
       </div>

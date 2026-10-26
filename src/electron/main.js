@@ -566,7 +566,7 @@ function normalizeHomeLimitAccountCount(value) {
 
 function defaultSettings() {
   const envHubUrl = process.env.TOKEN_MONITOR_HUB_URL || '';
-  const windowBehavior = process.env.TOKEN_MONITOR_ALWAYS_ON_TOP === '0' ? 'normal' : 'floating';
+  const windowBehavior = process.env.TOKEN_MONITOR_ALWAYS_ON_TOP === '1' ? 'floating' : normalizeWindowBehavior(process.env.TOKEN_MONITOR_WINDOW_BEHAVIOR, 'normal');
   return {
     hubMode: envHubUrl ? 'client' : 'local',
     hubUrl: envHubUrl,
@@ -581,6 +581,7 @@ function defaultSettings() {
     syncContentState: normalizeSyncContentState(null),
     windowBehavior,
     alwaysOnTop: windowBehavior === 'floating',
+    skipTaskbar: false,
     keepAboveTaskbar: false,
     refreshMs: Number(process.env.TOKEN_MONITOR_WIDGET_REFRESH_MS || 15000),
     glassOpacity: 68,
@@ -7317,7 +7318,7 @@ function createWindow(boundsOverride, options = {}) {
     show: false,
     backgroundColor: '#00000000',
     ...appWindowIcon(),
-    skipTaskbar: collapsedFloatingBubble || skipTaskbarForSettings(settings),
+    skipTaskbar: Boolean(options.skipTaskbar ?? (collapsedFloatingBubble || skipTaskbarForSettings(settings))),
     ...(collapsedFloatingBubble ? { fullscreenable: false, maximizable: false, minimizable: false } : {}),
     // Keeps a popover unmaximizable across rebuilds, which never re-run enterTrayMode().
     // ...(settings?.trayMode ? { maximizable: false } : {}),
@@ -7376,8 +7377,8 @@ function createWindow(boundsOverride, options = {}) {
   });
   win.on('blur', () => {
     nudgeTaskbarZOrder();
-    if (settings?.trayMode && !suppressNextBlurHide && !quitRequested) hidePopover();
-    else if (!quitRequested) scheduleFloatingBubbleAutoCollapse();
+    if (settings?.trayMode === true && !suppressNextBlurHide && !quitRequested) hidePopover();
+    else if (!quitRequested && canUseFloatingBubble(settings)) scheduleFloatingBubbleAutoCollapse();
   });
   win.on('resized', () => { persistBoundsSoon(); syncTaskbarZOrder(); });
   win.on('moved', () => { persistBoundsSoon(); syncTaskbarZOrder(); });

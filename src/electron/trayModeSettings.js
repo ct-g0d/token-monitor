@@ -27,8 +27,11 @@ function normalizeTrayModeSettings(settings = {}) {
 // skipTaskbar on Windows and macOS only, so Linux has no way to express this
 // setting at all and the renderer does not offer it there.
 function skipTaskbarForSettings(settings = {}) {
+  if (settings && typeof settings.skipTaskbar === 'boolean') {
+    return settings.skipTaskbar;
+  }
   const normalized = normalizeTrayModeSettings(settings);
-  return normalized.trayMode || normalized.hideAppIcon;
+  return Boolean(normalized.trayMode || normalized.hideAppIcon);
 }
 
 function shouldCreateTray(settings = {}) {

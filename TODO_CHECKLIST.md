@@ -20,7 +20,7 @@
 
 ## Checklist of Bugs & Enhancements
 
-- [ ] **Task 1 (`**`)**: Make the app window an actual window, showing on the task bar / docker.
+- [x] **Task 1 (`**`)**: Make the app window an actual window, showing on the task bar / docker.
 - [ ] **Task 2 (`**`)**: Qoder and other registered providers: include and auto-detect in computer environment.
 - [ ] **Task 3 (`*`)**: Fix active days metric.
 - [ ] **Task 4 (`*`)**: Title bar: use icons for the providers (ref: `image_7a324ade-13b3-4898-9641-b21c387dd535`).
