@@ -278,6 +278,7 @@
       modelAliasGrouping: 'off',
       glassOpacity: 68,
       dashboardFlat: false,
+      heatmapHoverBehavior: 'detailed',
       codexResetForecastEnabled: true,
       compactTokenUnits: 'western',
       reduceMotion: 'system'

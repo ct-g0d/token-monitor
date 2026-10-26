@@ -599,6 +599,7 @@ function defaultSettings() {
     compactTokenUnits: 'western',
     tokenRateMode: 'speed',
     heatmapMetric: 'cost',
+    heatmapHoverBehavior: 'detailed',
     modelRankingMetric: 'tokens',
     homeActiveDaysWindow: 'all',
     // How a live session's context gauge reads. That direction is a choice the
@@ -746,6 +747,12 @@ function normalizeTokenRateMode(value) {
 
 function normalizeLiveTokenRateScope(value) {
   return value === 'device' ? 'device' : 'all';
+}
+
+function normalizeHeatmapHoverBehavior(value, fallback = 'detailed') {
+  const next = String(value || '').trim();
+  if (next === 'detailed' || next === 'compact' || next === 'off') return next;
+  return fallback === 'compact' || fallback === 'off' ? fallback : 'detailed';
 }
 
 function normalizeHeatmapMetric(value, fallback = 'cost') {
@@ -2659,6 +2666,7 @@ function readSettings() {
     merged.collectionIntervalMs = normalizeCollectionIntervalMs(merged.collectionIntervalMs);
     merged.syncUploadIntervalMs = normalizeSyncUploadIntervalMs(merged.syncUploadIntervalMs);
     merged.heatmapMetric = normalizeHeatmapMetric(merged.heatmapMetric);
+    merged.heatmapHoverBehavior = normalizeHeatmapHoverBehavior(merged.heatmapHoverBehavior);
     merged.modelRankingMetric = normalizeRankingMetric(merged.modelRankingMetric);
     merged.homeActiveDaysWindow = normalizeHomeActiveDaysWindow(merged.homeActiveDaysWindow);
     merged.sessionTitlesEnabled = parseBoolean(merged.sessionTitlesEnabled, true);
@@ -7833,6 +7841,7 @@ app.whenReady().then(() => {
     if (patch.collectionIntervalMs !== undefined) normalizedPatch.collectionIntervalMs = normalizeCollectionIntervalMs(patch.collectionIntervalMs, settings.collectionIntervalMs);
     if (patch.syncUploadIntervalMs !== undefined) normalizedPatch.syncUploadIntervalMs = normalizeSyncUploadIntervalMs(patch.syncUploadIntervalMs, settings.syncUploadIntervalMs);
     if (patch.heatmapMetric !== undefined) normalizedPatch.heatmapMetric = normalizeHeatmapMetric(patch.heatmapMetric, settings.heatmapMetric);
+    if (patch.heatmapHoverBehavior !== undefined) normalizedPatch.heatmapHoverBehavior = normalizeHeatmapHoverBehavior(patch.heatmapHoverBehavior, settings.heatmapHoverBehavior);
     if (patch.homeActiveDaysWindow !== undefined) normalizedPatch.homeActiveDaysWindow = normalizeHomeActiveDaysWindow(patch.homeActiveDaysWindow, settings.homeActiveDaysWindow);
     if (patch.sessionContextMetric !== undefined) normalizedPatch.sessionContextMetric = normalizeSessionContextMetric(patch.sessionContextMetric, settings.sessionContextMetric);
     settings = normalizeWindowBehaviorSettings({
