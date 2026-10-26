@@ -542,7 +542,7 @@ function normalizeHistory(graphData, options = {}) {
   const totalCost = full.reduce((s, d) => s + num(d.cost), 0);
   const unpricedTokens = full.reduce((s, d) => s + unpricedTokensFor(d), 0);
   const messages = full.reduce((s, d) => s + num(d.messages), 0);
-  const activeDays = full.reduce((s, d) => s + (num(d.tokens) > 0 ? 1 : 0), 0);
+  const activeDays = full.reduce((s, d) => s + (num(d.tokens) > 0 || num(d.cost) > 0 ? 1 : 0), 0);
   const peakDayTokens = full.reduce((m, d) => Math.max(m, num(d.tokens)), 0);
   const { currentStreak, longestStreak } = computeStreaks(full, todayKey);
   const timeMetrics = normalizeTimeMetrics(graphData?.timeMetrics);
@@ -624,7 +624,7 @@ function mergeHistories(histories, options = {}) {
     for (const v of Object.values(m.perClient || {})) s += num(v.messages);
     return s;
   }, 0);
-  const activeDays = daily.reduce((s, d) => s + (num(d.tokens) > 0 ? 1 : 0), 0);
+  const activeDays = daily.reduce((s, d) => s + (num(d.tokens) > 0 || num(d.cost) > 0 ? 1 : 0), 0);
   const peakDayTokens = daily.reduce((mx, d) => Math.max(mx, num(d.tokens)), 0);
   const { currentStreak, longestStreak } = computeStreaks(daily, todayKey);
   const favoriteModel = favoriteModelOf(daily);

@@ -570,8 +570,8 @@ export function resolveWindowKey(
     if (diff <= 2) return "1";
     if (diff <= 10) return "7";
     if (diff <= 45) return "30";
-    if (diff > 365) return "all";
-    return "90";
+    if (diff <= 95) return "90";
+    return "all";
   }
   return "90";
 }
@@ -599,7 +599,7 @@ export function buildUsageSummaryFromData(
   const todayDay = createDayRowFromPeriod(todayPeriod, todayKey);
 
   let unifiedDaily = [...daily];
-  if (todayDay && nonNegative(todayDay.tokens) > 0) {
+  if (todayDay && (nonNegative(todayDay.tokens) > 0 || nonNegative(todayDay.cost) > 0)) {
     const existingIndex = unifiedDaily.findIndex((d) => d.date === todayKey);
     if (existingIndex >= 0) {
       const existing = unifiedDaily[existingIndex]!;
@@ -639,8 +639,6 @@ export function buildUsageSummaryFromData(
     });
   }
 
-  // Active days inside selected range with tokens > 0
-  const activeDays = relevantDays.filter((d) => nonNegative(d.tokens) > 0).length;
   const peakDayTokens = relevantDays.reduce((max, d) => Math.max(max, nonNegative(d.tokens)), 0);
 
   const currentHistoryRevision = String(stats?.historyRevision || stats?.deviceHistoryRevision || '').trim();
@@ -731,6 +729,38 @@ export function buildUsageSummaryFromData(
         buckets.push(...computed);
       }
     }
+  }
+
+  const relevantDaysActiveCount = relevantDays.filter(
+    (d) => nonNegative(d.tokens) > 0 || nonNegative(d.cost) > 0,
+  ).length;
+
+  let activeDays = relevantDaysActiveCount;
+  if (isHourly) {
+    const activeDaysSet = new Set<string>();
+    for (const b of buckets) {
+      if (input?.sinceTime && input?.untilTime) {
+        if (!b.hourStart || b.hourStart < input.sinceTime || b.hourStart > input.untilTime) {
+          continue;
+        }
+      }
+      const bTokens =
+        b.totals.uncachedInputTokens +
+        b.totals.cachedInputTokens +
+        b.totals.cacheCreationTokens +
+        b.totals.outputTokens;
+      if (bTokens > 0 || b.costUsd > 0) {
+        activeDaysSet.add(b.day);
+      }
+    }
+    activeDays = activeDaysSet.size;
+  } else if (allTimeRequested) {
+    const ledgerActiveDays = Math.max(
+      typeof history?.summary?.activeDays === 'number' ? history.summary.activeDays : 0,
+      typeof (stats as any)?.activeDays === 'number' ? (stats as any).activeDays : 0,
+      typeof stats?.periods?.allTime?.activeDays === 'number' ? stats.periods.allTime.activeDays : 0,
+    );
+    activeDays = Math.max(ledgerActiveDays, relevantDaysActiveCount);
   }
 
   const distinctProviders = Array.from(new Set(buckets.map((b) => b.provider)));
@@ -1140,7 +1170,13 @@ export function useUsage(
   const shown = answeredCount > 0 ? { window: input, merged: selection.merged } : null;
 
   const primarySummary = environmentsList[0]?.summary as any;
-  const activeDays = selection.merged.daily.filter((d) => d.totalTokens > 0).length;
+  const mergedActiveCount = selection.merged.daily.filter((d) => d.totalTokens > 0 || d.costUsd > 0).length;
+  const isAllTime = resolveWindowKey(input) === "all";
+  const activeDays = (isAllTime && hiddenProviders.size === 0 && typeof primarySummary?.activeDays === "number")
+    ? Math.max(primarySummary.activeDays, mergedActiveCount)
+    : (hiddenProviders.size === 0 && typeof primarySummary?.activeDays === "number")
+      ? primarySummary.activeDays
+      : mergedActiveCount;
   const peakDayTokens = selection.merged.daily.reduce((max, d) => Math.max(max, d.totalTokens), 0);
   const hasWindowSessions = primarySummary?.hasWindowSessions ?? false;
   const windowSessions = primarySummary?.windowSessions;

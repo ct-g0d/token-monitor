@@ -1368,7 +1368,7 @@ function historyFromDays(days) {
     const day = daily[i];
     totalTokens += day.tokens;
     totalCost += day.cost;
-    if (day.tokens > 0) activeDays += 1;
+    if (day.tokens > 0 || day.cost > 0) activeDays += 1;
     if (day.tokens > peakDayTokens) peakDayTokens = day.tokens;
     messages += day.messages;
     if (day.unpricedTokens > 0) unpricedTokens += positive(day.unpricedTokens);
