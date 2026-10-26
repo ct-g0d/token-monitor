@@ -374,7 +374,7 @@ export function ServiceStatusView() {
       </PageHeader>
 
       {/* Main Content Area */}
-      <div className="flex-1 overflow-hidden px-6 sm:px-8 xl:px-10 pb-6">
+      <div className="flex-1 overflow-hidden px-4 sm:px-6 md:px-8 xl:px-10 pb-6">
         {loading && providers.length === 0 ? (
           <div className="flex h-64 flex-col items-center justify-center text-muted-foreground text-sm space-y-2">
             <RefreshCw className="size-5 animate-spin text-foreground/60" />

@@ -50,7 +50,9 @@
   - *Status:* Completed; implemented loading skeleton on clicking limits and refreshing, empty state when no limits exist, and direct transition to limit pools when limits exist.
 - [ ] **Task 8 (`***`)**: In limits page (and settings/globally), expand supported providers, and change unconfigured boxes into an "Add Provider" action.
 - [ ] **Task 9 (`*`)**: Codex monthly, weekly, and session limits: expand to full width of the bar instead of half-and-half (ref: `image_af4c2e80-7068-487e-baa3-dba56aa88c57`).
-- [ ] **Task 10 (`**`)**: Redesign arrangement for effective space utilization when window shrinks (ref: `image_ae57f434-ad0c-4afd-a216-435691072403`).
+- [x] **Task 10 (`**`)**: Redesign arrangement for effective space utilization when window shrinks (ref: `image_ae57f434-ad0c-4afd-a216-435691072403`).
+  - *Branch:* `t3/responsive-layout-arrangement`
+  - *Status:* Completed; redesigned shell and page arrangement with responsive sidebar rail (w-16 to w-216), fluid typography on Totals, responsive activity stats, container query optimizations on limits, and compact padding when window shrinks down to 640x450.
 - [ ] **Task 11 (`*`)**: Align percentage number in the progress bar to be on the same line as the label text (ref: `image_d7258227-3749-4f9f-bf6b-d81d7d3f3f60`).
 - [ ] **Task 12 (`**`)**: Redesign status page + integrate Tibo reset forecasts.
 - [x] **Task 13 (`*`)**: Ensure language setting applies globally across the app.

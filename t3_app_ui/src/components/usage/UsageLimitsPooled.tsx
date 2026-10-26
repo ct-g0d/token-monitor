@@ -306,7 +306,7 @@ function PoolSegment({
             aria-label={`${account.displayName ?? (account.email ? accountInitials(account.email) : account.driver)}: ${remaining}% left${resetsIn ? `, ${resetsIn}` : ""}${credits ? `, ${credits} reset ${credits === 1 ? "credit" : "credits"} banked` : ""}`}
             className={cn(
               "relative min-w-0 cursor-pointer overflow-hidden rounded-md bg-muted text-start outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background data-[popup-open]:ring-1 data-[popup-open]:ring-inset data-[popup-open]:ring-border",
-              isCodex ? "h-8" : "h-5 @2xl/pool:h-8",
+              isCodex ? "h-8" : "h-6 sm:h-7 @xl/pool:h-8",
             )}
           />
         }
@@ -329,7 +329,7 @@ function PoolSegment({
         {!isCodex ? (
           <span
             aria-hidden
-            className="absolute inset-0 flex items-center justify-center text-3xs leading-none font-semibold text-foreground/80 tabular-nums @2xl/pool:hidden"
+            className="absolute inset-0 flex items-center justify-center text-3xs leading-none font-semibold text-foreground/80 tabular-nums @lg/pool:hidden"
           >
             {index}
           </span>
@@ -337,7 +337,7 @@ function PoolSegment({
         <div
           className={cn(
             "relative h-full min-w-0 items-center gap-1.5 px-2 text-xs",
-            isCodex ? "flex" : "hidden @2xl/pool:flex",
+            isCodex ? "flex" : "hidden @lg/pool:flex",
           )}
         >
           {isCodex ? (
@@ -380,6 +380,9 @@ function PoolSegment({
                   >
                     <TicketIcon className="size-3" aria-hidden />
                     {credits}
+                  </span>
+                  <span className="sr-only">
+                    {credits} reset {credits === 1 ? "credit" : "credits"} banked
                   </span>
                 </>
               ) : null}
@@ -435,7 +438,7 @@ function LegendRow({
     <PopoverTrigger
       style={{ gridColumn: "1 / -1", gridRow: index + 1 }}
       render={<Button variant="ghost" size="compact" />}
-      className="min-w-0 @2xl/pool:hidden"
+      className="min-w-0 @lg/pool:hidden"
     >
       <span className="relative inline-flex size-4 shrink-0 items-center justify-center rounded-sm text-3xs leading-none font-semibold text-foreground/80 tabular-nums">
         <span
@@ -599,13 +602,13 @@ function PoolWindowCard({
     : nextRefill && pool.columns.length > 1;
 
   return (
-    <div className="grid items-center gap-x-6 gap-y-3 rounded-lg border border-border/60 p-4 md:grid-cols-[11rem_minmax(0,1fr)]">
-      <div className="flex flex-col gap-1">
+    <div className="grid items-center gap-x-4 sm:gap-x-6 gap-y-2.5 sm:gap-y-3 rounded-lg border border-border/60 p-3 sm:p-4 md:grid-cols-[11rem_minmax(0,1fr)]">
+      <div className="flex flex-wrap sm:flex-col items-baseline sm:items-start justify-between sm:justify-start gap-x-4 gap-y-1">
         <span className="text-sm font-medium text-foreground">{cardTitle}</span>
         <span className="flex items-baseline gap-2">
           {isCredits && balanceAmount !== null ? (
             <>
-              <span className="text-[26px] leading-none font-semibold text-foreground tabular-nums">
+              <span className="text-xl sm:text-[24px] md:text-[26px] leading-none font-semibold text-foreground tabular-nums">
                 ${balanceAmount.toFixed(2)}
               </span>
               <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground uppercase font-mono tracking-wider">
@@ -614,7 +617,7 @@ function PoolWindowCard({
             </>
           ) : (
             <>
-              <span className="text-[26px] leading-none font-semibold text-foreground tabular-nums">
+              <span className="text-xl sm:text-[24px] md:text-[26px] leading-none font-semibold text-foreground tabular-nums">
                 {pool.remainingPercent}%
               </span>
               <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground uppercase font-mono tracking-wider">
@@ -907,8 +910,6 @@ export function UsageLimitsPooled({
     !n.toLowerCase().includes("antigravity")
   );
 
-
-
   const externalLinks = collectExternalUsageLinks(presentations);
   const cursorPromptAt =
     Math.max(
@@ -933,7 +934,7 @@ export function UsageLimitsPooled({
   };
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-6 sm:gap-8">
       {pools.length === 0 ? (
         <Empty className="py-12 border border-dashed rounded-lg border-border/60" data-slot="limits-empty-state">
           <EmptyMedia variant="icon">

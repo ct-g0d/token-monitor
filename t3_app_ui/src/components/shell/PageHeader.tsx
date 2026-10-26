@@ -21,11 +21,11 @@ export function PageHeader({
 
   return (
     <header
-      className="flex min-h-[80px] shrink-0 flex-wrap items-center justify-between gap-x-6 gap-y-3 pl-6 sm:pl-8 xl:pl-10 pr-36 xl:pr-40 py-4 [-webkit-app-region:drag]"
+      className="flex min-h-[64px] sm:min-h-[72px] md:min-h-[80px] shrink-0 flex-wrap items-center justify-between gap-x-6 gap-y-3 pl-4 sm:pl-6 md:pl-8 xl:pl-10 pr-36 xl:pr-40 py-2.5 sm:py-3.5 md:py-4 [-webkit-app-region:drag]"
       onDoubleClick={handleHeaderDoubleClick}
     >
       <div className="flex min-w-0 shrink items-baseline gap-3">
-        <h1 className="tm-display shrink-0 text-[34px] leading-none font-bold uppercase text-foreground">{title}</h1>
+        <h1 className="tm-display shrink-0 text-[26px] sm:text-[30px] md:text-[34px] leading-none font-bold uppercase text-foreground">{title}</h1>
         {subtitle && (
           <div
             className="tm-label truncate whitespace-nowrap"

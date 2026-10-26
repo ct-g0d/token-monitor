@@ -271,13 +271,17 @@ export function ActivityHeatmap({
   const format = metric === 'tokens' ? formatTokens : formatUsd;
 
   return (
-    <section className="flex items-center gap-10 border-t border-border pt-8">
-      <div className="flex shrink-0 flex-col gap-1">
-        <h2 className="tm-label !text-foreground">Activity</h2>
-        <span className="tabular-nums pt-2 text-[26px] leading-none font-semibold">{active}</span>
-        <span className="tm-label">active days</span>
-        <span className="tabular-nums pt-2 text-[26px] leading-none font-semibold">{format(peak)}</span>
-        <span className="tm-label">peak day</span>
+    <section className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-8 md:gap-10 border-t border-border pt-6 sm:pt-8">
+      <div className="flex shrink-0 flex-row sm:flex-col flex-wrap items-baseline sm:items-start gap-x-6 gap-y-1">
+        <h2 className="tm-label !text-foreground w-full sm:w-auto">Activity</h2>
+        <div className="flex items-baseline gap-1.5 sm:flex-col sm:gap-0">
+          <span className="tabular-nums pt-1 sm:pt-2 text-xl sm:text-[26px] leading-none font-semibold">{active}</span>
+          <span className="tm-label">active days</span>
+        </div>
+        <div className="flex items-baseline gap-1.5 sm:flex-col sm:gap-0">
+          <span className="tabular-nums pt-1 sm:pt-2 text-xl sm:text-[26px] leading-none font-semibold">{format(peak)}</span>
+          <span className="tm-label">peak day</span>
+        </div>
       </div>
       {/* Narrow windows clip the oldest weeks, never the current one */}
       <div
