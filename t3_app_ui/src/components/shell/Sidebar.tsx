@@ -131,7 +131,7 @@ export function Sidebar({ active, onSelect }: { active: MainView; onSelect: (vie
           Today
           <span className="flex items-center gap-1.5">
             <span className={`size-1.5 ${live.rate > 0 ? 'animate-pulse bg-[var(--tm-signal)]' : 'bg-muted-foreground/40'}`} />
-            {live.rate > 0 ? `${live.rate.toFixed(1)}/s` : 'idle'}
+            {live.rate > 0 ? <span className="tabular-nums">{live.rate.toFixed(1)}/s</span> : 'idle'}
           </span>
         </span>
         <span className="tabular-nums text-[44px] leading-[0.85] font-bold">{compact(live.tokens)}</span>

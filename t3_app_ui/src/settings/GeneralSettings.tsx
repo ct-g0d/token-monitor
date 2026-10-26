@@ -400,14 +400,14 @@ export function GeneralSettings({ settings, updateSettings, refreshCurrencyRates
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {['CNY', 'EUR', 'GBP', 'JPY', 'KRW', 'HKD'].map((code) => (
               <div key={code} className="space-y-1">
-                <label className="text-xs text-muted-foreground font-medium">{code}</label>
+                <label className="tm-label">{code}</label>
                 <Input
                   type="number"
                   step="0.0001"
                   placeholder="Rate"
                   value={customRates[code] || ''}
                   onChange={(e) => handleRateChange(code, e.target.value)}
-                  className="h-7 text-xs"
+                  className="h-7 text-xs tabular-nums"
                 />
               </div>
             ))}
@@ -475,7 +475,7 @@ export function GeneralSettings({ settings, updateSettings, refreshCurrencyRates
               max="20"
               value={settings.homeLimitAccountCount ?? 4}
               onChange={(e) => updateSettings({ homeLimitAccountCount: Number(e.target.value) || 4 })}
-              className="h-8 w-20 text-xs"
+              className="h-8 w-20 text-xs tabular-nums"
             />
           }
         />

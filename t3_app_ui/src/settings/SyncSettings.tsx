@@ -165,7 +165,7 @@ export function SyncSettings({ settings, updateSettings, refreshSettings }: Sync
                 type="number"
                 value={settings.hubHostPort || 3080}
                 onChange={(e) => updateSettings({ hubHostPort: parseInt(e.target.value, 10) || 3080 })}
-                className="h-8 w-24 text-xs"
+                className="h-8 w-24 text-xs tabular-nums"
               />
             }
           />
@@ -214,7 +214,7 @@ export function SyncSettings({ settings, updateSettings, refreshSettings }: Sync
                     <span className="font-semibold text-foreground">{dev.name || dev.id}</span>
                     {dev.os && <span className="text-2xs text-muted-foreground capitalize">({dev.os})</span>}
                   </div>
-                  <div className="text-2xs text-muted-foreground mt-0.5">
+                  <div className="text-2xs text-muted-foreground mt-0.5 tabular-nums">
                     {dev.lastSeen ? `Last seen: ${new Date(dev.lastSeen).toLocaleString()}` : 'Online'}
                     {dev.ip ? ` · IP: ${dev.ip}` : ''}
                   </div>

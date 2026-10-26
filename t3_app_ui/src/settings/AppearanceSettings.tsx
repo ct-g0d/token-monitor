@@ -133,7 +133,7 @@ export function AppearanceSettings({ settings, updateSettings }: AppearanceSetti
                 onChange={(e) => updateSettings({ glassOpacity: parseInt(e.target.value, 10) })}
                 className="w-28 accent-primary"
               />
-              <span className="text-xs text-muted-foreground w-8">
+              <span className="text-xs text-muted-foreground w-8 tabular-nums">
                 {settings.glassOpacity ?? 85}%
               </span>
             </div>
@@ -154,7 +154,7 @@ export function AppearanceSettings({ settings, updateSettings }: AppearanceSetti
                 onChange={(e) => updateSettings({ glassBlur: parseInt(e.target.value, 10) })}
                 className="w-28 accent-primary"
               />
-              <span className="text-xs text-muted-foreground w-8">
+              <span className="text-xs text-muted-foreground w-8 tabular-nums">
                 {settings.glassBlur ?? 50}%
               </span>
             </div>
@@ -175,7 +175,7 @@ export function AppearanceSettings({ settings, updateSettings }: AppearanceSetti
                 onChange={(e) => updateSettings({ zoomFactor: parseInt(e.target.value, 10) / 100 })}
                 className="w-28 accent-primary"
               />
-              <span className="text-xs text-muted-foreground w-10">
+              <span className="text-xs text-muted-foreground w-10 tabular-nums">
                 {Math.round((settings.zoomFactor ?? 1.0) * 100)}%
               </span>
             </div>
@@ -216,7 +216,7 @@ export function AppearanceSettings({ settings, updateSettings }: AppearanceSetti
                   onChange={(e) => updateSettings({ backgroundImageOpacity: parseInt(e.target.value, 10) })}
                   className="w-28 accent-primary"
                 />
-                <span className="text-xs text-muted-foreground w-8">
+                <span className="text-xs text-muted-foreground w-8 tabular-nums">
                   {settings.backgroundImageOpacity ?? 30}%
                 </span>
               </div>
