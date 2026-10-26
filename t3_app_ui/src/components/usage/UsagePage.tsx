@@ -67,6 +67,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { UsageLimitsSection } from "~/components/usage/UsageLimits";
+import { UsageLimitsFilter, collectLimitOptions } from "./UsageLimitsPooled";
 import { UsagePriceOverrides } from "~/components/usage/UsagePriceOverrides";
 import { UsageProviderChart } from "~/components/usage/UsageProviderChart";
 import { SpeedPremium, UsageModelDialog } from "~/components/usage/UsageModelDialog";
@@ -374,6 +375,11 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
         : enumerateHourStarts(shownWindow.sinceTime, shownWindow.untilTime),
     [shownWindow.sinceTime, shownWindow.untilTime],
   );
+  const limitOptions = useMemo(
+    () => (showingLimits ? collectLimitOptions(presentations, limitsNow, hiddenProviders) : []),
+    [showingLimits, presentations, limitsNow, hiddenProviders],
+  );
+
   const showChatGptSharing = useMemo(
     () =>
       !hiddenProviders.has("codex") &&
@@ -398,13 +404,19 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
     ],
   );
   const headerControls = showingLimits ? (
-    <>
+    <div className="flex shrink-0 items-center gap-2 mr-28 mt-5 [-webkit-app-region:no-drag]">
       <div className="flex h-8 items-center gap-3 rounded-[3px] px-3.5 shadow-[inset_0_0_0_1px_var(--border)] [&_*]:font-mono [&_*]:text-[11px] [&_*]:tracking-[0.06em] [&_*]:uppercase">
         <UsageProviderFilter
           availableProviders={selectableProviders}
           hiddenProviders={hiddenProviders}
           onChange={(next) => updatePreferences({ hiddenProviders: next })}
         />
+        {limitOptions.length > 0 ? (
+          <>
+            <div className="h-3.5 w-px bg-border/60" aria-hidden />
+            <UsageLimitsFilter limitOptions={limitOptions} />
+          </>
+        ) : null}
       </div>
       <Button
         onClick={refreshWindow}
@@ -416,7 +428,7 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
       >
         <RefreshIcon size="sm" refreshing={isRefreshing} />
       </Button>
-    </>
+    </div>
   ) : (
     <div className="flex shrink-0 items-center gap-2 mr-28 mt-5 [-webkit-app-region:no-drag]">
       <div className="flex h-8 items-center gap-3 rounded-[3px] px-3.5 shadow-[inset_0_0_0_1px_var(--border)] [&_*]:font-mono [&_*]:text-[11px] [&_*]:tracking-[0.06em] [&_*]:uppercase">
@@ -825,7 +837,7 @@ function UsageOverview({
                   )}
                 >
                   {awaitingData
-                    ? "â€”"
+                    ? "â€?
                     : metric === "cost"
                       ? formatUsd(totals?.costUsd ?? 0)
                       : formatTokens(totals?.totalTokens ?? 0)}

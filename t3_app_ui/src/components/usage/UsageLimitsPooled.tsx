@@ -13,8 +13,10 @@ import {
   type LimitPoolWindow,
   remainingPercent,
 } from "@t3tools/shared/usageLimits";
-import { AlertTriangleIcon, ChevronDownIcon, ExternalLinkIcon, SlidersHorizontalIcon, TicketIcon } from "lucide-react";
-import { Fragment, type ReactNode, useEffect, useMemo, useState } from "react";
+import { AlertTriangleIcon, ChevronDownIcon, ClockIcon, ExternalLinkIcon, SlidersHorizontalIcon, TicketIcon } from "lucide-react";
+import { Fragment, type ReactNode, useMemo, useState } from "react";
+import { Atom } from "effect/reactivity";
+import { useAtomValue } from "@effect/atom-react";
 
 import { usePrimarySettings } from "~/hooks/useSettings";
 import { cn } from "~/lib/utils";
@@ -22,7 +24,7 @@ import { formatUpcomingTimestamp } from "~/timestampFormat";
 import { ProviderInstanceIcon } from "~/components/chat/ProviderInstanceIcon";
 import { providerClients } from "~/components/settings/providerDriverMeta";
 import { RedactedSensitiveText } from "~/components/settings/RedactedSensitiveText";
-import { Button } from "~/components/ui/button";
+import { Button, InlineButton } from "~/components/ui/button";
 import { OpenAI } from "~/components/Icons";
 import { Alert, AlertTitle } from "~/components/ui/alert";
 import {
@@ -40,6 +42,7 @@ import {
   resetCreditsSummary,
   useResetCredit,
 } from "~/components/usage/UsageLimits";
+import { appAtomRegistry } from "~/rpc/atomRegistry";
 
 function openExternalLink(url: string) {
   if (typeof window !== "undefined" && window.tokenMonitor?.openExternalUrl) {
@@ -234,7 +237,7 @@ function SegmentPopover({
               className="ms-auto"
               onClick={onRedeem}
             >
-              {redeem.busy ? "Using…" : "Use reset"}
+              {redeem.busy ? "Using�? : "Use reset"}
             </Button>
           </span>
         </div>
@@ -251,6 +254,7 @@ function PoolSegment({
   now,
   index,
   showAccountName,
+  isCodex,
 }: {
   readonly account: LimitAccount;
   readonly window: LimitPoolMember["window"];
@@ -259,11 +263,20 @@ function PoolSegment({
   readonly now: number;
   readonly index: number;
   readonly showAccountName: boolean;
+  readonly isCodex?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const remaining = remainingPercent(window);
   const resetsIn = formatResetsIn(window, now);
+  const countdown = resetsIn ? resetsIn.replace("resets in ", "") : null;
   const credits = account.limits.resetCredits?.availableCount ?? 0;
+
+  const planLabel = isCodex
+    ? account.plan
+      ? account.plan.charAt(0).toUpperCase() + account.plan.slice(1)
+      : "Plus"
+    : null;
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
@@ -273,7 +286,10 @@ function PoolSegment({
             type="button"
             style={{ gridColumn: index, gridRow: 1 }}
             aria-label={`${account.displayName ?? (account.email ? accountInitials(account.email) : account.driver)}: ${remaining}% left${resetsIn ? `, ${resetsIn}` : ""}${credits ? `, ${credits} reset ${credits === 1 ? "credit" : "credits"} banked` : ""}`}
-            className="relative h-5 min-w-0 cursor-pointer overflow-hidden rounded-md bg-muted text-start outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background data-[popup-open]:ring-1 data-[popup-open]:ring-inset data-[popup-open]:ring-border @2xl/pool:h-8"
+            className={cn(
+              "relative min-w-0 cursor-pointer overflow-hidden rounded-md bg-muted text-start outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background data-[popup-open]:ring-1 data-[popup-open]:ring-inset data-[popup-open]:ring-border",
+              isCodex ? "h-8" : "h-5 @2xl/pool:h-8",
+            )}
           />
         }
       >
@@ -282,7 +298,7 @@ function PoolSegment({
           className="absolute inset-y-0 left-0 rounded-md opacity-35"
           style={{ width: `${remaining}%`, backgroundColor: color }}
         />
-        {remaining < 100 && reset ? (
+        {remaining < 100 && (isCodex || reset) ? (
           <div
             aria-hidden
             className="absolute inset-y-0 right-0 opacity-20"
@@ -292,39 +308,70 @@ function PoolSegment({
             }}
           />
         ) : null}
-        <span
-          aria-hidden
-          className="absolute inset-0 flex items-center justify-center text-3xs leading-none font-semibold text-foreground/80 tabular-nums @2xl/pool:hidden"
-        >
-          {index}
-        </span>
-        <div className="relative hidden h-full min-w-0 items-center gap-1.5 px-2 text-xs @2xl/pool:flex">
-          {showAccountName ? (
-            <AccountName
-              account={account}
-              className="min-w-0 truncate font-medium text-foreground"
-            />
-          ) : null}
-          <span className="shrink-0 font-semibold text-foreground tabular-nums">{remaining}%</span>
-          <span className="ms-auto flex shrink-0 items-center gap-1.5 rounded-sm bg-background/85 px-1.5 py-0.5 text-2xs text-foreground tabular-nums">
-            {resetsIn?.replace("resets in ", "↻ ") ?? ""}
-            {credits ? (
-              <>
-                {resetsIn ? (
-                  <span aria-hidden className="text-muted-foreground">
-                    ·
-                  </span>
-                ) : null}
-                <span aria-hidden className="inline-flex items-center gap-0.5 font-semibold">
-                  <TicketIcon className="size-3" aria-hidden />
-                  {credits}
-                </span>
-              </>
-            ) : null}
+        {!isCodex ? (
+          <span
+            aria-hidden
+            className="absolute inset-0 flex items-center justify-center text-3xs leading-none font-semibold text-foreground/80 tabular-nums @2xl/pool:hidden"
+          >
+            {index}
           </span>
+        ) : null}
+        <div
+          className={cn(
+            "relative h-full min-w-0 items-center gap-1.5 px-2 text-xs",
+            isCodex ? "flex" : "hidden @2xl/pool:flex",
+          )}
+        >
+          {isCodex ? (
+            <span className="shrink-0 font-medium text-foreground tabular-nums">
+              {`${planLabel} ${remaining}%`}
+            </span>
+          ) : (
+            <>
+              {showAccountName ? (
+                <AccountName
+                  account={account}
+                  className="min-w-0 truncate font-medium text-foreground"
+                />
+              ) : null}
+              <span className="shrink-0 font-semibold text-foreground tabular-nums">
+                {remaining}%
+              </span>
+            </>
+          )}
+          {isCodex ? (
+            countdown ? (
+              <span className="ms-auto flex shrink-0 items-center gap-1.5 rounded-sm bg-background/85 px-1.5 py-0.5 text-2xs text-foreground tabular-nums">
+                <ClockIcon className="size-3 text-muted-foreground" aria-hidden />
+                <span>{countdown}</span>
+              </span>
+            ) : null
+          ) : (
+            <span className="ms-auto flex shrink-0 items-center gap-1.5 rounded-sm bg-background/85 px-1.5 py-0.5 text-2xs text-foreground tabular-nums">
+              {resetsIn?.replace("resets in ", "�?") ?? ""}
+              {credits ? (
+                <>
+                  {resetsIn ? (
+                    <span aria-hidden className="text-muted-foreground">
+                      ·
+                    </span>
+                  ) : null}
+                  <span
+                    aria-hidden
+                    className="inline-flex items-center gap-0.5 font-semibold"
+                  >
+                    <TicketIcon className="size-3" aria-hidden />
+                    {credits}
+                  </span>
+                </>
+              ) : null}
+            </span>
+          )}
         </div>
       </PopoverTrigger>
-      <LegendRow account={account} window={window} color={color} now={now} index={index} />
+      {!isCodex ? (
+        <LegendRow account={account} window={window} color={color} now={now} index={index} />
+      ) : null}
       {account.redeem ? (
         <RedeemableSegmentPopup
           account={account}
@@ -384,7 +431,7 @@ function LegendRow({
       <AccountName account={account} className="min-w-0 truncate font-medium text-foreground" />
       <span className="shrink-0 font-semibold text-foreground tabular-nums">{remaining}%</span>
       <span className="ms-auto flex shrink-0 items-center gap-1.5 text-2xs text-muted-foreground tabular-nums">
-        {resetsIn?.replace("resets in ", "↻ ") ?? ""}
+        {resetsIn?.replace("resets in ", "�?") ?? ""}
         {credits ? (
           <>
             {resetsIn ? <span aria-hidden>·</span> : null}
@@ -455,19 +502,24 @@ function PoolBar({
   pool,
   color,
   now,
+  isCodex,
 }: {
   readonly pool: LimitPoolWindow;
   readonly color: string;
   readonly now: number;
+  readonly isCodex?: boolean;
 }) {
   const restores = new Map(pool.resets.map((reset) => [reset.member.account.key, reset]));
+  const columns = isCodex
+    ? pool.columns.filter((member) => member.window !== undefined)
+    : pool.columns;
   return (
     <div className="@container/pool min-w-0">
       <div
         className="grid gap-x-1 gap-y-1"
-        style={{ gridTemplateColumns: `repeat(${pool.columns.length}, minmax(0, 1fr))` }}
+        style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))` }}
       >
-        {pool.columns.map((member, position) =>
+        {columns.map((member, position) =>
           member.window ? (
             <PoolSegment
               key={member.account.key}
@@ -477,7 +529,8 @@ function PoolBar({
               color={color}
               now={now}
               index={position + 1}
-              showAccountName={pool.columns.length > 1}
+              showAccountName={columns.length > 1}
+              isCodex={isCodex}
             />
           ) : null,
         )}
@@ -492,12 +545,14 @@ function PoolWindowCard({
   now,
   label,
   description,
+  isCodex,
 }: {
   readonly pool: LimitPoolWindow;
   readonly color: string;
   readonly now: number;
   readonly label?: string | undefined;
   readonly description?: string | undefined;
+  readonly isCodex?: boolean;
 }) {
   const nextRefill = pool.resets.find((reset) => reset.restoresPercent > 0);
   const firstWindow = pool.members[0]?.window as any;
@@ -506,10 +561,25 @@ function PoolWindowCard({
   const memberAccount = pool.members[0]?.account as any;
   const monthSpend = memberAccount?.limits?.balance?.monthSpend;
 
+  const cardTitle = isCodex
+    ? pool.kind === "session"
+      ? "Session"
+      : pool.kind === "weekly"
+        ? "Weekly"
+        : pool.kind === "monthly" || (pool.kind as string) === "billing"
+          ? "Monthly"
+          : label ?? pool.label
+    : label ?? pool.label;
+
+  const refillPercent = nextRefill?.restoresPercent ?? (100 - pool.remainingPercent);
+  const showRefill = isCodex
+    ? refillPercent > 0 && pool.remainingPercent < 100
+    : nextRefill && pool.columns.length > 1;
+
   return (
     <div className="grid items-center gap-x-6 gap-y-3 rounded-lg border border-border/60 p-4 md:grid-cols-[11rem_minmax(0,1fr)]">
       <div className="flex flex-col gap-1">
-        <span className="tm-label truncate">{label ?? pool.label}</span>
+        <span className="text-sm font-medium text-foreground">{cardTitle}</span>
         <span className="flex items-baseline gap-2">
           {isCredits && balanceAmount !== null ? (
             <>
@@ -536,13 +606,13 @@ function PoolWindowCard({
           <span className="text-2xs text-muted-foreground tabular-nums">
             ${monthSpend.toFixed(2)} spent this month
           </span>
-        ) : nextRefill && pool.columns.length > 1 ? (
+        ) : showRefill ? (
           <span className="text-xs font-medium text-foreground tabular-nums">
-            ↻ +{nextRefill.restoresPercent}%
+            �?+{refillPercent}%
           </span>
         ) : null}
       </div>
-      <PoolBar pool={pool} color={color} now={now} />
+      <PoolBar pool={pool} color={color} now={now} isCodex={isCodex} />
       {description ? (
         <p className="text-xs text-muted-foreground md:col-span-2">{description}</p>
       ) : null}
@@ -563,14 +633,27 @@ function PoolSection({
   readonly now: number;
   readonly visibleLimitKeys: ReadonlySet<string> | null;
 }) {
+  const isCodex = pool.driver === "codex";
   const color = getProviderBarColor(String(pool.driver));
   const label = getProviderLabel(String(pool.driver));
-  const windows = displayLimitWindows(pool).filter(
-    (window) => visibleLimitKeys === null || visibleLimitKeys.has(limitWindowKey(String(pool.driver), window)),
-  );
+  const windows = displayLimitWindows(pool)
+    .filter(
+      (window) => visibleLimitKeys === null || visibleLimitKeys.has(limitWindowKey(String(pool.driver), window)),
+    )
+    .sort((a, b) => {
+      if (isCodex) {
+        const order: Record<string, number> = { session: 0, weekly: 1, monthly: 2 };
+        return (order[a.kind] ?? 9) - (order[b.kind] ?? 9);
+      }
+      return 0;
+    });
   if (windows.length === 0) return null;
+  const primaryAccount = pool.accounts[0];
+  const primaryPlan = primaryAccount?.plan
+    ? primaryAccount.plan.charAt(0).toUpperCase() + primaryAccount.plan.slice(1)
+    : "Plus";
   const planSummary = pool.accounts.length > 1
-    ? `${pool.accounts.length} / ${pool.accounts[0]?.plan || "Pro"}`
+    ? `${pool.accounts.length} / ${primaryPlan}`
     : pool.accounts[0]?.plan;
 
   return (
@@ -600,6 +683,7 @@ function PoolSection({
             now={now}
             label={details?.label}
             description={details?.description}
+            isCodex={isCodex}
           />
         );
       })}
@@ -607,46 +691,71 @@ function PoolSection({
   );
 }
 
-export function UsageLimitsPooled({
-  presentations,
-  now,
-  cursorPrompt,
-}: {
-  readonly presentations: Parameters<typeof collectLimitAccounts>[0];
-  readonly now: number;
-  readonly cursorPrompt?: ReactNode;
-}) {
-  const accounts = collectLimitAccounts(presentations);
+function readInitialHiddenLimitKeys(): ReadonlySet<string> {
+  try {
+    if (typeof window === "undefined") return new Set();
+    const stored = window.localStorage.getItem("t3code:limits-hidden:v1");
+    const parsed = stored ? JSON.parse(stored) : [];
+    return new Set(Array.isArray(parsed) ? parsed.filter((key): key is string => typeof key === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
+export const hiddenLimitKeysAtom = Atom.make<ReadonlySet<string>>(readInitialHiddenLimitKeys()).pipe(
+  Atom.keepAlive,
+  Atom.withLabel("limits:hidden-limit-keys"),
+);
+
+export function setHiddenLimitKeys(next: ReadonlySet<string>): void {
+  try {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("t3code:limits-hidden:v1", JSON.stringify([...next]));
+    }
+  } catch {
+    // Ignore unavailable storage.
+  }
+  appAtomRegistry.set(hiddenLimitKeysAtom, next);
+}
+
+export function collectLimitOptions(
+  presentations: Parameters<typeof collectLimitAccounts>[0],
+  now: number,
+  hiddenDrivers?: ReadonlySet<string>,
+): readonly (readonly [string, string])[] {
+  const accounts = collectLimitAccounts(presentations).filter(
+    (account) => !hiddenDrivers || !hiddenDrivers.has(String(account.driver)),
+  );
   const pools = collectLimitPools(accounts, now);
-  const limitOptions = useMemo(() => {
-    const options = new Map<string, string>();
-    for (const pool of pools) {
-      for (const window of displayLimitWindows(pool)) {
-        options.set(
-          limitWindowKey(String(pool.driver), window),
-          `${getProviderLabel(String(pool.driver))} · ${window.label ?? pool.label}`,
-        );
-      }
+  const options = new Map<string, string>();
+  for (const pool of pools) {
+    const isCodex = pool.driver === "codex";
+    for (const window of displayLimitWindows(pool)) {
+      const cardTitle = isCodex
+        ? window.kind === "session"
+          ? "Session"
+          : window.kind === "weekly"
+            ? "Weekly"
+            : window.kind === "monthly" || (window.kind as string) === "billing"
+              ? "Monthly"
+              : window.label ?? pool.label
+        : window.label ?? pool.label;
+      options.set(
+        limitWindowKey(String(pool.driver), window),
+        `${getProviderLabel(String(pool.driver))} · ${cardTitle}`,
+      );
     }
-    return [...options.entries()].sort((left, right) => left[1].localeCompare(right[1]));
-  }, [pools]);
-  const [hiddenLimitKeys, setHiddenLimitKeys] = useState<ReadonlySet<string>>(() => {
-    try {
-      if (typeof window === "undefined") return new Set();
-      const stored = window.localStorage.getItem("t3code:limits-hidden:v1");
-      const parsed = stored ? JSON.parse(stored) : [];
-      return new Set(Array.isArray(parsed) ? parsed.filter((key): key is string => typeof key === "string") : []);
-    } catch {
-      return new Set();
-    }
-  });
-  useEffect(() => {
-    try {
-      window.localStorage.setItem("t3code:limits-hidden:v1", JSON.stringify([...hiddenLimitKeys]));
-    } catch {
-      // Ignore unavailable storage.
-    }
-  }, [hiddenLimitKeys]);
+  }
+  return [...options.entries()].sort((left, right) => left[1].localeCompare(right[1]));
+}
+
+export function UsageLimitsFilter({
+  limitOptions,
+}: {
+  readonly limitOptions: readonly (readonly [string, string])[];
+}) {
+  const hiddenLimitKeys = useAtomValue(hiddenLimitKeysAtom);
+
   const visibleLimitKeys = useMemo(
     () =>
       hiddenLimitKeys.size === 0
@@ -663,6 +772,81 @@ export function UsageLimitsPooled({
         : visibleLimitCount === 0
           ? "No limits"
           : `${visibleLimitCount} limits`;
+
+  if (limitOptions.length === 0) return null;
+
+  return (
+    <Menu>
+      <MenuTrigger
+        render={<InlineButton />}
+        className="group/usage-limits min-w-0 max-w-full gap-1.5"
+        aria-label="Choose visible limits"
+      >
+        <SlidersHorizontalIcon
+          className="size-3.5 shrink-0 text-muted-foreground opacity-70 transition-opacity group-hover/usage-limits:opacity-100 group-focus-visible/usage-limits:opacity-100"
+          aria-hidden
+        />
+        <span className="min-w-0 truncate">{limitFilterLabel}</span>
+        <ChevronDownIcon
+          className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/usage-limits:opacity-100 group-focus-visible/usage-limits:opacity-100 group-data-popup-open/usage-limits:opacity-100"
+          aria-hidden
+        />
+      </MenuTrigger>
+      <MenuPopup align="start" className="min-w-64">
+        <MenuCheckboxItem
+          checked={hiddenLimitKeys.size === 0}
+          closeOnClick={false}
+          onCheckedChange={(checked) =>
+            setHiddenLimitKeys(checked ? new Set() : new Set(limitOptions.map(([key]) => key)))
+          }
+        >
+          All limits
+        </MenuCheckboxItem>
+        <MenuSeparator />
+        {limitOptions.map(([key, label]) => (
+          <MenuCheckboxItem
+            key={key}
+            checked={!hiddenLimitKeys.has(key)}
+            closeOnClick={false}
+            onCheckedChange={(checked) => {
+              const next = new Set(hiddenLimitKeys);
+              if (checked) next.delete(key);
+              else next.add(key);
+              setHiddenLimitKeys(next);
+            }}
+          >
+            {label}
+          </MenuCheckboxItem>
+        ))}
+      </MenuPopup>
+    </Menu>
+  );
+}
+
+export function UsageLimitsPooled({
+  presentations,
+  now,
+  cursorPrompt,
+}: {
+  readonly presentations: Parameters<typeof collectLimitAccounts>[0];
+  readonly now: number;
+  readonly cursorPrompt?: ReactNode;
+}) {
+  const accounts = collectLimitAccounts(presentations);
+  const pools = collectLimitPools(accounts, now);
+  const limitOptions = useMemo(
+    () => collectLimitOptions(presentations, now),
+    [presentations, now],
+  );
+  const hiddenLimitKeys = useAtomValue(hiddenLimitKeysAtom);
+  const visibleLimitKeys = useMemo(
+    () =>
+      hiddenLimitKeys.size === 0
+        ? null
+        : new Set(limitOptions.map(([key]) => key).filter((key) => !hiddenLimitKeys.has(key))),
+    [hiddenLimitKeys, limitOptions],
+  );
+
   const rawNotices = collectLimitNotices(presentations);
   
   // Filter out spurious notices for notConfigured providers
@@ -710,46 +894,6 @@ export function UsageLimitsPooled({
 
   return (
     <div className="flex flex-col gap-8">
-      {limitOptions.length > 0 ? (
-        <div className="flex justify-end">
-          <Menu>
-            <MenuTrigger
-              render={<Button size="sm" variant="outline" />}
-              className="gap-2"
-              aria-label="Choose visible limits"
-            >
-              <SlidersHorizontalIcon className="size-3.5" aria-hidden />
-              <span>{limitFilterLabel}</span>
-              <ChevronDownIcon className="size-3.5 text-muted-foreground" aria-hidden />
-            </MenuTrigger>
-            <MenuPopup align="end" className="min-w-64">
-              <MenuCheckboxItem
-                checked={hiddenLimitKeys.size === 0}
-                closeOnClick={false}
-                onCheckedChange={(checked) => setHiddenLimitKeys(checked ? new Set() : new Set(limitOptions.map(([key]) => key)))}
-              >
-                All limits
-              </MenuCheckboxItem>
-              <MenuSeparator />
-              {limitOptions.map(([key, label]) => (
-                <MenuCheckboxItem
-                  key={key}
-                  checked={!hiddenLimitKeys.has(key)}
-                  closeOnClick={false}
-                  onCheckedChange={(checked) => {
-                    const next = new Set(hiddenLimitKeys);
-                    if (checked) next.delete(key);
-                    else next.add(key);
-                    setHiddenLimitKeys(next);
-                  }}
-                >
-                  {label}
-                </MenuCheckboxItem>
-              ))}
-            </MenuPopup>
-          </Menu>
-        </div>
-      ) : null}
       {pools.length === 0 && notices.length === 0 && !cursorPrompt && externalLinks.length === 0 && notConfiguredDrivers.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           No provider on the selected environments reports subscription limits.
