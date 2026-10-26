@@ -448,7 +448,7 @@ function buildActivity(history) {
   const daily = normalizedDaily(history).slice(-MAC_WIDGET_ACTIVITY_DAYS);
   const peak = daily.reduce((max, day) => Math.max(max, day.totalTokens), 0);
   return {
-    activeDays: daily.filter((day) => day.totalTokens > 0).length,
+    activeDays: daily.filter((day) => day.totalTokens > 0 || day.costUsd > 0).length,
     days: daily.map((day) => ({
       date: day.date,
       intensity: peak > 0 ? Math.max(0, Math.min(4, Math.ceil(day.totalTokens / peak * 4))) : 0,

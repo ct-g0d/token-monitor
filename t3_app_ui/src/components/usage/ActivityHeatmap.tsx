@@ -132,7 +132,7 @@ export function ActivityHeatmap({
 
     const activeCount = typeof activeDays === 'number'
       ? activeDays
-      : inRangeDaily.filter((d) => (metric === 'cost' ? Number(d.cost || 0) > 0 : Number(d.tokens || 0) > 0)).length;
+      : inRangeDaily.filter((d) => Number(d.tokens || 0) > 0 || Number(d.cost || 0) > 0).length;
 
     const resolvedPeak = typeof peakValue === 'number' && peakValue >= 0
       ? peakValue

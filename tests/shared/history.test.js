@@ -644,3 +644,13 @@ test('parseModelIdentifier extracts account email and canonical model', () => {
     'gemini-3.8-flash-tiered'
   );
 });
+
+test('normalizeHistory and mergeHistories count days with cost > 0 but tokens === 0 as active days', () => {
+  const h = normalizeHistory(parseGraphResult(graphFromDays([
+    { date: '2026-06-05', tokens: 0, cost: 1.5, model: 'opus', client: 'claude', messages: 1, activeTimeMs: 60000 },
+    { date: '2026-06-06', tokens: 10, cost: 0, model: 'opus', client: 'claude', messages: 1, activeTimeMs: 60000 },
+    { date: '2026-06-07', tokens: 0, cost: 0, model: 'opus', client: 'claude', messages: 0, activeTimeMs: 0 }
+  ])), { todayKey: '2026-06-07' });
+
+  assert.equal(h.summary.activeDays, 2);
+});

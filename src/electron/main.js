@@ -388,6 +388,7 @@ const {
 const {
   describeWindowBehavior,
   floatingAlwaysOnTopLevel,
+  normalizeWindowBehavior,
   normalizeWindowBehaviorSettings,
   windowBehaviorSelection
 } = require('./windowBehavior');

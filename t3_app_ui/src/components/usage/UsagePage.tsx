@@ -34,7 +34,7 @@ import { primaryServerKeybindingsAtom, serverEnvironment } from "~/state/server"
 import { isCommandPaletteOpen } from "~/commandPaletteBus";
 import { isModelPickerOpen } from "~/modelPickerVisibility";
 import { shortcutLabelForCommand } from "~/keybindings";
-import { useUsage, type EnvironmentUsageStatus } from "@/adapters/usageState";
+import { useUsage, resolveWindowKey, type EnvironmentUsageStatus } from "@/adapters/usageState";
 import type { WindowSessions } from "@/types/tokenMonitor";
 import { useAtomCommand } from "~/state/use-atom-command";
 import {
@@ -214,10 +214,15 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
   const shownWindow = shown?.window ?? window;
   const summarySinceDay = (environments[0]?.summary as any)?.sinceDay;
   const effectiveWindow = useMemo(() => {
-    if (windowDays === 0 && summarySinceDay && shownWindow.sinceDay !== summarySinceDay) {
-      return { ...shownWindow, sinceDay: summarySinceDay };
+    if (windowDays === 0) {
+      return {
+        ...shownWindow,
+        days: 0,
+        windowDays: 0,
+        ...(summarySinceDay && shownWindow.sinceDay !== summarySinceDay ? { sinceDay: summarySinceDay } : {}),
+      };
     }
-    return shownWindow;
+    return { ...shownWindow, days: windowDays, windowDays };
   }, [windowDays, summarySinceDay, shownWindow]);
   const shownHourly = effectiveWindow.resolution === "hour";
   const refreshingUsage = isRefreshing && !showingLimits;
@@ -729,13 +734,18 @@ function UsageOverview({
     () => `${60 / (activeProviders.length + 2)}%`,
     [activeProviders.length],
   );
-  const windowActiveDays = useMemo(
+  const windowKey = resolveWindowKey(shownWindow);
+  const mergedActiveDays = useMemo(
     () =>
-      merged.daily.filter((d) =>
-        metric === "cost" ? d.costUsd > 0 : d.totalTokens > 0,
-      ).length,
-    [merged.daily, metric],
+      merged.daily.filter((d) => d.totalTokens > 0 || d.costUsd > 0).length,
+    [merged.daily],
   );
+  const windowActiveDays = useMemo(() => {
+    if (typeof activeDays === "number" && (windowKey === "all" || hiddenProviders.size === 0)) {
+      return activeDays;
+    }
+    return mergedActiveDays;
+  }, [activeDays, windowKey, hiddenProviders.size, mergedActiveDays]);
   const windowPeak = useMemo(
     () =>
       merged.daily.reduce(
