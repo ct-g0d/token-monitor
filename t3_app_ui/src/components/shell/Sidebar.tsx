@@ -104,14 +104,15 @@ function NavButton({
     <button
       type="button"
       data-tab={tab}
+      title={label}
       onClick={onClick}
-      className={`relative flex h-9 w-full items-center gap-3 px-3 text-left text-[13px] transition-colors ${
+      className={`relative flex h-9 w-full items-center justify-center md:justify-start gap-3 px-2 md:px-3 text-left text-[13px] transition-colors ${
         on ? 'font-semibold text-foreground' : 'text-muted-foreground hover:text-foreground'
       }`}
     >
       <span className={`absolute inset-y-2 left-0 w-[3px] transition-colors ${on ? 'bg-[var(--tm-signal)]' : 'bg-transparent'}`} />
-      <Icon size={15} strokeWidth={on ? 2.25 : 1.75} />
-      {label}
+      <Icon size={15} strokeWidth={on ? 2.25 : 1.75} className="shrink-0" />
+      <span className="hidden md:inline truncate">{label}</span>
     </button>
   );
 }
@@ -125,13 +126,14 @@ export function Sidebar({ active, onSelect }: { active: MainView; onSelect: (vie
   };
 
   return (
-    <aside className="absolute inset-y-0 left-0 z-40 flex w-[216px] flex-col border-r border-border bg-[var(--tm-sidebar)] select-none">
+    <aside className="absolute inset-y-0 left-0 z-40 flex w-14 sm:w-16 md:w-[216px] flex-col border-r border-border bg-[var(--tm-sidebar)] select-none transition-[width] duration-150 overflow-y-auto overflow-x-hidden">
       <div
-        className="flex h-14 shrink-0 items-center gap-2.5 px-4 [-webkit-app-region:drag]"
+        className="flex h-12 md:h-14 shrink-0 items-center justify-center md:justify-start gap-2.5 px-3 md:px-4 [-webkit-app-region:drag]"
         onDoubleClick={handleTitleDoubleClick}
+        title="Token Monitor"
       >
-        <span className="size-2.5 bg-foreground" />
-        <span className="tm-label !text-[11px] !text-foreground">Token Monitor</span>
+        <span className="size-2.5 shrink-0 bg-foreground" />
+        <span className="tm-label hidden md:inline truncate !text-[11px] !text-foreground">Token Monitor</span>
       </div>
 
       <nav className="flex flex-col">
@@ -147,21 +149,28 @@ export function Sidebar({ active, onSelect }: { active: MainView; onSelect: (vie
         ))}
       </nav>
 
-      <div className="mx-4 mt-8 flex flex-col gap-2 border-t border-border pt-4">
-        <span className="tm-label flex items-center justify-between">
+      <div className="mx-2 md:mx-4 mt-4 md:mt-8 flex flex-col gap-1 md:gap-2 border-t border-border pt-3 md:pt-4">
+        <span className="tm-label hidden md:flex items-center justify-between">
           {t('edgeDock.period.today') || 'Today'}
           <span className="flex items-center gap-1.5">
             <span className={`size-1.5 ${live.rate > 0 ? 'animate-pulse bg-[var(--tm-signal)]' : 'bg-muted-foreground/40'}`} />
             {live.rate > 0 ? <span className="tabular-nums">{live.rate.toFixed(1)}/s</span> : 'idle'}
           </span>
         </span>
-        <span className="tabular-nums text-[44px] leading-[0.85] font-bold">{compact(live.tokens)}</span>
-        <span className="tabular-nums text-[15px] text-muted-foreground">${live.cost.toFixed(2)}</span>
+        <span
+          className="tabular-nums text-center md:text-left text-xs sm:text-sm md:text-[44px] leading-tight md:leading-[0.85] font-bold truncate"
+          title={`${compact(live.tokens)} tokens`}
+        >
+          {compact(live.tokens)}
+        </span>
+        <span className="tabular-nums text-center md:text-left text-[10px] md:text-[15px] text-muted-foreground truncate">
+          ${live.cost.toFixed(2)}
+        </span>
       </div>
 
       <div className="mt-auto flex flex-col pb-2">
         {live.devices.length > 0 && (
-          <div className="mx-4 mb-2 flex flex-col gap-px border-t border-border pt-3">
+          <div className="hidden md:flex mx-4 mb-2 flex-col gap-px border-t border-border pt-3">
             <span className="tm-label pb-1.5">{t('settings.sync.panel.devices') || 'Devices'}</span>
             {live.devices.map((d) => (
               <div key={d.id} className="flex h-6 items-center gap-2 text-[12px]" title={d.local ? (t('settings.limits.device.local') || 'This device') : d.stale ? 'Not seen recently' : undefined}>

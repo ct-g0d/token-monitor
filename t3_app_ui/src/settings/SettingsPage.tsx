@@ -189,7 +189,7 @@ export function SettingsPage() {
           </nav>
         </aside>
         <ScrollArea className="min-h-0 flex-1">
-          <div ref={contentRef} className="flex max-w-[720px] flex-col gap-10 px-6 pt-2 pb-12 sm:px-10 select-text">
+          <div ref={contentRef} className="flex max-w-[720px] flex-col gap-10 px-4 sm:px-6 md:px-8 xl:px-10 pt-2 pb-12 select-text">
             <section
               id="settings-section-general"
               data-section="general"

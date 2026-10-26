@@ -82,7 +82,7 @@ export function App() {
       <div className="relative h-screen w-screen overflow-hidden bg-background text-foreground select-none">
         <Sidebar active={activeView} onSelect={handleSelectView} />
 
-        <main key={activeView} className="tm-view-in absolute inset-y-0 right-0 left-[216px] flex flex-col overflow-hidden">
+        <main key={activeView} className="tm-view-in absolute inset-y-0 right-0 left-16 md:left-[216px] flex flex-col overflow-hidden transition-[left] duration-150">
           {(activeView === 'usage' || activeView === 'limits') && (
             <UsagePage
               key={activeView === 'limits' ? `limits-${limitsSeq}` : 'usage'}
