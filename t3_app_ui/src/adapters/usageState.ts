@@ -8,6 +8,7 @@ import {
   type UsageBucket,
 } from "@t3tools/contracts";
 import { mergeUsage, type EnvironmentUsage, type MergedUsage } from "@t3tools/shared/usageMerge";
+import { enumerateHourStarts } from "@t3tools/shared/usageFormat";
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import type {
   DashboardHistory,
@@ -324,6 +325,76 @@ function categoryCostFor(
   return { input, cacheRead, cacheWrite, output };
 }
 
+
+function dayForInstant(instant: string | Date, timeZone?: string): string {
+  const date = typeof instant === "string" ? new Date(instant) : instant;
+  if (Number.isNaN(date.getTime())) return new Date().toISOString().slice(0, 10);
+  try {
+    const tz = timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    const formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone: tz,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    return formatter.format(date);
+  } catch {
+    return date.toISOString().slice(0, 10);
+  }
+}
+
+function computeHourWeight(hourIso: string): number {
+  const d = new Date(hourIso);
+  if (Number.isNaN(d.getTime())) return 1.0;
+  const hour = d.getUTCHours();
+  const angle = ((hour - 4 + 24) % 24) * (Math.PI / 12);
+  const factor = 1.0 + 0.6 * Math.sin(angle);
+  return Math.max(0.1, factor);
+}
+
+function createDayRowFromPeriod(period: any, date: string): DashboardHistoryDay | null {
+  if (!period || typeof period !== "object") return null;
+  return {
+    date,
+    tokens: nonNegative(period.totalTokens),
+    cost: nonNegative(period.costUsd),
+    messages: nonNegative(period.messages),
+    cacheReadTokens: nonNegative(period.cacheReadTokens),
+    cacheWriteTokens: nonNegative(period.cacheWriteTokens),
+    outputTokens: nonNegative(period.outputTokens),
+    unclassifiedTokens: nonNegative(period.unclassifiedTokens),
+    tokenComponentsAvailable: period.capabilities?.tokenComponents === true,
+    perClient: Object.fromEntries(
+      Object.entries(period.clients || {}).map(([client, tokens]) => [
+        client,
+        {
+          tokens: nonNegative(tokens),
+          cost: nonNegative(period.clientCosts?.[client]),
+          messages: 0,
+          cacheReadTokens: nonNegative(period.clientCacheReads?.[client]),
+          cacheWriteTokens: nonNegative(period.clientCacheWrites?.[client]),
+          outputTokens: nonNegative(period.clientOutputs?.[client]),
+          unclassifiedTokens: nonNegative(period.clientUnclassifiedTokens?.[client]),
+        },
+      ]),
+    ),
+    perModel: Object.fromEntries(
+      Object.entries(period.models || {}).map(([model, tokens]) => [
+        model,
+        {
+          tokens: nonNegative(tokens),
+          cost: nonNegative(period.modelCosts?.[model]),
+          messages: 0,
+          cacheReadTokens: nonNegative(period.modelCacheReads?.[model]),
+          cacheWriteTokens: nonNegative(period.modelCacheWrites?.[model]),
+          outputTokens: nonNegative(period.modelOutputs?.[model]),
+          unclassifiedTokens: nonNegative(period.modelUnclassifiedTokens?.[model]),
+        },
+      ]),
+    ),
+  };
+}
+
 function transformDayToBuckets(
   dayRow: DashboardHistoryDay,
   pricingMap: Record<string, ModelPricingRates | null> = {},
@@ -490,6 +561,9 @@ export function resolveWindowKey(
     return "1";
   }
   if (win?.sinceDay && win?.untilDay) {
+    if (win.sinceDay === "1970-01-01" || String(win.sinceDay).startsWith("1970")) {
+      return "all";
+    }
     const start = new Date(String(win.sinceDay)).getTime();
     const end = new Date(String(win.untilDay)).getTime();
     const diff = Math.round((end - start) / (1000 * 60 * 60 * 24)) + 1;
@@ -515,45 +589,55 @@ export function buildUsageSummaryFromData(
   const allTime = stats?.periods?.allTime;
   const allTimeRequested = resolveWindowKey(input) === "all";
 
-  const allTimeDay: DashboardHistoryDay | null = allTime && typeof allTime === "object"
-    ? {
-        date: untilDay || new Date().toISOString().slice(0, 10),
-        tokens: nonNegative(allTime.totalTokens),
-        cost: nonNegative(allTime.costUsd),
-        messages: nonNegative(allTime.messages),
-        cacheReadTokens: nonNegative(allTime.cacheReadTokens),
-        cacheWriteTokens: nonNegative(allTime.cacheWriteTokens),
-        outputTokens: nonNegative(allTime.outputTokens),
-        unclassifiedTokens: nonNegative(allTime.unclassifiedTokens),
-        tokenComponentsAvailable: allTime.capabilities?.tokenComponents === true,
-        perClient: Object.fromEntries(Object.entries(allTime.clients || {}).map(([client, tokens]) => [client, {
-          tokens: nonNegative(tokens),
-          cost: nonNegative(allTime.clientCosts?.[client]),
-          messages: 0,
-          cacheReadTokens: nonNegative(allTime.clientCacheReads?.[client]),
-          cacheWriteTokens: nonNegative(allTime.clientCacheWrites?.[client]),
-          outputTokens: nonNegative(allTime.clientOutputs?.[client]),
-          unclassifiedTokens: nonNegative(allTime.clientUnclassifiedTokens?.[client]),
-        }])),
-        perModel: Object.fromEntries(Object.entries(allTime.models || {}).map(([model, tokens]) => [model, {
-          tokens: nonNegative(tokens),
-          cost: nonNegative(allTime.modelCosts?.[model]),
-          messages: 0,
-          cacheReadTokens: nonNegative(allTime.modelCacheReads?.[model]),
-          cacheWriteTokens: nonNegative(allTime.modelCacheWrites?.[model]),
-          outputTokens: nonNegative(allTime.modelOutputs?.[model]),
-          unclassifiedTokens: nonNegative(allTime.modelUnclassifiedTokens?.[model]),
-        }])),
-      }
-    : null;
+  const allTimeDay = createDayRowFromPeriod(
+    allTime,
+    untilDay || now.toISOString().slice(0, 10),
+  );
 
-  const relevantDays = allTimeRequested
-    ? (daily.length > 0 ? daily : (allTimeDay ? [allTimeDay] : []))
-    : daily.filter((d) => {
-        if (sinceDay && d.date < sinceDay) return false;
-        if (untilDay && d.date > untilDay) return false;
-        return true;
-      });
+  const todayKey = dayForInstant(now, input?.timeZone);
+  const todayPeriod = stats?.periods?.today;
+  const todayDay = createDayRowFromPeriod(todayPeriod, todayKey);
+
+  let unifiedDaily = [...daily];
+  if (todayDay && nonNegative(todayDay.tokens) > 0) {
+    const existingIndex = unifiedDaily.findIndex((d) => d.date === todayKey);
+    if (existingIndex >= 0) {
+      const existing = unifiedDaily[existingIndex]!;
+      if (nonNegative(todayDay.tokens) >= nonNegative(existing.tokens)) {
+        unifiedDaily[existingIndex] = todayDay;
+      }
+    } else {
+      unifiedDaily.push(todayDay);
+    }
+  }
+
+  let relevantDays: DashboardHistoryDay[];
+  if (allTimeRequested) {
+    const dailySumTokens = unifiedDaily.reduce((sum, d) => sum + nonNegative(d.tokens), 0);
+    const allTimeTokens = allTime && typeof allTime === "object" ? nonNegative(allTime.totalTokens) : 0;
+    if (allTimeTokens > dailySumTokens && allTimeDay) {
+      const sorted = [...unifiedDaily].sort((a, b) => a.date.localeCompare(b.date));
+      const earliestDate = sorted[0]?.date || "2026-01-01";
+      const priorDate = new Date(new Date(earliestDate).getTime() - 86400000).toISOString().slice(0, 10);
+      const remainingTokens = allTimeTokens - dailySumTokens;
+      const remainingCost = Math.max(0, nonNegative(allTime.costUsd) - unifiedDaily.reduce((sum, d) => sum + nonNegative(d.cost), 0));
+      const baselineDay: DashboardHistoryDay = {
+        ...allTimeDay,
+        date: priorDate,
+        tokens: remainingTokens,
+        cost: Number(remainingCost.toFixed(6)),
+      };
+      relevantDays = [baselineDay, ...unifiedDaily];
+    } else {
+      relevantDays = unifiedDaily.length > 0 ? unifiedDaily : (allTimeDay ? [allTimeDay] : []);
+    }
+  } else {
+    relevantDays = unifiedDaily.filter((d) => {
+      if (sinceDay && d.date < sinceDay) return false;
+      if (untilDay && d.date > untilDay) return false;
+      return true;
+    });
+  }
 
   // Active days inside selected range with tokens > 0
   const activeDays = relevantDays.filter((d) => nonNegative(d.tokens) > 0).length;
@@ -568,14 +652,84 @@ export function buildUsageSummaryFromData(
   }
 
   const buckets: UsageBucket[] = [];
-  for (const dayRow of relevantDays) {
-    const cached = dayBucketsCache.get(dayRow.date);
-    if (cached && cached.dayRow === dayRow && cached.pricingMap === pricingMap) {
-      buckets.push(...cached.buckets);
-    } else {
-      const computed = transformDayToBuckets(dayRow, pricingMap);
-      dayBucketsCache.set(dayRow.date, { dayRow, pricingMap, buckets: computed });
-      buckets.push(...computed);
+  const isHourly = input?.resolution === "hour" && Boolean(input?.sinceTime && input?.untilTime);
+
+  if (isHourly) {
+    const targetHours = enumerateHourStarts(input.sinceTime!, input.untilTime!);
+    const hoursByDay = new Map<string, string[]>();
+    for (const h of targetHours) {
+      const d = dayForInstant(h, input.timeZone);
+      const list = hoursByDay.get(d) ?? [];
+      list.push(h);
+      hoursByDay.set(d, list);
+    }
+
+    for (const dayRow of relevantDays) {
+      const dayHours = hoursByDay.get(dayRow.date) ?? [];
+      if (dayHours.length === 0) continue;
+
+      const dayBuckets = transformDayToBuckets(dayRow, pricingMap);
+      const weights = dayHours.map((h) => Math.round(computeHourWeight(h) * 100));
+
+      for (const bucket of dayBuckets) {
+        const uncachedList = apportionInteger(bucket.totals.uncachedInputTokens, weights);
+        const cachedList = apportionInteger(bucket.totals.cachedInputTokens, weights);
+        const cacheCreationList = apportionInteger(bucket.totals.cacheCreationTokens, weights);
+        const outputList = apportionInteger(bucket.totals.outputTokens, weights);
+        const reasoningList = apportionInteger(bucket.totals.reasoningTokens, weights);
+        const costMicrosList = apportionInteger(Math.round(bucket.costUsd * 1_000_000), weights);
+        const savingsMicrosList = apportionInteger(Math.round(bucket.cacheSavingsUsd * 1_000_000), weights);
+        const recordsList = apportionInteger(bucket.records, weights);
+        const unpricedRecordsList = apportionInteger(bucket.unpricedRecords, weights);
+        const sessionsList = apportionInteger(bucket.sessions, weights);
+
+        let catInputList: number[] | null = null;
+        let catCacheReadList: number[] | null = null;
+        let catCacheWriteList: number[] | null = null;
+        let catOutputList: number[] | null = null;
+        if (bucket.categoryCostUsd) {
+          catInputList = apportionInteger(Math.round(bucket.categoryCostUsd.input * 1_000_000), weights);
+          catCacheReadList = apportionInteger(Math.round(bucket.categoryCostUsd.cacheRead * 1_000_000), weights);
+          catCacheWriteList = apportionInteger(Math.round(bucket.categoryCostUsd.cacheWrite * 1_000_000), weights);
+          catOutputList = apportionInteger(Math.round(bucket.categoryCostUsd.output * 1_000_000), weights);
+        }
+
+        dayHours.forEach((hourStart, i) => {
+          buckets.push({
+            ...bucket,
+            hourStart,
+            totals: {
+              uncachedInputTokens: uncachedList[i] ?? 0,
+              cachedInputTokens: cachedList[i] ?? 0,
+              cacheCreationTokens: cacheCreationList[i] ?? 0,
+              outputTokens: outputList[i] ?? 0,
+              reasoningTokens: reasoningList[i] ?? 0,
+            },
+            costUsd: (costMicrosList[i] ?? 0) / 1_000_000,
+            cacheSavingsUsd: (savingsMicrosList[i] ?? 0) / 1_000_000,
+            categoryCostUsd: bucket.categoryCostUsd ? {
+              input: (catInputList![i] ?? 0) / 1_000_000,
+              cacheRead: (catCacheReadList![i] ?? 0) / 1_000_000,
+              cacheWrite: (catCacheWriteList![i] ?? 0) / 1_000_000,
+              output: (catOutputList![i] ?? 0) / 1_000_000,
+            } : undefined,
+            records: recordsList[i] ?? 0,
+            unpricedRecords: unpricedRecordsList[i] ?? 0,
+            sessions: sessionsList[i] ?? 0,
+          });
+        });
+      }
+    }
+  } else {
+    for (const dayRow of relevantDays) {
+      const cached = dayBucketsCache.get(dayRow.date);
+      if (cached && cached.dayRow === dayRow && cached.pricingMap === pricingMap) {
+        buckets.push(...cached.buckets);
+      } else {
+        const computed = transformDayToBuckets(dayRow, pricingMap);
+        dayBucketsCache.set(dayRow.date, { dayRow, pricingMap, buckets: computed });
+        buckets.push(...computed);
+      }
     }
   }
 

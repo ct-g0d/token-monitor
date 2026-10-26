@@ -237,7 +237,7 @@ function SegmentPopover({
               className="ms-auto"
               onClick={onRedeem}
             >
-              {redeem.busy ? "Usingâ€? : "Use reset"}
+              {redeem.busy ? "Usingâ€¦" : "Use reset"}
             </Button>
           </span>
         </div>
@@ -348,7 +348,7 @@ function PoolSegment({
             ) : null
           ) : (
             <span className="ms-auto flex shrink-0 items-center gap-1.5 rounded-sm bg-background/85 px-1.5 py-0.5 text-2xs text-foreground tabular-nums">
-              {resetsIn?.replace("resets in ", "â†?") ?? ""}
+              {resetsIn ? resetsIn.replace("resets in ", "in ") : ""}
               {credits ? (
                 <>
                   {resetsIn ? (
@@ -431,7 +431,7 @@ function LegendRow({
       <AccountName account={account} className="min-w-0 truncate font-medium text-foreground" />
       <span className="shrink-0 font-semibold text-foreground tabular-nums">{remaining}%</span>
       <span className="ms-auto flex shrink-0 items-center gap-1.5 text-2xs text-muted-foreground tabular-nums">
-        {resetsIn?.replace("resets in ", "â†?") ?? ""}
+        {resetsIn ? resetsIn.replace("resets in ", "in ") : ""}
         {credits ? (
           <>
             {resetsIn ? <span aria-hidden>Â·</span> : null}
@@ -608,7 +608,7 @@ function PoolWindowCard({
           </span>
         ) : showRefill ? (
           <span className="text-xs font-medium text-foreground tabular-nums">
-            â†?+{refillPercent}%
+            â†º +{refillPercent}%
           </span>
         ) : null}
       </div>
