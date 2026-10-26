@@ -1,13 +1,22 @@
 # Task Checklist & Execution Plan
 
 ## Orchestration Rules
-- Launch 3 parallel threads at a time.
-- Do not link those threads to the orchestrator thread (avoid settling parent thread).
-- Set a timer interval to check on threads. If not finished, do not interrupt.
-- When a thread finishes, request a review from **GPT 6.1 Sol High (Fast Off)** (`codex` / `gpt-6.1-sol` with `reasoningEffort: "high"`, `serviceTier: "default"`) before merging.
-- Each thread addresses one bug in the list. A new bug gets a new thread.
-- Maintain a fully functional `.exe` build.
-- Review and verify checklist items one by one before final handover.
+1. **Review Subagents Stay in This Chat**:
+   - Reviews are delegated strictly within this conversation/chat context using **GPT 6.1 Sol High (Fast Off)** (`codex` / `gpt-6.1-sol` with `reasoningEffort: "high"`, `serviceTier: "default"`).
+   - If capacity is hit or response pauses, send `continue`.
+   - Never launch independent threads for reviews.
+2. **Worker Model Allocation**:
+   - For carrying out work in implementation threads, average out/distribute across **AGY 1–5** (and DeepSeek V4.1 Flash Free Max on OpenCode where applicable).
+3. **No Unauthorized Merges**:
+   - Branches/PRs must NEVER merge on their own without explicit orchestrator inspection and approval.
+4. **Flaw Handling & Revision**:
+   - If a review deems a thread's changes flawed or incomplete, send it back with clear findings to continue and fix.
+5. **Thread Concurrency & Branch Tracking**:
+   - Maximum 3 parallel implementation threads at a time.
+   - Do not link those threads to the orchestrator thread.
+   - Set a background timer interval to monitor threads; never interrupt while they are working.
+   - Track and mark branches that are completed/merged directly in this checklist.
+   - Maintain a functional Windows `.exe` build and verify every checklist item before final handover.
 
 ---
 
@@ -21,8 +30,14 @@
 ## Checklist of Bugs & Enhancements
 
 - [x] **Task 1 (`**`)**: Make the app window an actual window, showing on the task bar / docker.
+  - *Branch:* `feat/task-1-window-docker`
+  - *Status:* Merged into `feat/t3-ui-ledger` (PR #26).
 - [ ] **Task 2 (`**`)**: Qoder and other registered providers: include and auto-detect in computer environment.
-- [ ] **Task 3 (`*`)**: Fix active days metric.
+  - *Branch:* `feat/task-2-providers-autodetect`
+  - *Status:* In progress in worktree.
+- [x] **Task 3 (`*`)**: Fix active days metric.
+  - *Branch:* `feat/task-3-active-days`
+  - *Status:* Merged into `feat/t3-ui-ledger` (PR #27, commit `6d97f103`).
 - [ ] **Task 4 (`*`)**: Title bar: use icons for the providers (ref: `image_7a324ade-13b3-4898-9641-b21c387dd535`).
 - [ ] **Task 5 (`**`)**: When window shrinks, fix header wrapping / collision (ref: `image_2e0fef46-be16-48a8-95eb-f01aa32b8547`).
 - [ ] **Task 6 (`***`)**: Fix model prices page crash; inspect T3 code source to build the interface (ref: `image_f5b6049d-b800-4f17-991b-58b88da1cc75`).
