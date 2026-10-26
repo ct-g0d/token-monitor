@@ -45,7 +45,7 @@
 - [ ] **Task 6 (`***`)**: Fix model prices page crash; inspect T3 code source to build the interface (ref: `image_f5b6049d-b800-4f17-991b-58b88da1cc75`).
   - *Branch:* `t3/fix-model-prices-crash`
   - *Status:* PR #31 opened targeting `feat/t3-ui-ledger`.
-- [x] **Task 7 (`*`)*: When clicking limits, show loading first, then empty state if no limits exist, or transition directly from loading to limits.
+- [x] **Task 7 (`*`)**: When clicking limits, show loading first, then empty state if no limits exist, or transition directly from loading to limits.
   - *Branch:* `t3/limits-loading-empty-state-1`
   - *Status:* Completed; implemented loading skeleton on clicking limits and refreshing, empty state when no limits exist, and direct transition to limit pools when limits exist.
 - [ ] **Task 8 (`***`)**: In limits page (and settings/globally), expand supported providers, and change unconfigured boxes into an "Add Provider" action.
@@ -60,7 +60,9 @@
 - [x] **Task 15 (`*`)**: Restrict currency options to CNY and USD only.
   - *Branch:* `t3/restrict-currency-options`
   - *Status:* Completed; restricted currency options to CNY and USD across React and HTML settings while ensuring robust default handling, stored settings migration, and backward compatibility.
-- [ ] **Task 16 (`*`)**: Remove redundant color theme selector overlapping with the top theme control in settings.
+- [x] **Task 16 (`*`)**: Remove redundant color theme selector overlapping with the top theme control in settings.
+  - *Branch:* `t3/remove-redundant-theme-selector-1`
+  - *Status:* Completed; removed redundant Color Theme dropdown and direct hook wiring from Appearance settings, preserving top-level Theme control under General settings.
 - [ ] **Task 17 (`*`)**: Unify and clean up excessive options in the Theme & Glass Effects settings section.
 - [ ] **Task 18 (`*`)**: Delete background image settings.
 - [ ] **Task 19 (`*`)**: Unify interface fonts & display fonts settings and fix application so changes take effect.
