@@ -3711,14 +3711,15 @@ html.is-windows .settings-panel select option {
   align-items: center;
 }
 .home-limit-account-head:has(> .home-limit-plan) {
-  grid-template-columns: 10px minmax(0, 1fr) fit-content(42%);
+  grid-template-columns: 10px minmax(0, 1fr) fit-content(50%);
 }
 .home-limit-plan {
   min-width: 0;
   overflow: hidden;
   color: var(--readable-muted);
   font-size: 0.625rem;
-  line-height: 1.1;
+  line-height: 1.3;
+  padding-block: 1px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -4566,11 +4567,13 @@ html.is-windows .settings-panel select option {
 }
 .limit-plan {
   flex: 0 0 auto;
-  max-width: 42%;
+  min-width: 0;
+  max-width: 50%;
   overflow: hidden;
   color: var(--muted);
   font-size: 0.625rem;
-  line-height: 1.2;
+  line-height: 1.3;
+  padding-block: 1px;
   text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -5608,6 +5611,15 @@ html.is-windows .limit-live-badge {
    to look identical whether or not a subscription is attached to that account;
    hovering brightens it, which is affordance enough. */
 .subscription-plan-trigger {
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  line-height: inherit;
+  color: inherit;
+  display: inline-flex;
+  align-items: center;
   max-width: 100%;
   overflow: hidden;
   cursor: default;

@@ -150,7 +150,8 @@
 
   function limitProviderPlanDisplayLabel(providerOrId, value) {
     const label = limitProviderDisplayLabel(value);
-    if (providerId(providerOrId) === 'zai') {
+    const id = providerId(providerOrId);
+    if (id === 'zai') {
       // Subscription names arrive as "GLM Coding Lite/Pro/Max" (ZCode's own
       // formatPlanName concatenates exactly this). The provider heading
       // already supplies "GLM", so only the tier remains. Z.ai-prefixed
@@ -158,7 +159,15 @@
       // is only stripped when it repeats the heading.
       return label.replace(/^GLM\s+Coding\s+/iu, '').trim() || label;
     }
-    if (providerId(providerOrId) !== 'zed') return label;
+    if (id === 'antigravity') {
+      // Antigravity plan names may arrive with prefixes like "Google AI",
+      // "Google One", or "Antigravity" (e.g. "Google AI Pro", "Antigravity Pro",
+      // "Google One Pro"). The card heading already supplies Antigravity/Google,
+      // so strip redundant prefixes to preserve the concise tier (e.g., "Pro").
+      const stripped = label.replace(/^(?:Google\s+AI|Google\s+One|Antigravity)\s+/iu, '').trim();
+      return limitProviderDisplayLabel(stripped || label);
+    }
+    if (id !== 'zed') return label;
     // Zed's API returns canonical names such as "Zed Student" and "Zed Pro".
     // The provider heading already supplies "Zed", so keep only the meaningful
     // plan portion in both the Limits card and managed-account row. Unknown
