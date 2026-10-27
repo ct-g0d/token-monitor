@@ -154,6 +154,188 @@ test('unified font settings: shared applyFontSettings exercises real DOM applica
   assert.equal(fakeDocument.documentElement.style.fontSize, '120%');
 });
 
+test('unified font settings: preserveInstrumentTypography preserves narrow instrument display font and dashboard interface default', () => {
+  const properties = new Map();
+  const dataset = {};
+  let bodyFontFamily = '';
+
+  const fakeDocument = {
+    documentElement: {
+      style: {
+        setProperty(k, v) { properties.set(k, String(v)); },
+        removeProperty(k) { properties.delete(k); }
+      },
+      dataset
+    },
+    body: {
+      style: {
+        get fontFamily() { return bodyFontFamily; },
+        set fontFamily(v) { bodyFontFamily = v; }
+      }
+    }
+  };
+
+  const result = fontSettings.applyFontSettings(fakeDocument, {}, {
+    interfaceDefault: fontSettings.DEFAULT_DASHBOARD_INTERFACE_FONT,
+    preserveInstrumentTypography: true
+  });
+  assert.equal(result.interfaceFont, fontSettings.DEFAULT_DASHBOARD_INTERFACE_FONT);
+  assert.equal(properties.get('--ui-font'), fontSettings.DEFAULT_DASHBOARD_INTERFACE_FONT);
+  assert.equal(properties.get('--font-sans'), fontSettings.DEFAULT_DASHBOARD_INTERFACE_FONT);
+  assert.equal(properties.get('--tm-display'), 'Bahnschrift, "DIN Alternate", "DIN Condensed", var(--font-sans)');
+  assert.equal(properties.has('--font-mono'), false);
+  assert.equal(fakeDocument.body.style.fontFamily, fontSettings.DEFAULT_DASHBOARD_INTERFACE_FONT);
+});
+
+test('unified font settings: preserveInstrumentTypography preserves explicit monospace and custom monospace selections', () => {
+  const createFakeDoc = () => {
+    const properties = new Map();
+    const dataset = {};
+    let bodyFontFamily = '';
+    return {
+      fakeDocument: {
+        documentElement: {
+          style: {
+            setProperty(k, v) { properties.set(k, String(v)); },
+            removeProperty(k) { properties.delete(k); }
+          },
+          dataset
+        },
+        body: {
+          style: {
+            get fontFamily() { return bodyFontFamily; },
+            set fontFamily(v) { bodyFontFamily = v; }
+          }
+        }
+      },
+      properties
+    };
+  };
+
+  // Explicit 'mono' preset selection (DEFAULT_INTERFACE_FONT)
+  {
+    const { fakeDocument, properties } = createFakeDoc();
+    const result = fontSettings.applyFontSettings(fakeDocument, {
+      interfaceFontFamily: fontSettings.DEFAULT_INTERFACE_FONT
+    }, {
+      interfaceDefault: fontSettings.DEFAULT_DASHBOARD_INTERFACE_FONT,
+      preserveInstrumentTypography: true
+    });
+    assert.equal(result.interfaceFont, fontSettings.DEFAULT_INTERFACE_FONT);
+    assert.equal(properties.get('--ui-font'), fontSettings.DEFAULT_INTERFACE_FONT);
+    assert.equal(properties.get('--font-sans'), fontSettings.DEFAULT_INTERFACE_FONT);
+    assert.equal(properties.get('--font-mono'), fontSettings.DEFAULT_INTERFACE_FONT);
+    assert.equal(properties.get('--tm-display'), 'Bahnschrift, "DIN Alternate", "DIN Condensed", var(--font-sans)');
+  }
+
+  // Explicit custom monospace font
+  {
+    const { fakeDocument, properties } = createFakeDoc();
+    const result = fontSettings.applyFontSettings(fakeDocument, {
+      interfaceFontFamily: 'JetBrains Mono, monospace'
+    }, {
+      interfaceDefault: fontSettings.DEFAULT_DASHBOARD_INTERFACE_FONT,
+      preserveInstrumentTypography: true
+    });
+    assert.equal(result.interfaceFont, 'JetBrains Mono, monospace');
+    assert.equal(properties.get('--ui-font'), 'JetBrains Mono, monospace');
+    assert.equal(properties.get('--font-sans'), 'JetBrains Mono, monospace');
+    assert.equal(properties.get('--font-mono'), 'JetBrains Mono, monospace');
+    assert.equal(properties.get('--tm-display'), 'Bahnschrift, "DIN Alternate", "DIN Condensed", var(--font-sans)');
+  }
+
+  // Explicit non-monospace font leaves --font-mono untouched
+  {
+    const { fakeDocument, properties } = createFakeDoc();
+    const result = fontSettings.applyFontSettings(fakeDocument, {
+      interfaceFontFamily: fontSettings.SYSTEM_UI_FONT
+    }, {
+      interfaceDefault: fontSettings.DEFAULT_DASHBOARD_INTERFACE_FONT,
+      preserveInstrumentTypography: true
+    });
+    assert.equal(result.interfaceFont, fontSettings.SYSTEM_UI_FONT);
+    assert.equal(properties.get('--ui-font'), fontSettings.SYSTEM_UI_FONT);
+    assert.equal(properties.get('--font-sans'), fontSettings.SYSTEM_UI_FONT);
+    assert.equal(properties.has('--font-mono'), false);
+    assert.equal(properties.get('--tm-display'), 'Bahnschrift, "DIN Alternate", "DIN Condensed", var(--font-sans)');
+  }
+});
+
+test('unified font settings: preserveInstrumentTypography handles default, mirrored, and custom display overrides correctly', () => {
+  const createFakeDoc = () => {
+    const properties = new Map();
+    const dataset = {};
+    let bodyFontFamily = '';
+    return {
+      fakeDocument: {
+        documentElement: {
+          style: {
+            setProperty(k, v) { properties.set(k, String(v)); },
+            removeProperty(k) { properties.delete(k); }
+          },
+          dataset
+        },
+        body: {
+          style: {
+            get fontFamily() { return bodyFontFamily; },
+            set fontFamily(v) { bodyFontFamily = v; }
+          }
+        }
+      },
+      properties
+    };
+  };
+
+  // 1. interfaceFontFamily: '', displayFontFamily: DEFAULT_DISPLAY_FONT
+  {
+    const { fakeDocument, properties } = createFakeDoc();
+    const result = fontSettings.applyFontSettings(fakeDocument, {
+      interfaceFontFamily: '',
+      displayFontFamily: fontSettings.DEFAULT_DISPLAY_FONT
+    }, {
+      interfaceDefault: fontSettings.DEFAULT_DASHBOARD_INTERFACE_FONT,
+      preserveInstrumentTypography: true
+    });
+    assert.equal(result.interfaceFont, fontSettings.DEFAULT_DASHBOARD_INTERFACE_FONT);
+    assert.equal(properties.get('--ui-font'), fontSettings.DEFAULT_DASHBOARD_INTERFACE_FONT);
+    assert.equal(properties.get('--font-sans'), fontSettings.DEFAULT_DASHBOARD_INTERFACE_FONT);
+    assert.equal(properties.get('--tm-display'), 'Bahnschrift, "DIN Alternate", "DIN Condensed", var(--font-sans)');
+  }
+
+  // 2. interfaceFontFamily: DEFAULT_INTERFACE_FONT, displayFontFamily: DEFAULT_INTERFACE_FONT (mirrored)
+  {
+    const { fakeDocument, properties } = createFakeDoc();
+    const result = fontSettings.applyFontSettings(fakeDocument, {
+      interfaceFontFamily: fontSettings.DEFAULT_INTERFACE_FONT,
+      displayFontFamily: fontSettings.DEFAULT_INTERFACE_FONT
+    }, {
+      interfaceDefault: fontSettings.DEFAULT_DASHBOARD_INTERFACE_FONT,
+      preserveInstrumentTypography: true
+    });
+    assert.equal(result.interfaceFont, fontSettings.DEFAULT_INTERFACE_FONT);
+    assert.equal(properties.get('--ui-font'), fontSettings.DEFAULT_INTERFACE_FONT);
+    assert.equal(properties.get('--font-sans'), fontSettings.DEFAULT_INTERFACE_FONT);
+    assert.equal(properties.get('--font-mono'), fontSettings.DEFAULT_INTERFACE_FONT);
+    assert.equal(properties.get('--tm-display'), 'Bahnschrift, "DIN Alternate", "DIN Condensed", var(--font-sans)');
+  }
+
+  // 3. A genuinely custom display family still overrides the instrument stack
+  {
+    const { fakeDocument, properties } = createFakeDoc();
+    const result = fontSettings.applyFontSettings(fakeDocument, {
+      interfaceFontFamily: fontSettings.DEFAULT_DASHBOARD_INTERFACE_FONT,
+      displayFontFamily: 'Impact, sans-serif'
+    }, {
+      interfaceDefault: fontSettings.DEFAULT_DASHBOARD_INTERFACE_FONT,
+      preserveInstrumentTypography: true
+    });
+    assert.equal(result.interfaceFont, fontSettings.DEFAULT_DASHBOARD_INTERFACE_FONT);
+    assert.equal(properties.get('--ui-font'), fontSettings.DEFAULT_DASHBOARD_INTERFACE_FONT);
+    assert.equal(properties.get('--font-sans'), fontSettings.DEFAULT_DASHBOARD_INTERFACE_FONT);
+    assert.equal(properties.get('--tm-display'), 'Impact, sans-serif, var(--font-sans)');
+  }
+});
+
 test('unified font settings: clientBridge exposes TokenMonitorFontSettings and default keys', () => {
   const bridge = clientBridgeApi.clientBridge;
   assert.ok(bridge, 'clientBridge should be defined');

@@ -80,11 +80,32 @@
       style.setProperty('--ui-font', interfaceFont);
       style.setProperty('--display-font', displayFont);
       style.setProperty('--font-sans', interfaceFont);
-      style.setProperty('--tm-display', `${displayFont}, var(--font-sans)`);
+
+      const rawDisplay = settings?.displayFontFamily && normalizeFontFamily(settings.displayFontFamily);
+      const isCustomDisplay =
+        Boolean(rawDisplay) &&
+        rawDisplay !== DEFAULT_DISPLAY_FONT &&
+        rawDisplay !== interfaceFont;
+
+      if (options.preserveInstrumentTypography) {
+        if (isCustomDisplay) {
+          style.setProperty('--tm-display', `${rawDisplay}, var(--font-sans)`);
+        } else {
+          style.setProperty('--tm-display', 'Bahnschrift, "DIN Alternate", "DIN Condensed", var(--font-sans)');
+        }
+      } else {
+        style.setProperty('--tm-display', `${displayFont}, var(--font-sans)`);
+      }
+
+      const explicitInterface = Boolean(settings?.interfaceFontFamily && normalizeFontFamily(settings.interfaceFontFamily));
       const isMono =
         interfaceFont === DEFAULT_INTERFACE_FONT ||
-        /monospace|SFMono|Liberation Mono|ui-monospace/i.test(interfaceFont);
-      if (isMono) {
+        /monospace|SFMono|Liberation Mono|ui-monospace|Consolas|Menlo|Monaco|Courier/i.test(interfaceFont);
+      const shouldSetMono = options.preserveInstrumentTypography
+        ? (explicitInterface && isMono)
+        : isMono;
+
+      if (shouldSetMono) {
         style.setProperty('--font-mono', interfaceFont);
       } else if (typeof style.removeProperty === 'function') {
         style.removeProperty('--font-mono');

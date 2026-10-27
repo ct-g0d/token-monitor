@@ -71,6 +71,31 @@ test('language setting: resolveLocale resolves auto to appropriate system langua
   assert.equal(translate('ja', 'settings.language.title'), '言語');
 });
 
+test('language setting: settings section titles and headers are translated across locales', () => {
+  const keys = [
+    'settings.title',
+    'settings.general.title',
+    'settings.window.title',
+    'settings.collection.title',
+    'settings.accounts.title'
+  ];
+
+  for (const lang of ['en', 'zh-TW', 'zh-CN', 'ko', 'ja', 'pt-BR']) {
+    for (const key of keys) {
+      const text = translate(lang, key);
+      assert.notEqual(text, key, `Expected key "${key}" to be translated in "${lang}"`);
+      assert.ok(typeof text === 'string' && text.length > 0);
+    }
+  }
+
+  assert.equal(translate('en', 'settings.title'), 'Settings');
+  assert.equal(translate('zh-CN', 'settings.title'), '设置');
+  assert.equal(translate('zh-TW', 'settings.title'), '設定');
+  assert.equal(translate('ja', 'settings.title'), '設定');
+  assert.equal(translate('ko', 'settings.title'), '설정');
+  assert.equal(translate('pt-BR', 'settings.title'), 'Configurações');
+});
+
 test('language setting: applyTranslations updates element text and document lang/locale attributes', () => {
   const elements = [
     { dataset: { i18n: 'settings.sections.general' }, textContent: '' },

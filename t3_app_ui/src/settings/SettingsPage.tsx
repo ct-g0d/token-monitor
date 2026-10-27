@@ -23,10 +23,17 @@ type SectionId = (typeof SETTINGS_SECTIONS)[number][0];
 export function SettingsPage() {
   const { settings, updateSettings, refreshSettings, refreshCurrencyRates } = useTokenMonitorSettings();
   const [activeSection, setActiveSection] = useState<SectionId>('general');
+  const [, setLanguageSeq] = useState(0);
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
   const contentRef = useRef<HTMLDivElement | null>(null);
   const isJumpingRef = useRef(false);
   const jumpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const onLangChange = () => setLanguageSeq((s) => s + 1);
+    window.addEventListener('tokenmonitor:languagechange', onLangChange);
+    return () => window.removeEventListener('tokenmonitor:languagechange', onLangChange);
+  }, []);
 
   const getViewport = useCallback((): HTMLElement | null => {
     return (
