@@ -451,7 +451,7 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
     ],
   );
   const headerControls = showingLimits ? (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
       <div className="flex h-8 shrink-0 items-center gap-3 rounded-[3px] px-3.5 shadow-[inset_0_0_0_1px_var(--border)] [&_*]:font-mono [&_*]:text-[11px] [&_*]:tracking-[0.06em] [&_*]:uppercase">
         <UsageProviderFilter
           availableProviders={selectableProviders}
@@ -478,7 +478,7 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
       </Button>
     </div>
   ) : (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
       <div className="flex h-8 shrink-0 items-center gap-3 rounded-[3px] px-3.5 shadow-[inset_0_0_0_1px_var(--border)] [&_*]:font-mono [&_*]:text-[11px] [&_*]:tracking-[0.06em] [&_*]:uppercase">
         <UsageProviderFilter
           availableProviders={selectableProviders}
@@ -867,13 +867,43 @@ function UsageOverview({
               </span>
             </div>
             <div className="flex flex-wrap gap-3 sm:gap-5 md:gap-8 border-t md:border-t-0 md:border-l border-border pt-3 md:pt-0 pl-0 md:pl-6 lg:pl-10">
-              <Metric loading={loadingPartial} label="Processed tokens" value={formatTokens(merged.totalTokens)} />
               <Metric loading={loadingPartial} label="Cached input" value={formatTokens(merged.cachedInputTokens)} />
               <Metric loading={loadingPartial} label="Uncached input" value={formatTokens(merged.uncachedInputTokens)} />
               <Metric loading={loadingPartial} label="Output" value={formatTokens(merged.outputTokens)} />
               <Metric loading={loadingPartial} label="Cache savings" value={formatUsd(merged.costQuality.cacheSavingsUsd)} />
             </div>
           </div>
+
+          {metric === "tokens" && merged.totalTokens > 0 ? (
+            <div className={cn("pt-2 sm:pt-3", figureClass(loadingPartial))}>
+              <UsageShareBar
+                label="Tokens by type"
+                segments={tokenTypeSegments({
+                  uncachedInputTokens: merged.uncachedInputTokens,
+                  cachedInputTokens: merged.cachedInputTokens,
+                  cacheCreationTokens: merged.cacheCreationTokens,
+                  outputTokens: merged.outputTokens,
+                })}
+                format={formatTokens}
+              />
+            </div>
+          ) : null}
+
+          {metric === "cost" && merged.costUsd > 0 ? (
+            <div className={cn("grid gap-x-8 lg:gap-x-12 gap-y-4 sm:gap-y-6 pt-2 sm:pt-3 lg:grid-cols-2", figureClass(loadingPartial))}>
+              <UsageShareBar label="Cost by type" segments={costTypeSegments(merged.categoryCost)} format={formatUsd} />
+              <UsageShareBar
+                label="Cost by speed"
+                segments={speedCostSegments(merged.speedCost)}
+                format={formatUsd}
+                aside={
+                  merged.speedCost.premium > 0 ? (
+                    <SpeedPremium premiumUsd={merged.speedCost.premium} />
+                  ) : undefined
+                }
+              />
+            </div>
+          ) : null}
         </div>
         <UsageProviderChart
           providers={activeProviders}
@@ -954,37 +984,6 @@ function UsageOverview({
           })}
         </div>
       </section>
-
-      {metric === "tokens" && merged.totalTokens > 0 ? (
-        <section className={cn("border-t border-border pt-6 sm:pt-8", figureClass(loadingPartial))}>
-          <UsageShareBar
-            label="Tokens by type"
-            segments={tokenTypeSegments({
-              uncachedInputTokens: merged.uncachedInputTokens,
-              cachedInputTokens: merged.cachedInputTokens,
-              cacheCreationTokens: merged.cacheCreationTokens,
-              outputTokens: merged.outputTokens,
-            })}
-            format={formatTokens}
-          />
-        </section>
-      ) : null}
-
-      {metric === "cost" && merged.costUsd > 0 ? (
-        <section className={cn("grid gap-x-8 lg:gap-x-12 gap-y-4 sm:gap-y-6 border-t border-border pt-6 sm:pt-8 lg:grid-cols-2", figureClass(loadingPartial))}>
-          <UsageShareBar label="Cost by type" segments={costTypeSegments(merged.categoryCost)} format={formatUsd} />
-          <UsageShareBar
-            label="Cost by speed"
-            segments={speedCostSegments(merged.speedCost)}
-            format={formatUsd}
-            aside={
-              merged.speedCost.premium > 0 ? (
-                <SpeedPremium premiumUsd={merged.speedCost.premium} />
-              ) : undefined
-            }
-          />
-        </section>
-      ) : null}
 
       <ActivityHeatmap
         metric={metric}
@@ -1504,14 +1503,11 @@ function UsageSkeleton() {
           </div>
           <div className="flex flex-wrap gap-3 sm:gap-5 md:gap-8 border-t md:border-t-0 md:border-l border-border pt-3 md:pt-0 pl-0 md:pl-6 lg:pl-10">
             <MetricSkeletons
-              labels={["Processed tokens", "Cached input", "Uncached input", "Output", "Cache savings"]}
+              labels={["Cached input", "Uncached input", "Output", "Cache savings"]}
             />
           </div>
         </div>
-      </section>
-
-      <section className="grid gap-x-12 gap-y-8 lg:grid-cols-2">
-        <div className="flex flex-col gap-2.5">
+        <div className="flex flex-col gap-2.5 pt-2 sm:pt-3">
           <Skeleton className="h-5 w-28" />
           <Skeleton className="h-2" />
           <Skeleton className="h-4 w-72" />
