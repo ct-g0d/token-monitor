@@ -265,30 +265,59 @@ function normalizeProviderKind(client: string): UsageProviderKind {
   return (trimmed || "unknown") as UsageProviderKind;
 }
 
-function modelRowsForClient(
+function getClientModels(
+  clientModels: Record<string, Record<string, number>> | undefined,
+  client: string,
+): Record<string, number> | undefined {
+  if (!clientModels) return undefined;
+  if (clientModels[client]) return clientModels[client];
+  const target = (client || "").trim().toLowerCase();
+  for (const [k, v] of Object.entries(clientModels)) {
+    if ((k || "").trim().toLowerCase() === target) return v;
+  }
+  return undefined;
+}
+
+export function modelRowsForClient(
   dayRow: DashboardHistoryDay,
   client: string,
   clientTokens: number,
   clients: readonly string[],
   clientTokensList: readonly number[],
 ) {
-  const direct = Object.entries(dayRow.clientModels?.[client] || {}).filter(([, value]) => nonNegative(value) > 0);
+  const clientModelsMap = getClientModels(dayRow.clientModels, client);
+  const direct = Object.entries(clientModelsMap || {}).filter(([, value]) => nonNegative(value) > 0);
+  if (direct.length > 0) {
+    const names = direct.map(([model]) => model || "unknown");
+    const weights = direct.map(([, value]) => nonNegative(value));
+    return names.map((name, index) => [name, apportionInteger(clientTokens, weights)[index] ?? 0] as [string, number]);
+  }
+
+  // If dayRow has clientModels for any client, direct was empty for THIS client.
+  // Never fall back to global perModel because perModel belongs to other clients!
+  const hasClientModels = dayRow.clientModels && Object.keys(dayRow.clientModels).length > 0;
+  if (hasClientModels) {
+    return [["unknown", clientTokens] as [string, number]];
+  }
+
+  // When clientModels is absent:
+  // Retain a one-client fallback only if it is unambiguous (clients.length <= 1).
+  // Otherwise use an explicit unknown bucket to preserve client totals without smearing models.
   const fallback = Object.entries(dayRow.perModel || {}).filter(([, value]) => {
     const tokens = typeof value === "number" ? value : value?.tokens;
     return nonNegative(tokens) > 0;
   });
-  const source = direct.length > 0
-    ? direct
-    : fallback.map(([model, value]) => {
-        const tokens = typeof value === "number" ? value : value?.tokens;
-        if (clients.length <= 1) return [model, nonNegative(tokens)] as [string, number];
-        const clientIndex = Math.max(0, clients.indexOf(client));
-        return [model, apportionInteger(nonNegative(tokens), clientTokensList)[clientIndex] ?? 0] as [string, number];
-      });
-  if (source.length === 0) return [["unknown", clientTokens] as [string, number]];
-  const names = source.map(([model]) => model || "unknown");
-  const weights = source.map(([, value]) => nonNegative(value));
-  return names.map((name, index) => [name, apportionInteger(clientTokens, weights)[index] ?? 0] as [string, number]);
+
+  if (clients.length <= 1 && fallback.length > 0) {
+    const names = fallback.map(([model]) => model || "unknown");
+    const weights = fallback.map(([, value]) => {
+      const tokens = typeof value === "number" ? value : value?.tokens;
+      return nonNegative(tokens);
+    });
+    return names.map((name, index) => [name, apportionInteger(clientTokens, weights)[index] ?? 0] as [string, number]);
+  }
+
+  return [["unknown", clientTokens] as [string, number]];
 }
 
 function categoryCostFor(
@@ -352,8 +381,36 @@ function computeHourWeight(hourIso: string): number {
   return Math.max(0.1, factor);
 }
 
-function createDayRowFromPeriod(period: any, date: string): DashboardHistoryDay | null {
+export function sanitizeClientModels(
+  rawClientModels: unknown,
+): Record<string, Record<string, number>> | undefined {
+  if (!rawClientModels || typeof rawClientModels !== "object") return undefined;
+  const result: Record<string, Record<string, number>> = {};
+  for (const [client, models] of Object.entries(rawClientModels)) {
+    if (!client || !models || typeof models !== "object") continue;
+    const clientKey = String(client).trim();
+    if (!clientKey) continue;
+    const modelMap: Record<string, number> = {};
+    for (const [model, val] of Object.entries(models as Record<string, unknown>)) {
+      if (!model) continue;
+      const modelKey = String(model).trim();
+      if (!modelKey) continue;
+      const tokens = typeof val === "number" ? val : (val as any)?.tokens;
+      const nonNegTokens = nonNegative(tokens);
+      if (nonNegTokens > 0) {
+        modelMap[modelKey] = (modelMap[modelKey] || 0) + nonNegTokens;
+      }
+    }
+    if (Object.keys(modelMap).length > 0) {
+      result[clientKey] = modelMap;
+    }
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+export function createDayRowFromPeriod(period: any, date: string): DashboardHistoryDay | null {
   if (!period || typeof period !== "object") return null;
+  const clientModels = sanitizeClientModels(period.clientModels);
   return {
     date,
     tokens: nonNegative(period.totalTokens),
@@ -392,10 +449,11 @@ function createDayRowFromPeriod(period: any, date: string): DashboardHistoryDay 
         },
       ]),
     ),
+    ...(clientModels ? { clientModels } : {}),
   };
 }
 
-function transformDayToBuckets(
+export function transformDayToBuckets(
   dayRow: DashboardHistoryDay,
   pricingMap: Record<string, ModelPricingRates | null> = {},
 ): UsageBucket[] {
@@ -576,6 +634,179 @@ export function resolveWindowKey(
   return "90";
 }
 
+export function buildBaselineDay(
+  allTimeDay: DashboardHistoryDay,
+  unifiedDaily: readonly DashboardHistoryDay[],
+  priorDate: string,
+  remainingTokens: number,
+  remainingCost: number,
+): DashboardHistoryDay {
+  // Authoritative token components residuals
+  const allTimeRead = nonNegative(allTimeDay.cacheReadTokens);
+  const allTimeWrite = nonNegative(allTimeDay.cacheWriteTokens);
+  const allTimeOutput = nonNegative(allTimeDay.outputTokens);
+  const dailyRead = unifiedDaily.reduce((s, d) => s + nonNegative(d.cacheReadTokens), 0);
+  const dailyWrite = unifiedDaily.reduce((s, d) => s + nonNegative(d.cacheWriteTokens), 0);
+  const dailyOutput = unifiedDaily.reduce((s, d) => s + nonNegative(d.outputTokens), 0);
+  let resRead = Math.max(0, allTimeRead - dailyRead);
+  let resWrite = Math.max(0, allTimeWrite - dailyWrite);
+  let resOutput = Math.max(0, allTimeOutput - dailyOutput);
+  const compSum = resRead + resWrite + resOutput;
+  if (compSum > remainingTokens && compSum > 0) {
+    [resRead, resWrite, resOutput] = apportionInteger(remainingTokens, [resRead, resWrite, resOutput]);
+  }
+  const resUnclassified = Math.max(0, remainingTokens - resRead - resWrite - resOutput);
+
+  // Per client residuals
+  const rawClients = (allTimeDay.perClient || allTimeDay.byClient || {}) as Record<string, { tokens?: number; cost?: number }>;
+  const clientKeys = Object.keys(rawClients);
+
+  const rawResClientTokens = clientKeys.map((client) => {
+    const allTokens = nonNegative(rawClients[client]?.tokens);
+    const dailyTokens = unifiedDaily.reduce((s, d) => {
+      const c = (d.perClient || d.byClient || {}) as Record<string, { tokens?: number }>;
+      return s + nonNegative(c[client]?.tokens);
+    }, 0);
+    return Math.max(0, allTokens - dailyTokens);
+  });
+  const sumRawResTokens = rawResClientTokens.reduce((s, t) => s + t, 0);
+  const clientTokenWeights = sumRawResTokens > 0
+    ? rawResClientTokens
+    : clientKeys.map((c) => nonNegative(rawClients[c]?.tokens));
+  const apportionedClientTokens = apportionInteger(remainingTokens, clientTokenWeights);
+
+  const rawResClientCosts = clientKeys.map((client) => {
+    const allCost = nonNegative(rawClients[client]?.cost);
+    const dailyCost = unifiedDaily.reduce((s, d) => {
+      const c = (d.perClient || d.byClient || {}) as Record<string, { cost?: number }>;
+      return s + nonNegative(c[client]?.cost);
+    }, 0);
+    return Math.max(0, allCost - dailyCost);
+  });
+  const sumRawResCosts = rawResClientCosts.reduce((s, c) => s + c, 0);
+  const clientCostWeights = sumRawResCosts > 0 ? rawResClientCosts : apportionedClientTokens;
+  const apportionedCostMicros = apportionInteger(Math.round(remainingCost * 1_000_000), clientCostWeights);
+
+  const baselinePerClient: Record<string, any> = {};
+  clientKeys.forEach((client, idx) => {
+    const cTokens = apportionedClientTokens[idx] ?? 0;
+    if (cTokens > 0) {
+      const cCost = (apportionedCostMicros[idx] ?? 0) / 1_000_000;
+      baselinePerClient[client] = {
+        tokens: cTokens,
+        cost: cCost,
+        messages: 0,
+        cacheReadTokens: apportionInteger(resRead, apportionedClientTokens)[idx] ?? 0,
+        cacheWriteTokens: apportionInteger(resWrite, apportionedClientTokens)[idx] ?? 0,
+        outputTokens: apportionInteger(resOutput, apportionedClientTokens)[idx] ?? 0,
+        unclassifiedTokens: apportionInteger(resUnclassified, apportionedClientTokens)[idx] ?? 0,
+      };
+    }
+  });
+
+  // Client models residuals
+  const baselineClientModels: Record<string, Record<string, number>> = {};
+  for (const [client, stats] of Object.entries(baselinePerClient)) {
+    const cTokens = stats.tokens;
+    const clientModelsMap = getClientModels(allTimeDay.clientModels, client);
+    if (clientModelsMap && typeof clientModelsMap === "object") {
+      const modelEntries = Object.entries(clientModelsMap).filter(([, v]) => nonNegative(v) > 0);
+      if (modelEntries.length > 0) {
+        const modelKeys = modelEntries.map(([m]) => m);
+        const rawResModelWeights = modelKeys.map((m) => {
+          const allModelTokens = nonNegative(clientModelsMap[m]);
+          const dailyModelTokens = unifiedDaily.reduce((s, d) => {
+            const cm = getClientModels(d.clientModels, client);
+            return s + nonNegative(cm?.[m]);
+          }, 0);
+          return Math.max(0, allModelTokens - dailyModelTokens);
+        });
+        const sumWeights = rawResModelWeights.reduce((s, w) => s + w, 0);
+        const weightsToUse = sumWeights > 0 ? rawResModelWeights : modelEntries.map(([, v]) => nonNegative(v));
+        const apportionedModelTokens = apportionInteger(cTokens, weightsToUse);
+        const modelsMap: Record<string, number> = {};
+        modelKeys.forEach((m, idx) => {
+          const t = apportionedModelTokens[idx] ?? 0;
+          if (t > 0) {
+            modelsMap[m] = t;
+          }
+        });
+        if (Object.keys(modelsMap).length > 0) {
+          baselineClientModels[client] = modelsMap;
+        }
+      }
+    }
+  }
+
+  // Per model summary for baselineDay
+  const baselinePerModel: Record<string, any> = {};
+  for (const models of Object.values(baselineClientModels)) {
+    for (const [m, t] of Object.entries(models)) {
+      if (!baselinePerModel[m]) {
+        baselinePerModel[m] = {
+          tokens: 0,
+          cost: 0,
+          messages: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          outputTokens: 0,
+          unclassifiedTokens: 0,
+        };
+      }
+      baselinePerModel[m].tokens += t;
+    }
+  }
+
+  // If clientModels was not present on allTimeDay, apportion remainingTokens across allTimeDay.perModel
+  if (Object.keys(baselinePerModel).length === 0 && allTimeDay.perModel) {
+    const modelEntries = Object.entries(allTimeDay.perModel).filter(([, v]) => nonNegative(typeof v === "number" ? v : v?.tokens) > 0);
+    if (modelEntries.length > 0) {
+      const modelKeys = modelEntries.map(([m]) => m);
+      const rawResWeights = modelKeys.map((m) => {
+        const allTokens = nonNegative(typeof allTimeDay.perModel?.[m] === "number" ? allTimeDay.perModel[m] : allTimeDay.perModel?.[m]?.tokens);
+        const dailyTokens = unifiedDaily.reduce((s, d) => {
+          const v = d.perModel?.[m];
+          return s + nonNegative(typeof v === "number" ? v : v?.tokens);
+        }, 0);
+        return Math.max(0, allTokens - dailyTokens);
+      });
+      const sumWeights = rawResWeights.reduce((s, w) => s + w, 0);
+      const weightsToUse = sumWeights > 0 ? rawResWeights : modelEntries.map(([, v]) => nonNegative(typeof v === "number" ? v : v?.tokens));
+      const apportioned = apportionInteger(remainingTokens, weightsToUse);
+      modelKeys.forEach((m, idx) => {
+        const t = apportioned[idx] ?? 0;
+        if (t > 0) {
+          baselinePerModel[m] = {
+            tokens: t,
+            cost: 0,
+            messages: 0,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+            outputTokens: 0,
+            unclassifiedTokens: 0,
+          };
+        }
+      });
+    }
+  }
+
+  return {
+    date: priorDate,
+    tokens: remainingTokens,
+    cost: Number(remainingCost.toFixed(6)),
+    messages: 0,
+    cacheReadTokens: resRead,
+    cacheWriteTokens: resWrite,
+    outputTokens: resOutput,
+    unclassifiedTokens: resUnclassified,
+    tokenComponentsAvailable: allTimeDay.tokenComponentsAvailable,
+    perClient: baselinePerClient,
+    perModel: baselinePerModel,
+    ...(Object.keys(baselineClientModels).length > 0 ? { clientModels: baselineClientModels } : {}),
+  };
+}
+
+
 export function buildUsageSummaryFromData(
   history: DashboardHistory | null,
   stats: TokenMonitorStats | null,
@@ -604,12 +835,16 @@ export function buildUsageSummaryFromData(
     if (existingIndex >= 0) {
       const existing = unifiedDaily[existingIndex]!;
       if (nonNegative(todayDay.tokens) >= nonNegative(existing.tokens)) {
-        unifiedDaily[existingIndex] = todayDay;
+        unifiedDaily[existingIndex] = {
+          ...todayDay,
+          clientModels: todayDay.clientModels ?? existing.clientModels,
+        };
       }
     } else {
       unifiedDaily.push(todayDay);
     }
   }
+
 
   let relevantDays: DashboardHistoryDay[];
   if (allTimeRequested) {
@@ -621,12 +856,7 @@ export function buildUsageSummaryFromData(
       const priorDate = new Date(new Date(earliestDate).getTime() - 86400000).toISOString().slice(0, 10);
       const remainingTokens = allTimeTokens - dailySumTokens;
       const remainingCost = Math.max(0, nonNegative(allTime.costUsd) - unifiedDaily.reduce((sum, d) => sum + nonNegative(d.cost), 0));
-      const baselineDay: DashboardHistoryDay = {
-        ...allTimeDay,
-        date: priorDate,
-        tokens: remainingTokens,
-        cost: Number(remainingCost.toFixed(6)),
-      };
+      const baselineDay = buildBaselineDay(allTimeDay, unifiedDaily, priorDate, remainingTokens, remainingCost);
       relevantDays = [baselineDay, ...unifiedDaily];
     } else {
       relevantDays = unifiedDaily.length > 0 ? unifiedDaily : (allTimeDay ? [allTimeDay] : []);
