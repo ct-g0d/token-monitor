@@ -26,6 +26,16 @@ export function evaluateSessionAccess(session: any): 'granted' | 'denied' | 'pen
   return 'denied';
 }
 
+export function createFallbackWorkstationTarget(settings?: any): UsagePriceTargetResult {
+  return {
+    environmentId: 'primary-environment',
+    label: 'Token Monitor Workstation',
+    prices: settings?.usagePriceOverrides ?? {},
+    aliases: settings?.usageModelAliases ?? {},
+    unavailable: null,
+  };
+}
+
 export function deriveUsagePriceTarget(
   environmentId: any,
   environment: any,

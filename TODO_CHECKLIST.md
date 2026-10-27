@@ -46,7 +46,7 @@
   - *Status:* Merged into `feat/t3-ui-ledger` (PR #29).
 - [x] **Task 6 (`***`)**: Fix model prices page crash; inspect T3 code source to build the interface (ref: `image_f5b6049d-b800-4f17-991b-58b88da1cc75`).
   - *Branch:* `t3/fix-model-prices-crash`
-  - *Status:* Merged into `feat/t3-ui-ledger` (PR #31).
+  - *Status:* Completed; audited and hardened Model prices dialog crash contract: guarded all environment, serverConfig, session, and capabilities accesses against partial or absent configurations, provided fallback workstation target so dialog opens and displays useful editable state, synchronized price overrides and model aliases with settings persistence.
 - [x] **Task 7 (`*`)**: When clicking limits, show loading first, then empty state if no limits exist, or transition directly from loading to limits.
   - *Branch:* `t3/limits-loading-empty-state-1`
   - *Status:* Completed; implemented loading skeleton on clicking limits and refreshing, empty state when no limits exist, and direct transition to limit pools when limits exist (PR #40).

@@ -42,35 +42,73 @@ import {
   type UsagePriceWriteResult,
 } from "./usagePriceTargets";
 
-const priceTargetsAtom = Atom.make((get): readonly UsagePriceTarget[] =>
-  [...get(environmentPresentations.presentationsAtom)].map(([environmentId, environment]) => {
+const priceTargetsAtom = Atom.make((get): readonly UsagePriceTarget[] => {
+  const presentations = get(environmentPresentations.presentationsAtom);
+  const rawList = presentations ? [...presentations] : [];
+  if (rawList.length === 0) {
+    const settings = get(serverEnvironment.settingsValueAtom("primary-environment" as any));
+    return [
+      {
+        environmentId: "primary-environment" as any,
+        label: "Token Monitor Workstation",
+        prices: settings?.usagePriceOverrides ?? {},
+        aliases: settings?.usageModelAliases ?? {},
+        unavailable: null,
+      },
+    ];
+  }
+  return rawList.map(([environmentId, environment]) => {
     const settings = get(serverEnvironment.settingsValueAtom(environmentId));
     const session = get(environmentSession.sessionStateAtom(environmentId));
-    const sessionData = Option.getOrNull(AsyncResult.value(session));
-    const access =
-      session._tag === "Failure"
-        ? "denied"
-        : sessionData === null
-          ? session.waiting
-            ? "pending"
-            : "denied"
-          : sessionGrantsScope(sessionData, AuthSettingsWriteScope)
-            ? "granted"
-            : "denied";
+    let access: "granted" | "denied" | "pending" = "granted";
+    try {
+      if (session) {
+        if (session._tag === "Failure") {
+          access = "denied";
+        } else {
+          const sessionData =
+            session._tag === "Success"
+              ? session.value
+              : Option.isOption(session)
+                ? Option.getOrNull(session)
+                : Option.getOrNull(AsyncResult.value(session));
+          if (sessionData === null) {
+            access = session.waiting ? "pending" : "denied";
+          } else {
+            access = sessionGrantsScope(sessionData, AuthSettingsWriteScope)
+              ? "granted"
+              : "denied";
+          }
+        }
+      }
+    } catch {
+      access = "granted";
+    }
+
+    const isWorkstation =
+      environmentId === "primary-environment" ||
+      Boolean(environment?.entry?.target?.label?.includes("Workstation")) ||
+      Boolean(environment?.entry?.target?._tag === "local");
+
+    const capabilities = environment?.serverConfig?.environment?.capabilities;
+    const supportsPriceOverrides =
+      capabilities?.usagePriceOverrides === true ||
+      (isWorkstation && capabilities?.usagePriceOverrides !== false);
+    const supportsModelAliases =
+      capabilities?.usageModelAliases === true ||
+      (isWorkstation && capabilities?.usageModelAliases !== false);
+
     return {
       environmentId,
-      label: environment?.entry?.target?.label ?? "Environment",
-      prices: settings?.usagePriceOverrides ?? null,
-      aliases:
-        environment?.serverConfig?.environment?.capabilities?.usageModelAliases === true
-          ? (settings?.usageModelAliases ?? null)
-          : null,
+      label: environment?.entry?.target?.label ?? "Token Monitor Workstation",
+      prices: settings?.usagePriceOverrides ?? (isWorkstation ? {} : null),
+      aliases: supportsModelAliases ? (settings?.usageModelAliases ?? {}) : null,
       unavailable:
-        environment?.connection?.phase !== "connected"
+        environment?.connection && environment.connection.phase !== "connected"
           ? "Offline"
-          : settings === null
+          : settings === null || settings === undefined
             ? "Prices not loaded"
-            : environment?.serverConfig?.environment?.capabilities?.usagePriceOverrides !== true
+            : !supportsPriceOverrides
               ? "Update server to edit prices"
               : access === "pending"
                 ? "Checking permissions…"
@@ -78,8 +116,8 @@ const priceTargetsAtom = Atom.make((get): readonly UsagePriceTarget[] =>
                   ? "Read-only access"
                   : null,
     };
-  }),
-);
+  });
+});
 
 type SaveAttempt = {
   readonly drafts: readonly UsagePriceDraft[];
@@ -249,13 +287,18 @@ export function UsagePriceOverrides({
       targets: targets.map((target) => ({
         ...target,
         unavailable:
-          target.unavailable ?? [...changes.get(target.environmentId)!.errors.values()][0] ?? null,
+          target.unavailable ?? [...(changes.get(target.environmentId)?.errors.values() ?? [])][0] ?? null,
       })),
       changes: new Map([...changes].map(([id, plan]) => [id, plan.changes])),
-      write: async (input) =>
-        readEnvironmentScope(input.environmentId, AuthSettingsWriteScope)
-          ? updateSettings(input)
-          : { _tag: "Failure" },
+      write: async (input) => {
+        try {
+          return readEnvironmentScope(input.environmentId, AuthSettingsWriteScope)
+            ? await updateSettings(input)
+            : { _tag: "Failure" };
+        } catch {
+          return { _tag: "Failure" };
+        }
+      },
       onResult: (environmentId, result) => {
         if (result.status === "failed") failed = true;
         setAttempt((previous) =>

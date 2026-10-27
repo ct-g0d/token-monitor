@@ -1,7 +1,7 @@
 // @ts-ignore
 import * as i18nNamespace from '../../src/electron/renderer/i18n.js';
 
-const i18nModule: any = (i18nNamespace as Record<string, any>)['default'] || i18nNamespace;
+const i18nModule: any = Object.assign({}, i18nNamespace);
 
 export const i18n =
   typeof window !== 'undefined' && (window as any).TokenMonitorI18n

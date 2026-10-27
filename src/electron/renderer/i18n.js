@@ -2,6 +2,7 @@
 
 (function exposeI18n(root, factory) {
   const api = factory();
+  api.default = api;
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (root) root.TokenMonitorI18n = api;
 })(typeof window !== 'undefined' ? window : null, function createI18nApi() {
@@ -11583,7 +11584,8 @@
     return resolved;
   }
 
-  return {
+  const apiObj = {
+    default: null,
     LANGUAGE_OPTIONS,
     MESSAGES,
     applyTranslations,
@@ -11592,4 +11594,6 @@
     resolveRegionalLocale,
     translate
   };
+  apiObj.default = apiObj;
+  return apiObj;
 });

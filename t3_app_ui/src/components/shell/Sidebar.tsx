@@ -119,6 +119,13 @@ function NavButton({
 
 export function Sidebar({ active, onSelect }: { active: MainView; onSelect: (view: MainView) => void }) {
   const live = useLive();
+  const [, setLanguageSeq] = useState(0);
+
+  useEffect(() => {
+    const onLangChange = () => setLanguageSeq((s) => s + 1);
+    window.addEventListener("tokenmonitor:languagechange", onLangChange);
+    return () => window.removeEventListener("tokenmonitor:languagechange", onLangChange);
+  }, []);
 
   const handleTitleDoubleClick = () => {
     const tm = window.tokenMonitor;
