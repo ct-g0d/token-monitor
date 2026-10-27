@@ -6,6 +6,7 @@ const test = require('node:test');
 const {
   deriveUsagePriceTarget,
   evaluateSessionAccess,
+  createFallbackWorkstationTarget,
   toUsagePriceOverrides,
   applyPriceOverridesPatch,
   applyModelAliasesPatch,
@@ -224,6 +225,30 @@ test('deriveUsagePriceTarget populates valid workstation targets with prices and
   assert.equal(target.label, 'Token Monitor Workstation');
   assert.deepEqual(target.prices, settings.usagePriceOverrides);
   assert.deepEqual(target.aliases, settings.usageModelAliases);
+});
+
+test('createFallbackWorkstationTarget provides an accessible workstation target when presentations are empty', () => {
+  const fallback = createFallbackWorkstationTarget({
+    usagePriceOverrides: { 'gpt-4o': { inputCostPerMillionTokens: 2.5 } },
+    usageModelAliases: { 'claude-3-5': 'claude-sonnet' },
+  });
+  assert.equal(fallback.environmentId, 'primary-environment');
+  assert.equal(fallback.label, 'Token Monitor Workstation');
+  assert.equal(fallback.unavailable, null);
+  assert.deepEqual(fallback.prices, { 'gpt-4o': { inputCostPerMillionTokens: 2.5 } });
+  assert.deepEqual(fallback.aliases, { 'claude-3-5': 'claude-sonnet' });
+});
+
+test('deriveUsagePriceTarget handles completely undefined session or environment gracefully', () => {
+  const target1 = deriveUsagePriceTarget(undefined, undefined, undefined, undefined);
+  assert.equal(target1.unavailable, 'Offline');
+  assert.equal(target1.label, 'Token Monitor Workstation');
+  assert.equal(target1.prices, null);
+  assert.equal(target1.aliases, null);
+
+  const target2 = deriveUsagePriceTarget('env-test', { connection: { phase: 'connected' } }, {}, undefined);
+  assert.equal(target2.environmentId, 'env-test');
+  assert.equal(target2.unavailable, 'Update server to edit prices');
 });
 
 test('toUsagePriceOverrides normalizes customModelPricing array to per-million rate object', () => {
