@@ -62,23 +62,27 @@ export function SettingsPage({ initialSection, initialDetail, onClearInitialSect
   }, []);
 
   useEffect(() => {
-    if (initialSection) {
-      let sec = initialSection;
-      if (sec === 'edge-dock' || sec === 'hoverbar' || sec === 'hover_bar') {
-        sec = 'hover-bar';
-      } else if (sec === 'limits') {
-        sec = 'accounts';
-      }
-      if (SETTINGS_SECTIONS.some(([id]) => id === sec)) {
-        const timer = setTimeout(() => {
-          jumpTo(sec as SectionId);
-          if (initialDetail) {
-            window.dispatchEvent(new CustomEvent('tm-open-settings', { detail: initialDetail }));
-          }
-          onClearInitialSection?.();
-        }, 50);
-        return () => clearTimeout(timer);
-      }
+    if (!initialSection) return;
+
+    let sec = initialSection;
+    if (sec === 'edge-dock' || sec === 'hoverbar' || sec === 'hover_bar') {
+      sec = 'hover-bar';
+    } else if (sec === 'limits') {
+      sec = 'accounts';
+    }
+
+    if (SETTINGS_SECTIONS.some(([id]) => id === sec)) {
+      const timer = setTimeout(() => {
+        jumpTo(sec as SectionId);
+        const hasAction = Boolean(initialDetail?.openAddProvider || initialDetail?.providerId);
+        if (hasAction) {
+          window.dispatchEvent(new CustomEvent('tm-open-settings', { detail: initialDetail }));
+        }
+        onClearInitialSection?.();
+      }, 50);
+      return () => clearTimeout(timer);
+    } else {
+      onClearInitialSection?.();
     }
   }, [initialSection, initialDetail, jumpTo, onClearInitialSection]);
 

@@ -63,18 +63,6 @@
     return SETTING_CURRENCY_CODES.includes(fallbackCode) ? fallbackCode : 'USD';
   }
 
-  function normalizeCurrencyOverrides(value) {
-    const out = {};
-    if (value && typeof value === 'object') {
-      for (const [code, raw] of Object.entries(value)) {
-        const key = normalizeCurrency(code, '');
-        const num = Number(raw);
-        if (key !== 'USD' && Number.isFinite(num) && num > 0) out[key] = num;
-      }
-    }
-    return out;
-  }
-
   function convertUsd(value, currency = 'USD') {
     const amount = Number(value || 0);
     const code = normalizeCurrency(currency);
@@ -102,7 +90,6 @@
     normalizeCurrency,
     normalizeSettingCurrency,
     configureRates,
-    resolveEffectiveRates,
-    normalizeCurrencyOverrides
+    resolveEffectiveRates
   };
 });

@@ -1,5 +1,7 @@
 'use strict';
 
+const { normalizeCurrency } = require('../shared/currency');
+
 function parseBoolean(value, fallback = false) {
   if (typeof value === 'boolean') return value;
   if (value === undefined || value === null || value === '') return fallback;
@@ -26,6 +28,20 @@ function normalizeShowLimitUsed(value, fallback = false) {
   if (['used', '1', 'true', 'yes', 'on'].includes(normalized)) return true;
   if (['remaining', '0', 'false', 'no', 'off'].includes(normalized)) return false;
   return fallback;
+}
+
+function normalizeCurrencyOverrides(value) {
+  const out = {};
+  if (value && typeof value === 'object') {
+    for (const [code, raw] of Object.entries(value)) {
+      const key = normalizeCurrency(code, '');
+      const num = Number(raw);
+      // normalizeCurrency falls back to 'USD' for unknown codes; excluding 'USD'
+      // drops both unknown codes and any attempt to override the USD base (always 1).
+      if (key !== 'USD' && Number.isFinite(num) && num > 0) out[key] = num;
+    }
+  }
+  return out;
 }
 
 function normalizeTrayModeSettings(settings = {}) {
@@ -81,6 +97,7 @@ function mainWindowCloseAction(settings = {}, _state = {}) {
 module.exports = {
   normalizeThemeSetting,
   normalizeShowLimitUsed,
+  normalizeCurrencyOverrides,
   parseBoolean,
   macActivationPolicyMode,
   mainWindowCloseAction,

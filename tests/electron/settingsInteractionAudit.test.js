@@ -5,7 +5,8 @@ const test = require('node:test');
 
 const {
   normalizeShowLimitUsed,
-  normalizeThemeSetting
+  normalizeThemeSetting,
+  normalizeCurrencyOverrides
 } = require('../../src/electron/trayModeSettings');
 
 const {
@@ -13,8 +14,7 @@ const {
 } = require('../../src/electron/renderer/i18n');
 
 const {
-  resolveEffectiveRates,
-  normalizeCurrencyOverrides
+  resolveEffectiveRates
 } = require('../../src/shared/currency');
 
 test('normalizeShowLimitUsed correctly normalizes string quota modes to boolean', () => {

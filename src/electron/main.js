@@ -336,6 +336,7 @@ const {
   normalizeTrayModeSettings,
   normalizeThemeSetting,
   normalizeShowLimitUsed,
+  normalizeCurrencyOverrides,
   shouldCreateTray,
   skipTaskbarForSettings,
   trayToggleAction
@@ -2467,20 +2468,6 @@ function setZoomFactor(value) {
 
 function adjustZoom(delta) {
   setZoomFactor(clampZoom(settings.zoomFactor) + delta);
-}
-
-function normalizeCurrencyOverrides(value) {
-  const out = {};
-  if (value && typeof value === 'object') {
-    for (const [code, raw] of Object.entries(value)) {
-      const key = normalizeCurrency(code, '');
-      const num = Number(raw);
-      // normalizeCurrency falls back to 'USD' for unknown codes; excluding 'USD'
-      // drops both unknown codes and any attempt to override the USD base (always 1).
-      if (key !== 'USD' && Number.isFinite(num) && num > 0) out[key] = num;
-    }
-  }
-  return out;
 }
 
 function ensureCredentialStore() {
