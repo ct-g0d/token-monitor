@@ -17,6 +17,11 @@ export function resolveLocale(language?: string, preferred?: readonly string[] |
   return i18n?.resolveLocale ? i18n.resolveLocale(language || 'auto', pref) : (language && language !== 'auto' ? language : 'en');
 }
 
+export function resolveRegionalLocale(preferred?: readonly string[] | string[]): string {
+  const pref = preferred || (typeof navigator !== 'undefined' && navigator.languages?.length ? navigator.languages : [navigator?.language || 'en']);
+  return i18n?.resolveRegionalLocale ? i18n.resolveRegionalLocale(pref) : (pref[0] || 'en');
+}
+
 export function translate(locale: string, key: string, params?: Record<string, any>): string {
   return i18n?.translate ? i18n.translate(locale, key, params) : key;
 }

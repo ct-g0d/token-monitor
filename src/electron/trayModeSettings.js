@@ -1,5 +1,7 @@
 'use strict';
 
+const { normalizeCurrency } = require('../shared/currency');
+
 function parseBoolean(value, fallback = false) {
   if (typeof value === 'boolean') return value;
   if (value === undefined || value === null || value === '') return fallback;
@@ -14,6 +16,34 @@ function parseBoolean(value, fallback = false) {
 // would leave a background window with no way to focus or quit it. The DOM
 // nests both controls under the tray toggle, but a hand-edited settings.json
 // has to fail the same way, so the guard lives here rather than in the UI.
+function normalizeThemeSetting(value, fallback = 'system') {
+  if (value === 'dark' || value === 'light' || value === 'system') return value;
+  return fallback;
+}
+
+function normalizeShowLimitUsed(value, fallback = false) {
+  if (typeof value === 'boolean') return value;
+  if (value === undefined || value === null || value === '') return fallback;
+  const normalized = String(value).trim().toLowerCase();
+  if (['used', '1', 'true', 'yes', 'on'].includes(normalized)) return true;
+  if (['remaining', '0', 'false', 'no', 'off'].includes(normalized)) return false;
+  return fallback;
+}
+
+function normalizeCurrencyOverrides(value) {
+  const out = {};
+  if (value && typeof value === 'object') {
+    for (const [code, raw] of Object.entries(value)) {
+      const key = normalizeCurrency(code, '');
+      const num = Number(raw);
+      // normalizeCurrency falls back to 'USD' for unknown codes; excluding 'USD'
+      // drops both unknown codes and any attempt to override the USD base (always 1).
+      if (key !== 'USD' && Number.isFinite(num) && num > 0) out[key] = num;
+    }
+  }
+  return out;
+}
+
 function normalizeTrayModeSettings(settings = {}) {
   const showTrayIcon = parseBoolean(settings.showTrayIcon, true);
   return {
@@ -65,6 +95,10 @@ function mainWindowCloseAction(settings = {}, _state = {}) {
 }
 
 module.exports = {
+  normalizeThemeSetting,
+  normalizeShowLimitUsed,
+  normalizeCurrencyOverrides,
+  parseBoolean,
   macActivationPolicyMode,
   mainWindowCloseAction,
   normalizeTrayModeSettings,

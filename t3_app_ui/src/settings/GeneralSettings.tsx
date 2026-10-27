@@ -135,19 +135,36 @@ export function GeneralSettings({ settings, updateSettings, refreshCurrencyRates
     setRateMessage(null);
     try {
       const refreshed = (await refreshCurrencyRates()) as TokenMonitorSettingsState | null | undefined;
-      const rates = refreshed?.currencyRatesEffective || refreshed?.currencyRates || settings.currencyRatesEffective || settings.currencyRates || {};
+      const live = (refreshed as any)?.currencyRatesLive || refreshed?.currencyRatesEffective || (settings as any)?.currencyRatesLive || settings.currencyRatesEffective || {};
       const updated: Record<string, string> = {};
-      for (const [code, val] of Object.entries(rates)) {
+      for (const [code, val] of Object.entries(live)) {
         if (val !== undefined && val !== null) {
           updated[code] = String(val);
         }
       }
-      setCustomRates((prev) => ({ ...prev, ...updated }));
-      setRateMessage('Exchange rates updated.');
+      setCustomRates(updated);
+      setRateMessage('Live exchange rates updated.');
     } catch (err: any) {
       setRateMessage(err?.message || 'Could not update exchange rates.');
     } finally {
       setRefreshingRates(false);
+    }
+  };
+
+  const handleResetRates = async () => {
+    try {
+      await updateSettings({ currencyRates: {} });
+      const live = (settings as any)?.currencyRatesLive || settings.currencyRatesEffective || {};
+      const updated: Record<string, string> = {};
+      for (const [code, val] of Object.entries(live)) {
+        if (val !== undefined && val !== null) {
+          updated[code] = String(val);
+        }
+      }
+      setCustomRates(updated);
+      setRateMessage('Overrides cleared. Using live exchange rates.');
+    } catch (err: any) {
+      setRateMessage(err?.message || 'Failed to reset exchange rates.');
     }
   };
 
@@ -441,12 +458,23 @@ export function GeneralSettings({ settings, updateSettings, refreshCurrencyRates
               </div>
             ))}
           </div>
-          <div className="flex justify-end pt-1">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pt-1">
+            <div className="text-2xs text-muted-foreground">
+              {settings.currencyRateInfo ? (
+                <span>
+                  Source: {settings.currencyRateInfo.source}
+                  {settings.currencyRateInfo.date ? ` · Date: ${settings.currencyRateInfo.date}` : ''}
+                </span>
+              ) : null}
+            </div>
             <div className="flex items-center gap-2">
               {rateMessage ? <span className="text-xs text-muted-foreground">{rateMessage}</span> : null}
               <Button size="sm" variant="outline" onClick={handleRefreshRates} disabled={refreshingRates}>
                 {refreshingRates ? <Spinner className="mr-1.5 size-3" /> : null}
                 Fetch Current Rates
+              </Button>
+              <Button size="sm" variant="outline" onClick={handleResetRates}>
+                Reset to Live
               </Button>
               <Button size="sm" variant="outline" onClick={handleSaveRates}>
                 Save Rates

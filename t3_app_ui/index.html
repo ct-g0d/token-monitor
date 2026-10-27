@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta
@@ -11,6 +11,22 @@
     <script>
       (function() {
         try {
+          var theme = localStorage.getItem('tokenmonitor:theme') || localStorage.getItem('t3code:theme') || localStorage.getItem('t3code:theme-appearance-mode') || 'system';
+          var isDark = theme === 'dark' || (theme === 'system' && Boolean(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches));
+          if (isDark) {
+            document.documentElement.classList.add('dark');
+          } else {
+            document.documentElement.classList.remove('dark');
+          }
+          var lang = localStorage.getItem('tokenmonitor:locale') || localStorage.getItem('t3code:locale');
+          if (lang) {
+            document.documentElement.setAttribute('lang', lang);
+            document.documentElement.setAttribute('data-locale', lang);
+          }
+          var regLocale = localStorage.getItem('tokenmonitor:regional-locale') || localStorage.getItem('t3code:regional-locale');
+          if (regLocale) {
+            document.documentElement.setAttribute('data-regional-locale', regLocale);
+          }
           var DEFAULT_INTERFACE_FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
           var stored = localStorage.getItem('tokenmonitor:font-family') || localStorage.getItem('t3code:font-family');
           if (stored === 'ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace' && !localStorage.getItem('tokenmonitor:explicit-mono')) {

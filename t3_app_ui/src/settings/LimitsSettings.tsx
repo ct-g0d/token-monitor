@@ -126,8 +126,8 @@ export function LimitsSettings({ settings, updateSettings, refreshSettings }: Li
           description="Show used percentage or remaining capacity."
           control={
             <select
-              value={settings.showLimitUsed || 'remaining'}
-              onChange={(e) => updateSettings({ showLimitUsed: e.target.value as any })}
+              value={settings.showLimitUsed === true || settings.showLimitUsed === 'used' ? 'used' : 'remaining'}
+              onChange={(e) => updateSettings({ showLimitUsed: e.target.value === 'used' })}
               className={selectClass}
             >
               <option value="remaining">Remaining Quota Available</option>
