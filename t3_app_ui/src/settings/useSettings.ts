@@ -56,13 +56,32 @@ export function applyLanguage(languageChoice?: string) {
 export function applyFontSettings(settings?: Partial<TokenMonitorSettingsState>) {
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
   const source = settings || {};
-  const result = fontSettingsApi.applyFontSettings(document, source);
+  const result = fontSettingsApi.applyFontSettings(document, source, {
+    interfaceDefault: fontSettingsApi.DEFAULT_DASHBOARD_INTERFACE_FONT,
+    preserveInstrumentTypography: true,
+  });
   if (!result) return;
   const { interfaceFont, displayFont, textSize, textScale } = result;
 
   try {
-    window.localStorage.setItem('tokenmonitor:font-family', interfaceFont);
-    window.localStorage.setItem('t3code:font-family', interfaceFont);
+    if (source.interfaceFontFamily) {
+      window.localStorage.setItem('tokenmonitor:font-family', interfaceFont);
+      window.localStorage.setItem('t3code:font-family', interfaceFont);
+      if (
+        interfaceFont.includes('monospace') ||
+        interfaceFont.includes('SFMono') ||
+        interfaceFont.includes('Liberation Mono') ||
+        interfaceFont.includes('ui-monospace')
+      ) {
+        window.localStorage.setItem('tokenmonitor:explicit-mono', '1');
+      } else {
+        window.localStorage.removeItem('tokenmonitor:explicit-mono');
+      }
+    } else {
+      window.localStorage.removeItem('tokenmonitor:font-family');
+      window.localStorage.removeItem('t3code:font-family');
+      window.localStorage.removeItem('tokenmonitor:explicit-mono');
+    }
     window.localStorage.setItem('tokenmonitor:text-size', textSize);
   } catch (_) {}
 

@@ -80,11 +80,22 @@
       style.setProperty('--ui-font', interfaceFont);
       style.setProperty('--display-font', displayFont);
       style.setProperty('--font-sans', interfaceFont);
-      style.setProperty('--tm-display', `${displayFont}, var(--font-sans)`);
+
+      const customDisplay = settings?.displayFontFamily && normalizeFontFamily(settings.displayFontFamily);
+      if (options.preserveInstrumentTypography) {
+        if (customDisplay) {
+          style.setProperty('--tm-display', `${customDisplay}, var(--font-sans)`);
+        } else {
+          style.setProperty('--tm-display', 'Bahnschrift, "DIN Alternate", "DIN Condensed", var(--font-sans)');
+        }
+      } else {
+        style.setProperty('--tm-display', `${displayFont}, var(--font-sans)`);
+      }
+
       const isMono =
         interfaceFont === DEFAULT_INTERFACE_FONT ||
         /monospace|SFMono|Liberation Mono|ui-monospace/i.test(interfaceFont);
-      if (isMono) {
+      if (isMono && !options.preserveInstrumentTypography) {
         style.setProperty('--font-mono', interfaceFont);
       } else if (typeof style.removeProperty === 'function') {
         style.removeProperty('--font-mono');

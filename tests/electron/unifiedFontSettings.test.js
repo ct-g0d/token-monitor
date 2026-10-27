@@ -154,6 +154,39 @@ test('unified font settings: shared applyFontSettings exercises real DOM applica
   assert.equal(fakeDocument.documentElement.style.fontSize, '120%');
 });
 
+test('unified font settings: preserveInstrumentTypography preserves narrow instrument display font and dashboard interface default', () => {
+  const properties = new Map();
+  const dataset = {};
+  let bodyFontFamily = '';
+
+  const fakeDocument = {
+    documentElement: {
+      style: {
+        setProperty(k, v) { properties.set(k, String(v)); },
+        removeProperty(k) { properties.delete(k); }
+      },
+      dataset
+    },
+    body: {
+      style: {
+        get fontFamily() { return bodyFontFamily; },
+        set fontFamily(v) { bodyFontFamily = v; }
+      }
+    }
+  };
+
+  const result = fontSettings.applyFontSettings(fakeDocument, {}, {
+    interfaceDefault: fontSettings.DEFAULT_DASHBOARD_INTERFACE_FONT,
+    preserveInstrumentTypography: true
+  });
+  assert.equal(result.interfaceFont, fontSettings.DEFAULT_DASHBOARD_INTERFACE_FONT);
+  assert.equal(properties.get('--ui-font'), fontSettings.DEFAULT_DASHBOARD_INTERFACE_FONT);
+  assert.equal(properties.get('--font-sans'), fontSettings.DEFAULT_DASHBOARD_INTERFACE_FONT);
+  assert.equal(properties.get('--tm-display'), 'Bahnschrift, "DIN Alternate", "DIN Condensed", var(--font-sans)');
+  assert.equal(properties.has('--font-mono'), false);
+  assert.equal(fakeDocument.body.style.fontFamily, fontSettings.DEFAULT_DASHBOARD_INTERFACE_FONT);
+});
+
 test('unified font settings: clientBridge exposes TokenMonitorFontSettings and default keys', () => {
   const bridge = clientBridgeApi.clientBridge;
   assert.ok(bridge, 'clientBridge should be defined');

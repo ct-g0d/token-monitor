@@ -26,7 +26,18 @@ export function t(key: string, params?: Record<string, any>, customLocale?: stri
     customLocale ||
     (typeof document !== 'undefined' ? document.documentElement.getAttribute('data-locale') || document.documentElement.lang : 'en') ||
     'en';
-  return translate(currentLocale, key, params);
+  const val = translate(currentLocale, key, params);
+  if (val === key) {
+    const activeI18n = (typeof window !== 'undefined' && (window as any).TokenMonitorI18n) || i18n;
+    const messages = activeI18n?.MESSAGES;
+    const resolved = activeI18n?.normalizeLanguage ? activeI18n.normalizeLanguage(currentLocale) : currentLocale;
+    const lang = resolved === 'auto' ? 'en' : (resolved || 'en');
+    const exists = Boolean(messages?.[lang]?.[key] !== undefined || messages?.en?.[key] !== undefined);
+    if (!exists) {
+      return '';
+    }
+  }
+  return val;
 }
 
 export default i18n;
