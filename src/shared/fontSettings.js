@@ -81,10 +81,15 @@
       style.setProperty('--display-font', displayFont);
       style.setProperty('--font-sans', interfaceFont);
 
-      const customDisplay = settings?.displayFontFamily && normalizeFontFamily(settings.displayFontFamily);
+      const rawDisplay = settings?.displayFontFamily && normalizeFontFamily(settings.displayFontFamily);
+      const isCustomDisplay =
+        Boolean(rawDisplay) &&
+        rawDisplay !== DEFAULT_DISPLAY_FONT &&
+        rawDisplay !== interfaceFont;
+
       if (options.preserveInstrumentTypography) {
-        if (customDisplay) {
-          style.setProperty('--tm-display', `${customDisplay}, var(--font-sans)`);
+        if (isCustomDisplay) {
+          style.setProperty('--tm-display', `${rawDisplay}, var(--font-sans)`);
         } else {
           style.setProperty('--tm-display', 'Bahnschrift, "DIN Alternate", "DIN Condensed", var(--font-sans)');
         }
