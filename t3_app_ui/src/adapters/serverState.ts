@@ -15,11 +15,14 @@ import {
 } from "@t3tools/contracts";
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
 import { appAtomRegistry } from "./atomRegistry";
-import { serverProvidersAtom, syncStatsToPresentation } from "./presentationState";
+import { serverProvidersAtom, syncStatsToPresentation, primaryPresentationAtom, PRIMARY_ENV_ID } from "./presentationState";
 
 export const EMPTY_SERVER_PROVIDERS: ReadonlyArray<ServerProvider> = [];
 
-export const primaryServerConfigAtom = Atom.make<ServerConfig | null>(null);
+export const primaryServerConfigAtom = Atom.make<ServerConfig | null>((get) => {
+  const presentation = get(primaryPresentationAtom);
+  return (presentation?.serverConfig as ServerConfig) ?? null;
+});
 export const primaryServerConfigEventAtom = Atom.make<ServerConfigStreamEvent | null>(null);
 export const primaryServerWelcomeAtom = Atom.make<ServerLifecycleWelcomePayload | null>(null);
 export const primaryServerLegacyThreadMigrationAtom = Atom.make<ServerLifecycleLegacyThreadMigrationPayload | null>(null);
@@ -41,7 +44,14 @@ export const providersIgnoringCheckedAtAtom = Atom.family((_environmentId: Envir
 export const environmentUpdateStatesAtom = Atom.family((_key?: string) =>
   Atom.make<ReadonlyArray<any>>([])
 );
-export const environmentServerConfigsAtom = Atom.make<ReadonlyMap<EnvironmentId, any>>(new Map());
+export const environmentServerConfigsAtom = Atom.make<ReadonlyMap<EnvironmentId, any>>((get) => {
+  const presentation = get(primaryPresentationAtom);
+  const map = new Map<EnvironmentId, any>();
+  if (presentation?.serverConfig) {
+    map.set(PRIMARY_ENV_ID, presentation.serverConfig);
+  }
+  return map;
+});
 
 export const updateOutdatedServer = async () => ({ _tag: "Success" as const, value: undefined });
 

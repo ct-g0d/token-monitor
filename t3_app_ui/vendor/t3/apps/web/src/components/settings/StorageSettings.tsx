@@ -59,7 +59,7 @@ function WorktreesDirectoryRow() {
   if (
     connectedEnvironments.some(
       (environment) =>
-        environment.serverConfig?.environment.capabilities.worktreesDirectory !== true,
+        environment.serverConfig?.environment?.capabilities?.worktreesDirectory !== true,
     )
   )
     return null;
@@ -265,7 +265,7 @@ function CleanupSection() {
   const [pending, setPending] = useState(false);
   const run = useAtomCommand(serverEnvironment.runStorageCleanup);
   const supported = connectedEnvironments.filter(
-    (environment) => environment.serverConfig?.environment.capabilities.storageCleanupRun === true,
+    (environment) => environment.serverConfig?.environment?.capabilities?.storageCleanupRun === true,
   );
   const supportedIds = supported.map(({ environmentId }) => environmentId);
   const reports = useAtomValue(storageCleanupReportsAtom(environmentIdsKey(supportedIds)));
@@ -438,7 +438,7 @@ export function StorageSettingsPanel() {
     isProjectScope &&
     connectedEnvironments.some(
       (environment) =>
-        environment.serverConfig?.environment.capabilities.projectWorktreeCleanup !== true,
+        environment.serverConfig?.environment?.capabilities?.projectWorktreeCleanup !== true,
     )
   ) {
     return (
@@ -450,7 +450,7 @@ export function StorageSettingsPanel() {
 
   if (
     connectedEnvironments.some(
-      (environment) => environment.serverConfig?.environment.capabilities.storageCleanup !== true,
+      (environment) => environment.serverConfig?.environment?.capabilities?.storageCleanup !== true,
     )
   ) {
     return (
@@ -459,7 +459,7 @@ export function StorageSettingsPanel() {
         eligibleEnvironmentIds={connectedEnvironments
           .filter(
             (environment) =>
-              environment.serverConfig?.environment.capabilities.storageCleanup === true,
+              environment.serverConfig?.environment?.capabilities?.storageCleanup === true,
           )
           .map((environment) => environment.environmentId)}
       >
@@ -475,7 +475,7 @@ export function StorageSettingsPanel() {
         connectedEnvironments
           .filter(
             (environment) =>
-              environment.serverConfig?.environment.capabilities.databaseStorage === true,
+              environment.serverConfig?.environment?.capabilities?.databaseStorage === true,
           )
           .map((environment) => (
             <DatabaseStorageNotice
@@ -560,7 +560,7 @@ export function StorageSettingsPanel() {
             {connectedEnvironments.length > 0 &&
               connectedEnvironments.every(
                 (environment) =>
-                  environment.serverConfig?.environment.capabilities.settledWorktreeCleanup ===
+                  environment.serverConfig?.environment?.capabilities?.settledWorktreeCleanup ===
                   true,
               ) && (
                 <SettingsRow
@@ -615,7 +615,7 @@ export function StorageSettingsPanel() {
             />
             {connectedEnvironments.every(
               (environment) =>
-                environment.serverConfig?.environment.capabilities.storageCleanupRun === true,
+                environment.serverConfig?.environment?.capabilities?.storageCleanupRun === true,
             ) && (
               <SettingsRow
                 {...searchableSetting("storage-worktree-keep-when")}

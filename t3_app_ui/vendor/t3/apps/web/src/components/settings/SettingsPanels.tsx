@@ -2064,15 +2064,15 @@ export function GeneralSettingsPanel() {
   const supportsAutoSettlement =
     connectedEnvironments.length > 0 &&
     connectedEnvironments.every(
-      (target) => target.serverConfig?.environment.capabilities.threadAutoSettlement === true,
+      (target) => target.serverConfig?.environment?.capabilities?.threadAutoSettlement === true,
     );
   const supportsAutoSettlementScope = connectedEnvironments.every(
-    (target) => target.serverConfig?.environment.capabilities.threadAutoSettlementScope === true,
+    (target) => target.serverConfig?.environment?.capabilities?.threadAutoSettlementScope === true,
   );
   const supportsRestartContinuation =
     connectedEnvironments.length > 0 &&
     connectedEnvironments.every(
-      (target) => target.serverConfig?.environment.capabilities.threadRestartContinuation === true,
+      (target) => target.serverConfig?.environment?.capabilities?.threadRestartContinuation === true,
     );
 
   const textGenerationProviders = serverProviders.filter(

@@ -300,7 +300,7 @@ function PoolSegment({
             type="button"
             style={
               isCodex
-                ? { gridColumn: "1 / -1", gridRow: index }
+                ? { gridColumn: "1 / -1", gridRow: index, width: "100%" }
                 : { gridColumn: index, gridRow: 1 }
             }
             aria-label={`${account.displayName ?? (account.email ? accountInitials(account.email) : account.driver)}: ${remaining}% left${resetsIn ? `, ${resetsIn}` : ""}${credits ? `, ${credits} reset ${credits === 1 ? "credit" : "credits"} banked` : ""}`}
@@ -530,16 +530,20 @@ function PoolBar({
   readonly now: number;
   readonly isCodex?: boolean;
 }) {
+  const isCodexPool =
+    Boolean(isCodex) ||
+    String(pool.id).toLowerCase().includes("codex") ||
+    pool.columns.some((c) => String(c.account.driver).toLowerCase().includes("codex"));
+
   const restores = new Map(pool.resets.map((reset) => [reset.member.account.key, reset]));
-  const columns = isCodex
-    ? pool.columns.filter((member) => member.window !== undefined)
-    : pool.columns;
+  const validColumns = pool.columns.filter((member) => member.window != null);
+  const columns = isCodexPool ? validColumns : pool.columns;
   return (
     <div className="@container/pool min-w-0">
       <div
-        className={cn("grid gap-x-1 gap-y-1", isCodex && columns.length > 1 && "gap-y-1.5")}
+        className={cn("grid gap-x-1 gap-y-1", isCodexPool && columns.length > 1 && "gap-y-1.5")}
         style={{
-          gridTemplateColumns: isCodex
+          gridTemplateColumns: isCodexPool
             ? "minmax(0, 1fr)"
             : `repeat(${columns.length}, minmax(0, 1fr))`,
         }}
@@ -555,7 +559,7 @@ function PoolBar({
               now={now}
               index={position + 1}
               showAccountName={columns.length > 1}
-              isCodex={isCodex}
+              isCodex={isCodexPool}
             />
           ) : null,
         )}
@@ -579,6 +583,11 @@ function PoolWindowCard({
   readonly description?: string | undefined;
   readonly isCodex?: boolean;
 }) {
+  const isCodexWindow =
+    Boolean(isCodex) ||
+    String(pool.id).toLowerCase().includes("codex") ||
+    pool.members.some((m) => String(m.account.driver).toLowerCase().includes("codex"));
+
   const nextRefill = pool.resets.find((reset) => reset.restoresPercent > 0);
   const firstWindow = pool.members[0]?.window as any;
   const isCredits = firstWindow?.metric === "credits";
@@ -586,7 +595,7 @@ function PoolWindowCard({
   const memberAccount = pool.members[0]?.account as any;
   const monthSpend = memberAccount?.limits?.balance?.monthSpend;
 
-  const cardTitle = isCodex
+  const cardTitle = isCodexWindow
     ? pool.kind === "session"
       ? "Session"
       : pool.kind === "weekly"
@@ -597,18 +606,18 @@ function PoolWindowCard({
     : label ?? pool.label;
 
   const refillPercent = nextRefill?.restoresPercent ?? (100 - pool.remainingPercent);
-  const showRefill = isCodex
+  const showRefill = isCodexWindow
     ? refillPercent > 0 && pool.remainingPercent < 100
     : nextRefill && pool.columns.length > 1;
 
   return (
-    <div className="grid items-center gap-x-4 sm:gap-x-6 gap-y-2.5 sm:gap-y-3 rounded-lg border border-border/60 p-3 sm:p-4 md:grid-cols-[11rem_minmax(0,1fr)]">
+    <div className="grid items-center gap-x-4 sm:gap-x-6 gap-y-2.5 sm:gap-y-3 rounded-lg border border-border/60 p-3 sm:p-4 md:grid-cols-[minmax(14rem,20rem)_minmax(0,1fr)]">
       <div className="flex flex-wrap items-baseline justify-between sm:justify-start gap-x-3 sm:gap-x-4 gap-y-1">
-        <span className="text-sm font-medium text-foreground">{cardTitle}</span>
-        <span className="flex items-baseline gap-2">
+        <span className="text-sm font-medium text-foreground shrink-0">{cardTitle}</span>
+        <span className="inline-flex items-baseline gap-1.5 self-baseline">
           {isCredits && balanceAmount !== null ? (
             <>
-              <span className="text-xl sm:text-[24px] md:text-[26px] leading-none font-semibold text-foreground tabular-nums">
+              <span className="text-xl sm:text-[22px] md:text-[24px] leading-tight font-semibold text-foreground tabular-nums">
                 ${balanceAmount.toFixed(2)}
               </span>
               <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground uppercase font-mono tracking-wider">
@@ -617,7 +626,7 @@ function PoolWindowCard({
             </>
           ) : (
             <>
-              <span className="text-xl sm:text-[24px] md:text-[26px] leading-none font-semibold text-foreground tabular-nums">
+              <span className="text-xl sm:text-[22px] md:text-[24px] leading-tight font-semibold text-foreground tabular-nums">
                 {pool.remainingPercent}%
               </span>
               <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground uppercase font-mono tracking-wider">
@@ -637,7 +646,7 @@ function PoolWindowCard({
           </span>
         ) : null}
       </div>
-      <PoolBar pool={pool} color={color} now={now} isCodex={isCodex} />
+      <PoolBar pool={pool} color={color} now={now} isCodex={isCodexWindow} />
       {description ? (
         <p className="text-xs text-muted-foreground md:col-span-2">{description}</p>
       ) : null}
@@ -658,7 +667,7 @@ function PoolSection({
   readonly now: number;
   readonly visibleLimitKeys: ReadonlySet<string> | null;
 }) {
-  const isCodex = pool.driver === "codex";
+  const isCodex = String(pool.driver).toLowerCase().includes("codex") || String(pool.id).toLowerCase().includes("codex");
   const color = getProviderBarColor(String(pool.driver));
   const label = getProviderLabel(String(pool.driver));
   const windows = displayLimitWindows(pool)
