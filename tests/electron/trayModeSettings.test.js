@@ -88,6 +88,12 @@ test('skips the taskbar entry for either hiding mode', () => {
   assert.equal(skipTaskbarForSettings({ showTrayIcon: false, hideAppIcon: true }), false);
 });
 
+test('preserves the tray fallback when skipTaskbar is absent while honoring an explicit value', () => {
+  assert.equal(skipTaskbarForSettings({ showTrayIcon: true, hideAppIcon: true }), true);
+  assert.equal(skipTaskbarForSettings({ showTrayIcon: true, hideAppIcon: true, skipTaskbar: false }), false);
+  assert.equal(skipTaskbarForSettings({ showTrayIcon: true, skipTaskbar: true }), true);
+});
+
 test('maps main-window close to the platform-appropriate background behavior', () => {
   assert.equal(mainWindowCloseAction({ showTrayIcon: true, trayMode: true }, { platform: 'darwin' }), 'hidePopover');
   assert.equal(mainWindowCloseAction({ showTrayIcon: true, trayMode: false }, { platform: 'darwin' }), 'hideWindow');

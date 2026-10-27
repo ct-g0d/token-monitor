@@ -38,10 +38,12 @@
 - [x] **Task 3 (`*`)**: Fix active days metric.
   - *Branch:* `feat/task-3-active-days`
   - *Status:* Merged into `feat/t3-ui-ledger` (PR #27, commit `6d97f103`).
-- [ ] **Task 4 (`*`)**: Title bar: use icons for the providers (ref: `image_7a324ade-13b3-4898-9641-b21c387dd535`).
-- [ ] **Task 5 (`**`)**: When window shrinks, fix header wrapping / collision (ref: `image_2e0fef46-be16-48a8-95eb-f01aa32b8547`).
+- [x] **Task 4 (`*`)**: Title bar: use icons for the providers (ref: `image_7a324ade-13b3-4898-9641-b21c387dd535`).
+  - *Branch:* `feat/task-4-title-bar-icons-pr29-r2`
+  - *Status:* Merged into `feat/t3-ui-ledger` (PR #30).
+- [x] **Task 5 (`**`)**: When window shrinks, fix header wrapping / collision (ref: `image_2e0fef46-be16-48a8-95eb-f01aa32b8547`).
   - *Branch:* `feat/task-5-window-shrink-header-pr30`
-  - *Status:* In review (PR #29 targeting `feat/t3-ui-ledger`).
+  - *Status:* Merged into `feat/t3-ui-ledger` (PR #29).
 - [ ] **Task 6 (`***`)**: Fix model prices page crash; inspect T3 code source to build the interface (ref: `image_f5b6049d-b800-4f17-991b-58b88da1cc75`).
   - *Branch:* `t3/fix-model-prices-crash`
   - *Status:* PR #31 opened targeting `feat/t3-ui-ledger`.
