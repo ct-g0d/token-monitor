@@ -3714,7 +3714,7 @@ html.is-windows .settings-panel select option {
   grid-template-columns: 10px minmax(0, 1fr) fit-content(50%);
 }
 .home-limit-plan {
-  min-width: fit-content;
+  min-width: 0;
   overflow: hidden;
   color: var(--readable-muted);
   font-size: 0.625rem;
@@ -4567,7 +4567,7 @@ html.is-windows .settings-panel select option {
 }
 .limit-plan {
   flex: 0 0 auto;
-  min-width: fit-content;
+  min-width: 0;
   max-width: 50%;
   overflow: hidden;
   color: var(--muted);

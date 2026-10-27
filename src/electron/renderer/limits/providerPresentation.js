@@ -164,7 +164,8 @@
       // "Google One", or "Antigravity" (e.g. "Google AI Pro", "Antigravity Pro",
       // "Google One Pro"). The card heading already supplies Antigravity/Google,
       // so strip redundant prefixes to preserve the concise tier (e.g., "Pro").
-      return label.replace(/^(?:Google\s+AI|Google\s+One|Antigravity)\s+/iu, '').trim() || label;
+      const stripped = label.replace(/^(?:Google\s+AI|Google\s+One|Antigravity)\s+/iu, '').trim();
+      return limitProviderDisplayLabel(stripped || label);
     }
     if (id !== 'zed') return label;
     // Zed's API returns canonical names such as "Zed Student" and "Zed Pro".

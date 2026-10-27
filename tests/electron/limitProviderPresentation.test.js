@@ -93,11 +93,15 @@ test('Zed plan labels omit only the redundant provider prefix', () => {
 
 test('Antigravity plan labels normalize prefixes and display concise tiers', () => {
   assert.equal(limitProviderPlanDisplayLabel('antigravity', 'pro'), 'Pro');
+  assert.equal(limitProviderPlanDisplayLabel('antigravity', 'antigravity pro'), 'Pro');
+  assert.equal(limitProviderPlanDisplayLabel('antigravity', 'google ai pro'), 'Pro');
+  assert.equal(limitProviderPlanDisplayLabel('antigravity', 'google one pro'), 'Pro');
   assert.equal(limitProviderPlanDisplayLabel('antigravity', 'Antigravity Pro'), 'Pro');
   assert.equal(limitProviderPlanDisplayLabel('antigravity', 'Google AI Pro'), 'Pro');
   assert.equal(limitProviderPlanDisplayLabel('antigravity', 'Google One Pro'), 'Pro');
   assert.equal(limitProviderPlanDisplayLabel('antigravity', 'Pro'), 'Pro');
   assert.equal(limitProviderPlanDisplayLabel('antigravity', 'Custom Tier'), 'Custom Tier');
+  assert.equal(limitProviderPlanDisplayLabel('antigravity', 'custom tier'), 'Custom tier');
 });
 
 test('Codex additional quota display names map gpt-reserve and preserve unknown names', () => {
@@ -3249,9 +3253,9 @@ test('limit plan labels maintain line-height and layout to prevent clipping capi
   const homeHead = cssBlock(styles, '.home-limit-account-head:has(> .home-limit-plan)');
 
   assert.match(homePlan, /line-height:\s*1\.3/);
-  assert.match(homePlan, /min-width:\s*fit-content/);
+  assert.match(homePlan, /min-width:\s*0/);
   assert.match(limitPlan, /line-height:\s*1\.3/);
-  assert.match(limitPlan, /min-width:\s*fit-content/);
+  assert.match(limitPlan, /min-width:\s*0/);
   assert.match(trigger, /font:\s*inherit/);
   assert.match(trigger, /line-height:\s*inherit/);
   assert.match(homeHead, /fit-content\(50%\)/);
