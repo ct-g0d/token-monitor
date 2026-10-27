@@ -14,6 +14,20 @@ function parseBoolean(value, fallback = false) {
 // would leave a background window with no way to focus or quit it. The DOM
 // nests both controls under the tray toggle, but a hand-edited settings.json
 // has to fail the same way, so the guard lives here rather than in the UI.
+function normalizeThemeSetting(value, fallback = 'system') {
+  if (value === 'dark' || value === 'light' || value === 'system') return value;
+  return fallback;
+}
+
+function normalizeShowLimitUsed(value, fallback = false) {
+  if (typeof value === 'boolean') return value;
+  if (value === undefined || value === null || value === '') return fallback;
+  const normalized = String(value).trim().toLowerCase();
+  if (['used', '1', 'true', 'yes', 'on'].includes(normalized)) return true;
+  if (['remaining', '0', 'false', 'no', 'off'].includes(normalized)) return false;
+  return fallback;
+}
+
 function normalizeTrayModeSettings(settings = {}) {
   const showTrayIcon = parseBoolean(settings.showTrayIcon, true);
   return {
@@ -65,6 +79,9 @@ function mainWindowCloseAction(settings = {}, _state = {}) {
 }
 
 module.exports = {
+  normalizeThemeSetting,
+  normalizeShowLimitUsed,
+  parseBoolean,
   macActivationPolicyMode,
   mainWindowCloseAction,
   normalizeTrayModeSettings,

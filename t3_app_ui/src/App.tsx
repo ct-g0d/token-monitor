@@ -7,10 +7,15 @@ import { SettingsPage } from './settings/SettingsPage';
 import { SettingsScopeProvider } from '~/components/settings/SettingsScopeContext';
 import { Sidebar, type MainView } from './components/shell/Sidebar';
 import { useTokenMonitorSettings } from './settings/useSettings';
-
 import { ServiceStatusView } from './views/ServiceStatusView';
 
-// Main-process view names (tray, last view state, URL `breakdown`) folded onto the active views
+const BREAKDOWN: Record<MainView, string> = {
+  usage: 'home',
+  limits: 'limits',
+  status: 'status',
+  settings: 'settings',
+};
+
 function viewFor(name: string | null | undefined): MainView {
   const target = String(name || '').toLowerCase();
   if (target === 'settings') return 'settings';
@@ -19,14 +24,8 @@ function viewFor(name: string | null | undefined): MainView {
   return 'usage';
 }
 
-const BREAKDOWN: Record<MainView, string> = {
-  usage: 'home',
-  limits: 'limits',
-  status: 'status',
-  settings: 'home',
-};
-
 function getInitialView(): MainView {
+  if (typeof window === 'undefined') return 'usage';
   const { search, hash, pathname } = window.location;
   if (pathname.startsWith('/settings') || hash.includes('/settings')) return 'settings';
   const hashQuery = hash.indexOf('?');
@@ -36,6 +35,9 @@ function getInitialView(): MainView {
 
 export function App() {
   const [activeView, setActiveView] = useState<MainView>(getInitialView);
+  const [settingsSection, setSettingsSection] = useState<string | null>(null);
+  const [settingsDetail, setSettingsDetail] = useState<any>(null);
+
   // Ensure persisted settings (language, theme, etc.) load and apply globally across the app
   useTokenMonitorSettings();
 
@@ -53,7 +55,7 @@ export function App() {
     window.tokenMonitor?.setViewState?.({ breakdown: BREAKDOWN[activeView] });
   }, [activeView]);
 
-  // View and settings requests from main/tray
+  // View and settings requests from main/tray and inter-component events
   useEffect(() => {
     const offView = window.tokenMonitor?.onOpenView?.((view: string) => {
       const nextView = viewFor(view);
@@ -62,10 +64,35 @@ export function App() {
       }
       setActiveView(nextView);
     });
-    const offSettings = window.tokenMonitor?.onOpenSettings?.(() => setActiveView('settings'));
+
+    const offSettings = window.tokenMonitor?.onOpenSettings?.((section?: string) => {
+      let sec = section;
+      if (sec === 'edge-dock' || sec === 'hoverbar' || sec === 'hover_bar') {
+        sec = 'hover-bar';
+      } else if (sec === 'limits') {
+        sec = 'accounts';
+      }
+      setSettingsSection(sec || null);
+      setActiveView('settings');
+    });
+
+    const handleOpenSettingsEvent = (e: any) => {
+      let section = e?.detail?.section;
+      if (section === 'edge-dock' || section === 'hoverbar' || section === 'hover_bar') {
+        section = 'hover-bar';
+      } else if (section === 'limits') {
+        section = 'accounts';
+      }
+      setSettingsSection(section || 'general');
+      setSettingsDetail(e?.detail || null);
+      setActiveView('settings');
+    };
+    window.addEventListener('tm-open-settings', handleOpenSettingsEvent);
+
     return () => {
       offView?.();
       offSettings?.();
+      window.removeEventListener('tm-open-settings', handleOpenSettingsEvent);
     };
   }, []);
 
@@ -90,7 +117,16 @@ export function App() {
             />
           )}
           {activeView === 'status' && <ServiceStatusView />}
-          {activeView === 'settings' && <SettingsPage />}
+          {activeView === 'settings' && (
+            <SettingsPage
+              initialSection={settingsSection}
+              initialDetail={settingsDetail}
+              onClearInitialSection={() => {
+                setSettingsSection(null);
+                setSettingsDetail(null);
+              }}
+            />
+          )}
         </main>
 
         {/* Window controls own the top-right corner.

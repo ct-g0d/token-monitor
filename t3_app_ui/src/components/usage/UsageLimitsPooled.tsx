@@ -752,13 +752,22 @@ export function setHiddenLimitKeys(next: ReadonlySet<string>): void {
   appAtomRegistry.set(hiddenLimitKeysAtom, next);
 }
 
+function matchesHiddenDriver(driver: string, hiddenDrivers?: ReadonlySet<string>): boolean {
+  if (!hiddenDrivers) return false;
+  const d = String(driver);
+  if (hiddenDrivers.has(d)) return true;
+  if (d === 'claudeAgent' && hiddenDrivers.has('claude')) return true;
+  if (d === 'claude' && hiddenDrivers.has('claudeAgent')) return true;
+  return false;
+}
+
 export function collectLimitOptions(
   presentations: Parameters<typeof collectLimitAccounts>[0],
   now: number,
   hiddenDrivers?: ReadonlySet<string>,
 ): readonly (readonly [string, string])[] {
   const accounts = collectLimitAccounts(presentations).filter(
-    (account) => !hiddenDrivers || !hiddenDrivers.has(String(account.driver)),
+    (account) => !matchesHiddenDriver(String(account.driver), hiddenDrivers),
   );
   const pools = collectLimitPools(accounts, now);
   const options = new Map<string, string>();
@@ -965,6 +974,18 @@ export function UsageLimitsPooled({
               <span>Add Provider</span>
             </Button>
           </EmptyContent>
+        </Empty>
+      ) : !hasVisibleWindows ? (
+        <Empty className="py-12 border border-dashed rounded-lg border-border/60" data-slot="limits-filter-empty-state">
+          <EmptyMedia variant="icon">
+            <SlidersHorizontalIcon className="size-4.5 text-muted-foreground" aria-hidden />
+          </EmptyMedia>
+          <EmptyHeader>
+            <EmptyTitle>All Limits Hidden</EmptyTitle>
+            <EmptyDescription>
+              All limits are hidden by the visible limits filter. Choose limits from the filter menu to display them.
+            </EmptyDescription>
+          </EmptyHeader>
         </Empty>
       ) : (
         pools.map((pool, index) => (

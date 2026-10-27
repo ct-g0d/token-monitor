@@ -334,6 +334,8 @@ const {
   macActivationPolicyMode,
   mainWindowCloseAction,
   normalizeTrayModeSettings,
+  normalizeThemeSetting,
+  normalizeShowLimitUsed,
   shouldCreateTray,
   skipTaskbarForSettings,
   trayToggleAction
@@ -559,6 +561,14 @@ function normalizePeriodMonthMode(value) {
   return PERIOD_MONTH_MODES.has(value) ? value : 'month';
 }
 
+function syncNativeTheme(theme) {
+  try {
+    if (nativeTheme) {
+      nativeTheme.themeSource = normalizeThemeSetting(theme, 'system');
+    }
+  } catch (_) {}
+}
+
 function normalizeHomeLimitAccountCount(value) {
   const count = Math.trunc(Number(value));
   if (!Number.isFinite(count)) return HOME_LIMIT_ACCOUNT_COUNT_DEFAULT;
@@ -583,6 +593,7 @@ function defaultSettings() {
     windowBehavior,
     alwaysOnTop: windowBehavior === 'floating',
     keepAboveTaskbar: false,
+    theme: 'system',
     refreshMs: Number(process.env.TOKEN_MONITOR_WIDGET_REFRESH_MS || 15000),
     glassOpacity: 68,
     glassBlur: 32,
@@ -697,7 +708,7 @@ function defaultSettings() {
     codexResetForecastEnabled: false,
     workbuddyQuotaTotalEnabled: false,
     showCodexAdditionalLimits: true,
-    showLimitUsed: parseBoolean(process.env.TOKEN_MONITOR_SHOW_LIMIT_USED, false),
+    showLimitUsed: normalizeShowLimitUsed(process.env.TOKEN_MONITOR_SHOW_LIMIT_USED, false),
     // Manual subscription metadata. Plain preferences, not credentials, so they
     // live in settings.json and cross to the renderer unredacted.
     subscriptions: [],
@@ -2170,6 +2181,7 @@ function floatingBubblePayload() {
 function ensureSettingsLoaded() {
   if (settings) return settings;
   settings = readSettings();
+  syncNativeTheme(settings.theme);
   standalonePricingEngine.loadOverrides(settings.customModelPricing);
   const persistedCodexAccounts = settings.codexManagedAccounts;
   const hydratedCodexAccounts = hydrateCodexManagedAccounts(persistedCodexAccounts);
@@ -2704,6 +2716,8 @@ function readSettings() {
       merged.lastViewState = normalizeInitialRendererViewState(saved.lastViewState);
     }
     merged.hubMode = normalizeHubMode(merged.hubMode, 'local', process.platform);
+    merged.theme = normalizeThemeSetting(merged.theme, 'system');
+    merged.showLimitUsed = normalizeShowLimitUsed(merged.showLimitUsed, false);
     merged.language = normalizeLanguageSetting(merged.language);
     merged.currency = normalizeSettingCurrency(merged.currency);
     merged.currencyRates = normalizeCurrencyOverrides(merged.currencyRates);
@@ -5567,6 +5581,8 @@ function settingsForRenderer() {
     ...rendererSettings,
     syncContentStatus: getSyncContentRuntime().status(),
     locale: trayMenuLocale(),
+    regionalLocale: trayMenuRegionalLocale(),
+    currencyRatesLive: rateCache?.rates || null,
     ...redactedCredentials,
     // On a hub the shared list is the truth; settings.subscriptions is only the
     // last-known cache behind it.
@@ -6121,6 +6137,13 @@ function handleTrayToggle(_tray, clickPoint = null) {
   const action = trayToggleAction(settings);
   if (action === 'togglePopover') togglePopover(clickPoint);
   else if (action === 'focusWindow') focusExistingWindow();
+}
+
+function trayMenuRegionalLocale() {
+  const preferredLanguages = typeof app.getPreferredSystemLanguages === 'function'
+    ? app.getPreferredSystemLanguages()
+    : [app.getLocale()];
+  return resolveRegionalLocale([...preferredLanguages, trayMenuLocale()]);
 }
 
 function trayMenuLocale() {
@@ -7951,7 +7974,8 @@ app.whenReady().then(() => {
       showCodexAdditionalLimits: parseBoolean(patch.showCodexAdditionalLimits ?? settings.showCodexAdditionalLimits, true),
       opencodeAmbientEnabled: parseBoolean(patch.opencodeAmbientEnabled ?? settings.opencodeAmbientEnabled, true),
       opencodeLocalLimitsEnabled: parseBoolean(patch.opencodeLocalLimitsEnabled ?? settings.opencodeLocalLimitsEnabled, false),
-      showLimitUsed: parseBoolean(patch.showLimitUsed ?? settings.showLimitUsed, false),
+      theme: normalizeThemeSetting(patch.theme ?? settings.theme, settings.theme || 'system'),
+      showLimitUsed: normalizeShowLimitUsed(patch.showLimitUsed ?? settings.showLimitUsed, false),
       keepAboveTaskbar: parseBoolean(patch.keepAboveTaskbar ?? settings.keepAboveTaskbar, false),
       windowMaximized: parseBoolean(settings.windowMaximized, false),
       zoomFactor: clampZoom(patch.zoomFactor ?? settings.zoomFactor),
@@ -8009,6 +8033,9 @@ app.whenReady().then(() => {
       refreshAfterPricingChange();
     }
     configureWindowToggleShortcut();
+    if (settings.theme !== previousSettingsState.theme) {
+      syncNativeTheme(settings.theme);
+    }
     if (settings.startAtLogin !== previousStartAtLogin) {
       settings.startAtLogin = applyLoginItem(settings.startAtLogin);
       saveSettings({ throwOnError: true });

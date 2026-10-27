@@ -68,6 +68,7 @@ import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { UsageLimitsSection } from "~/components/usage/UsageLimits";
 import { UsageLimitsFilter, collectLimitOptions } from "./UsageLimitsPooled";
+import { syncStatsToPresentation } from "../../adapters/presentationState";
 import { UsagePriceOverrides } from "~/components/usage/UsagePriceOverrides";
 import { UsageProviderChart } from "~/components/usage/UsageProviderChart";
 import { SpeedPremium, UsageModelDialog } from "~/components/usage/UsageModelDialog";
@@ -323,7 +324,9 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
       setIsRefreshing(true);
       setIsLimitsLoading(true);
       const statsPromise = typeof window !== "undefined" && window.tokenMonitor?.getStats
-        ? window.tokenMonitor.getStats({ force: true, awaitLimits: true, feedback: true }).catch(() => {})
+        ? window.tokenMonitor.getStats({ force: true, awaitLimits: true, feedback: true })
+            .then((stats) => { if (stats) syncStatsToPresentation(stats); })
+            .catch(() => {})
         : Promise.resolve();
       const minDelay = new Promise((resolve) => setTimeout(resolve, 250));
       void Promise.all([refreshLimits(), statsPromise, minDelay]).finally(() => {
@@ -346,7 +349,9 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
     setIsRefreshing(true);
     const tm = typeof window !== "undefined" ? window.tokenMonitor : null;
     const forcePromise = tm?.getStats
-      ? tm.getStats({ force: true, forceHistory: true, forceSelfSync: true, feedback: true }).catch(() => {})
+      ? tm.getStats({ force: true, forceHistory: true, forceSelfSync: true, feedback: true })
+          .then((stats) => { if (stats) syncStatsToPresentation(stats); })
+          .catch(() => {})
       : Promise.resolve();
     void Promise.all([forcePromise, refresh(nextWindow)]).finally(() => {
       refreshingRef.current = false;
@@ -391,7 +396,9 @@ export function UsagePage({ mode }: { readonly mode: "usage" | "limits" }) {
         });
 
         const statsPromise = typeof window !== "undefined" && window.tokenMonitor?.getStats
-          ? window.tokenMonitor.getStats({ force: true, awaitLimits: true }).catch(() => {})
+          ? window.tokenMonitor.getStats({ force: true, awaitLimits: true })
+              .then((stats) => { if (!cancelled && stats) syncStatsToPresentation(stats); })
+              .catch(() => {})
           : Promise.resolve();
 
         const minDelay = new Promise((resolve) => setTimeout(resolve, 250));

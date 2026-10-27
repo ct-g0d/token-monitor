@@ -20,7 +20,13 @@ const SETTINGS_SECTIONS = [
 
 type SectionId = (typeof SETTINGS_SECTIONS)[number][0];
 
-export function SettingsPage() {
+interface SettingsPageProps {
+  initialSection?: SectionId | string | null;
+  initialDetail?: any;
+  onClearInitialSection?: () => void;
+}
+
+export function SettingsPage({ initialSection, initialDetail, onClearInitialSection }: SettingsPageProps = {}) {
   const { settings, updateSettings, refreshSettings, refreshCurrencyRates } = useTokenMonitorSettings();
   const [activeSection, setActiveSection] = useState<SectionId>('general');
   const [, setLanguageSeq] = useState(0);
@@ -56,13 +62,36 @@ export function SettingsPage() {
   }, []);
 
   useEffect(() => {
+    if (initialSection) {
+      let sec = initialSection;
+      if (sec === 'edge-dock' || sec === 'hoverbar' || sec === 'hover_bar') {
+        sec = 'hover-bar';
+      } else if (sec === 'limits') {
+        sec = 'accounts';
+      }
+      if (SETTINGS_SECTIONS.some(([id]) => id === sec)) {
+        const timer = setTimeout(() => {
+          jumpTo(sec as SectionId);
+          if (initialDetail) {
+            window.dispatchEvent(new CustomEvent('tm-open-settings', { detail: initialDetail }));
+          }
+          onClearInitialSection?.();
+        }, 50);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [initialSection, initialDetail, jumpTo, onClearInitialSection]);
+
+  useEffect(() => {
     const handleOpenSection = (e: any) => {
       let section = e?.detail?.section;
       if (section === 'edge-dock' || section === 'hoverbar' || section === 'hover_bar') {
         section = 'hover-bar';
+      } else if (section === 'limits') {
+        section = 'accounts';
       }
       if (section && SETTINGS_SECTIONS.some(([id]) => id === section)) {
-        jumpTo(section);
+        jumpTo(section as SectionId);
       }
     };
     window.addEventListener('tm-open-settings', handleOpenSection);
@@ -90,21 +119,22 @@ export function SettingsPage() {
         return;
       }
 
+      // Find section currently occupying the top region of viewport
       const viewportRect = viewport.getBoundingClientRect();
-      const triggerOffset = 120; // px threshold from viewport top
-      let matchedSection: SectionId = SETTINGS_SECTIONS[0][0];
+      const offsetTop = viewportRect.top;
 
+      let current: SectionId = SETTINGS_SECTIONS[0][0];
       for (const [id] of SETTINGS_SECTIONS) {
         const el = sectionRefs.current[id];
         if (el) {
           const rect = el.getBoundingClientRect();
-          if (rect.top - viewportRect.top <= triggerOffset) {
-            matchedSection = id;
+          // Offset by ~80px to account for header/padding
+          if (rect.top - offsetTop <= 80) {
+            current = id;
           }
         }
       }
-
-      setActiveSection((prev) => (prev === matchedSection ? prev : matchedSection));
+      setActiveSection(current);
     };
 
     let rafId: number | null = null;
@@ -117,6 +147,7 @@ export function SettingsPage() {
     };
 
     const handleUserInteraction = () => {
+      // Cancel programmatic jump lock when user initiates manual wheel/touch
       if (isJumpingRef.current) {
         isJumpingRef.current = false;
         if (jumpTimerRef.current) {
@@ -126,34 +157,21 @@ export function SettingsPage() {
       }
     };
 
-    let observer: IntersectionObserver | null = null;
-    if (typeof IntersectionObserver !== 'undefined') {
-      observer = new IntersectionObserver(
-        () => {
-          handleScroll();
-        },
-        {
-          root: viewport,
-          rootMargin: '0px 0px -60% 0px',
-          threshold: [0, 0.25, 0.5, 0.75, 1],
-        }
-      );
-
-      for (const [id] of SETTINGS_SECTIONS) {
-        const el = sectionRefs.current[id];
-        if (el) {
-          observer.observe(el);
-        }
-      }
-    }
-
     viewport.addEventListener('scroll', handleScroll, { passive: true });
     viewport.addEventListener('wheel', handleUserInteraction, { passive: true });
     viewport.addEventListener('touchmove', handleUserInteraction, { passive: true });
     window.addEventListener('resize', handleScroll);
 
-    // Initial check on mount
-    handleScroll();
+    let observer: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined' && contentRef.current) {
+      observer = new ResizeObserver(() => {
+        handleScroll();
+      });
+      observer.observe(contentRef.current);
+    }
+
+    // Initial check
+    updateActiveSection();
 
     return () => {
       if (observer) {

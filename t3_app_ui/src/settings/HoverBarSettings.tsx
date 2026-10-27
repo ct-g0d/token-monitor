@@ -14,6 +14,9 @@ const selectClass =
 
 export function HoverBarSettings({ settings, updateSettings }: HoverBarSettingsProps) {
   const isEnabled = Boolean(settings.edgeDockEnabled);
+  const isMac = typeof navigator !== 'undefined' && /Macintosh|Mac OS X/.test(navigator.userAgent);
+  const isWindows = typeof navigator !== 'undefined' && /Windows NT/.test(navigator.userAgent);
+  const showMacControls = isMac || (!isWindows && !isMac);
 
   return (
     <div className="space-y-6">
@@ -105,21 +108,23 @@ export function HoverBarSettings({ settings, updateSettings }: HoverBarSettingsP
               />
             )}
 
-            <SettingRow
-              title="Glass Style (macOS)"
-              description="Backdrop material effect for the dock rail on macOS."
-              control={
-                <select
-                  value={settings.edgeDockMacBackdrop || 'inherit'}
-                  onChange={(e) => updateSettings({ edgeDockMacBackdrop: e.target.value as any })}
-                  className={selectClass}
-                >
-                  <option value="inherit">Same as widget</option>
-                  <option value="vibrancy">Frosted Glass</option>
-                  <option value="liquid-glass">Liquid Glass (Regular)</option>
-                </select>
-              }
-            />
+            {showMacControls && (
+              <SettingRow
+                title="Glass Style (macOS)"
+                description="Backdrop material effect for the dock rail on macOS."
+                control={
+                  <select
+                    value={settings.edgeDockMacBackdrop || 'inherit'}
+                    onChange={(e) => updateSettings({ edgeDockMacBackdrop: e.target.value as any })}
+                    className={selectClass}
+                  >
+                    <option value="inherit">Same as widget</option>
+                    <option value="vibrancy">Frosted Glass</option>
+                    <option value="liquid-glass">Liquid Glass (Regular)</option>
+                  </select>
+                }
+              />
+            )}
 
             <SettingRow
               title="Highlight Low Limits in Colour"
@@ -143,16 +148,18 @@ export function HoverBarSettings({ settings, updateSettings }: HoverBarSettingsP
               }
             />
 
-            <SettingRow
-              title="Haptic Feedback"
-              description="Vibrate trackpad gently on edge interactions."
-              control={
-                <Switch
-                  checked={settings.edgeDockHaptic !== false}
-                  onCheckedChange={(checked) => updateSettings({ edgeDockHaptic: checked })}
-                />
-              }
-            />
+            {showMacControls && (
+              <SettingRow
+                title="Haptic Feedback"
+                description="Vibrate trackpad gently on edge interactions."
+                control={
+                  <Switch
+                    checked={settings.edgeDockHaptic !== false}
+                    onCheckedChange={(checked) => updateSettings({ edgeDockHaptic: checked })}
+                  />
+                }
+              />
+            )}
 
             <SettingRow
               title="Dock Items Composer"

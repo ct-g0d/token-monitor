@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { SettingRow, SettingSection } from './SettingsComponents';
 import { Switch } from '~/components/ui/switch';
 import { Input } from '~/components/ui/input';
@@ -16,6 +16,12 @@ const selectClass =
 export function WindowSettings({ settings, updateSettings }: WindowSettingsProps) {
   const [recordingShortcut, setRecordingShortcut] = useState(false);
   const [shortcutText, setShortcutText] = useState(settings.windowToggleShortcut || '');
+
+  useEffect(() => {
+    if (!recordingShortcut) {
+      setShortcutText(settings.windowToggleShortcut || '');
+    }
+  }, [settings.windowToggleShortcut, recordingShortcut]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (!recordingShortcut) return;

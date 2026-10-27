@@ -146,7 +146,7 @@ export interface TokenMonitorSettingsState {
 
   // Limits
   showLimitSource?: boolean;
-  showLimitUsed?: 'remaining' | 'used';
+  showLimitUsed?: 'remaining' | 'used' | boolean;
   maskLimitAccountEmails?: boolean;
   limitProviderOrder?: string[] | string;
   limitProviderHiddenItems?: Record<string, any> | string;
