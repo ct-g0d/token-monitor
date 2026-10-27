@@ -1446,7 +1446,7 @@ function LimitsSkeleton() {
             </div>
             <Skeleton className="h-4 w-20" />
           </div>
-          <div className="grid items-center gap-x-4 sm:gap-x-6 gap-y-2.5 sm:gap-y-3 rounded-lg border border-border/60 p-3 sm:p-4 md:grid-cols-[11rem_minmax(0,1fr)]">
+          <div className="grid items-center gap-x-4 sm:gap-x-6 gap-y-2.5 sm:gap-y-3 rounded-lg border border-border/60 p-3 sm:p-4 md:grid-cols-[minmax(14rem,20rem)_minmax(0,1fr)]">
             <div className="flex flex-col gap-1.5">
               <Skeleton className="h-3.5 w-20" />
               <div className="flex items-baseline gap-2">

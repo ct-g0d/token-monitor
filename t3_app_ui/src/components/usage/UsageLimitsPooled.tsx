@@ -186,6 +186,18 @@ function Row({ label, children }: { readonly label: string; readonly children: R
   );
 }
 
+function getAccountPlanLabel(account: LimitAccount | undefined, isCodex?: boolean): string | null {
+  if (!account) return isCodex ? "Plus" : null;
+  if (account.plan) {
+    const raw = account.plan.trim();
+    if (raw.length > 0) {
+      return raw.charAt(0).toUpperCase() + raw.slice(1);
+    }
+  }
+  return isCodex ? "Plus" : null;
+}
+
+
 function SegmentPopover({
   account,
   window,
@@ -210,6 +222,10 @@ function SegmentPopover({
       : account.sourceLabel;
   const credits =
     redeem && account.limits.resetCredits?.availableCount ? account.limits.resetCredits : null;
+  const planLabel = getAccountPlanLabel(
+    account,
+    String(account.driver).toLowerCase().includes("codex"),
+  );
   return (
     <div className="flex w-72 max-w-[calc(100vw-3rem)] flex-col gap-2.5 text-xs">
       <div className="flex min-w-0 flex-col gap-0.5">
@@ -230,7 +246,7 @@ function SegmentPopover({
         ) : null}
       </div>
       <div className="flex flex-col gap-1 border-t border-border/60 pt-2.5">
-        {account.plan ? <Row label="Plan">{account.plan}</Row> : null}
+        {planLabel ? <Row label="Plan">{planLabel}</Row> : null}
         {where ? (
           <Row label={account.environments.length > 0 ? "Signed in" : "Via"}>{where}</Row>
         ) : null}
@@ -276,6 +292,7 @@ function PoolSegment({
   index,
   showAccountName,
   isCodex,
+  singleColumn,
 }: {
   readonly account: LimitAccount;
   readonly window: LimitPoolMember["window"];
@@ -285,18 +302,14 @@ function PoolSegment({
   readonly index: number;
   readonly showAccountName: boolean;
   readonly isCodex?: boolean;
+  readonly singleColumn?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const remaining = remainingPercent(window);
   const resetsIn = formatResetsIn(window, now);
   const countdown = resetsIn ? resetsIn.replace("resets in ", "") : null;
   const credits = account.limits.resetCredits?.availableCount ?? 0;
-
-  const planLabel = isCodex
-    ? account.plan
-      ? account.plan.charAt(0).toUpperCase() + account.plan.slice(1)
-      : "Plus"
-    : null;
+  const planLabel = getAccountPlanLabel(account, isCodex);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -310,7 +323,7 @@ function PoolSegment({
                 ? { gridColumn: "1 / -1", gridRow: index, width: "100%" }
                 : { gridColumn: index, gridRow: 1 }
             }
-            aria-label={`${account.displayName ?? (account.email ? accountInitials(account.email) : account.driver)}: ${remaining}% left${resetsIn ? `, ${resetsIn}` : ""}${credits ? `, ${credits} reset ${credits === 1 ? "credit" : "credits"} banked` : ""}`}
+            aria-label={`${account.displayName ?? (account.email ? accountInitials(account.email) : account.driver)}: ${planLabel ? `${planLabel}, ` : ""}${remaining}% left${resetsIn ? `, ${resetsIn}` : ""}${credits ? `, ${credits} reset ${credits === 1 ? "credit" : "credits"} banked` : ""}`}
             className={cn(
               "relative min-w-0 cursor-pointer overflow-hidden rounded-md bg-muted text-start outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background data-[popup-open]:ring-1 data-[popup-open]:ring-inset data-[popup-open]:ring-border",
               isCodex ? "h-8" : "h-6 sm:h-7 @xl/pool:h-8",
@@ -333,7 +346,7 @@ function PoolSegment({
             }}
           />
         ) : null}
-        {!isCodex ? (
+        {!isCodex && !singleColumn ? (
           <span
             aria-hidden
             className="absolute inset-0 flex items-center justify-center text-3xs leading-none font-semibold text-foreground/80 tabular-nums @lg/pool:hidden"
@@ -344,7 +357,7 @@ function PoolSegment({
         <div
           className={cn(
             "relative h-full min-w-0 items-center gap-1.5 px-2 text-xs",
-            isCodex ? "flex" : "hidden @lg/pool:flex",
+            isCodex || singleColumn ? "flex" : "hidden @lg/pool:flex",
           )}
         >
           {isCodex ? (
@@ -358,6 +371,11 @@ function PoolSegment({
                   account={account}
                   className="min-w-0 truncate font-medium text-foreground"
                 />
+              ) : null}
+              {planLabel ? (
+                <span className="shrink-0 rounded bg-background/80 px-1 py-0.5 text-3xs font-medium text-muted-foreground uppercase tracking-wide">
+                  {planLabel}
+                </span>
               ) : null}
               <span className="shrink-0 font-semibold text-foreground tabular-nums">
                 {remaining}%
@@ -397,9 +415,6 @@ function PoolSegment({
           )}
         </div>
       </PopoverTrigger>
-      {!isCodex ? (
-        <LegendRow account={account} window={window} color={color} now={now} index={index} />
-      ) : null}
       {account.redeem ? (
         <RedeemableSegmentPopup
           account={account}
@@ -425,58 +440,95 @@ function PoolSegment({
   );
 }
 
-function LegendRow({
+function PoolLegendItem({
   account,
   window,
+  reset,
   color,
   now,
   index,
+  isCodex,
 }: {
   readonly account: LimitAccount;
   readonly window: LimitPoolMember["window"];
+  readonly reset: LimitPoolWindow["resets"][number] | undefined;
   readonly color: string;
   readonly now: number;
   readonly index: number;
+  readonly isCodex?: boolean;
 }) {
+  const [open, setOpen] = useState(false);
   const remaining = remainingPercent(window);
   const resetsIn = formatResetsIn(window, now);
+  const countdown = resetsIn ? resetsIn.replace("resets in ", "") : null;
   const credits = account.limits.resetCredits?.availableCount ?? 0;
+  const planLabel = getAccountPlanLabel(account, isCodex);
+
   return (
-    <PopoverTrigger
-      style={{ gridColumn: "1 / -1", gridRow: index + 1 }}
-      render={<Button variant="ghost" size="compact" />}
-      className="min-w-0 @lg/pool:hidden"
-    >
-      <span className="relative inline-flex size-4 shrink-0 items-center justify-center rounded-sm text-3xs leading-none font-semibold text-foreground/80 tabular-nums">
-        <span
-          aria-hidden
-          className="absolute inset-0 rounded-sm opacity-35"
-          style={{ backgroundColor: color }}
-        />
-        <span className="sr-only">Segment </span>
-        <span className="relative">{index}</span>
-      </span>
-      <AccountName account={account} className="min-w-0 truncate font-medium text-foreground" />
-      <span className="shrink-0 font-semibold text-foreground tabular-nums">{remaining}%</span>
-      <span className="ms-auto flex shrink-0 items-center gap-1.5 text-2xs text-muted-foreground tabular-nums">
-        {resetsIn ? resetsIn.replace("resets in ", "in ") : ""}
-        {credits ? (
-          <>
-            {resetsIn ? <span aria-hidden>·</span> : null}
-            <span
-              aria-hidden
-              className="inline-flex items-center gap-0.5 font-semibold text-foreground"
-            >
-              <TicketIcon className="size-3" aria-hidden />
-              {credits}
-            </span>
-            <span className="sr-only">
-              {credits} reset {credits === 1 ? "credit" : "credits"} banked
-            </span>
-          </>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        openOnHover
+        render={<Button variant="ghost" size="compact" />}
+        aria-label={`${account.displayName ?? (account.email ? accountInitials(account.email) : account.driver)}: ${planLabel ? `${planLabel}, ` : ""}${remaining}% left${resetsIn ? `, ${resetsIn}` : ""}${credits ? `, ${credits} reset ${credits === 1 ? "credit" : "credits"} banked` : ""}`}
+        className="h-7 min-w-0 w-full justify-start px-2 py-0 text-xs gap-1.5 hover:bg-muted/60"
+      >
+        <span className="relative inline-flex size-4 shrink-0 items-center justify-center rounded-sm text-3xs leading-none font-semibold text-foreground/80 tabular-nums">
+          <span
+            aria-hidden
+            className="absolute inset-0 rounded-sm opacity-35"
+            style={{ backgroundColor: color }}
+          />
+          <span className="sr-only">Segment </span>
+          <span className="relative">{index}</span>
+        </span>
+        <AccountName account={account} className="min-w-0 truncate font-medium text-foreground" />
+        {planLabel ? (
+          <span className="shrink-0 rounded bg-muted/80 px-1 py-0.25 text-3xs font-medium text-muted-foreground uppercase tracking-wide">
+            {planLabel}
+          </span>
         ) : null}
-      </span>
-    </PopoverTrigger>
+        <span className="shrink-0 font-semibold text-foreground tabular-nums">{remaining}%</span>
+        <span className="ms-auto flex shrink-0 items-center gap-1 text-2xs text-muted-foreground tabular-nums">
+          {countdown ? <span>in {countdown}</span> : null}
+          {credits ? (
+            <>
+              {countdown ? <span aria-hidden>·</span> : null}
+              <span
+                aria-hidden
+                className="inline-flex items-center gap-0.5 font-semibold text-foreground"
+              >
+                <TicketIcon className="size-3" aria-hidden />
+                {credits}
+              </span>
+              <span className="sr-only">
+                {credits} reset {credits === 1 ? "credit" : "credits"} banked
+              </span>
+            </>
+          ) : null}
+        </span>
+      </PopoverTrigger>
+      {account.redeem ? (
+        <RedeemableSegmentPopup
+          account={account}
+          window={window}
+          reset={reset}
+          now={now}
+          redeemAt={account.redeem}
+          closePopover={() => setOpen(false)}
+        />
+      ) : (
+        <PopoverPopup side="top" sideOffset={6}>
+          <SegmentPopover
+            account={account}
+            window={window}
+            reset={reset}
+            now={now}
+            redeem={null}
+            onRedeem={() => {}}
+          />
+        </PopoverPopup>
+      )}
+    </Popover>
   );
 }
 
@@ -542,8 +594,14 @@ function PoolBar({
     String(pool.id).toLowerCase().includes("codex") ||
     pool.columns.some((c) => String(c.account.driver).toLowerCase().includes("codex"));
 
-  const restores = new Map(pool.resets.map((reset) => [reset.member.account.key, reset]));
-  const validColumns = pool.columns.filter((member) => member.window != null);
+  const restores = useMemo(
+    () => new Map(pool.resets.map((reset) => [reset.member.account.key, reset])),
+    [pool.resets],
+  );
+  const validColumns = useMemo(
+    () => pool.columns.filter((member) => member.window != null),
+    [pool.columns],
+  );
   const columns = isCodexPool ? validColumns : pool.columns;
   return (
     <div className="@container/pool min-w-0">
@@ -567,10 +625,29 @@ function PoolBar({
               index={position + 1}
               showAccountName={columns.length > 1}
               isCodex={isCodexPool}
+              singleColumn={columns.length === 1}
             />
           ) : null,
         )}
       </div>
+      {!isCodexPool && columns.length > 1 ? (
+        <div className="grid grid-cols-1 @[260px]/pool:grid-cols-2 @[380px]/pool:grid-cols-3 gap-1.5 pt-1.5 @lg/pool:hidden">
+          {columns.map((member, position) =>
+            member.window ? (
+              <PoolLegendItem
+                key={member.account.key}
+                account={member.account}
+                window={member.window}
+                reset={restores.get(member.account.key)}
+                color={color}
+                now={now}
+                index={position + 1}
+                isCodex={false}
+              />
+            ) : null,
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -674,29 +751,32 @@ function PoolSection({
   readonly now: number;
   readonly visibleLimitKeys: ReadonlySet<string> | null;
 }) {
-  const isCodex = String(pool.driver).toLowerCase().includes("codex") || String(pool.id).toLowerCase().includes("codex");
-  const color = getProviderBarColor(String(pool.driver));
-  const label = getProviderLabel(String(pool.driver));
-  const windows = displayLimitWindows(pool)
-    .filter(
-      (window) => visibleLimitKeys === null || visibleLimitKeys.has(limitWindowKey(String(pool.driver), window)),
-    )
-    .sort((a, b) => {
-      if (isCodex) {
-        const order: Record<string, number> = { session: 0, weekly: 1, monthly: 2 };
-        return (order[a.kind] ?? 9) - (order[b.kind] ?? 9);
-      }
-      return 0;
-    });
+  const isCodex = useMemo(
+    () => String(pool.driver).toLowerCase().includes("codex") || String(pool.id).toLowerCase().includes("codex"),
+    [pool.driver, pool.id],
+  );
+  const color = useMemo(() => getProviderBarColor(String(pool.driver)), [pool.driver]);
+  const label = useMemo(() => getProviderLabel(String(pool.driver)), [pool.driver]);
+  const windows = useMemo(() => {
+    return displayLimitWindows(pool)
+      .filter(
+        (window) => visibleLimitKeys === null || visibleLimitKeys.has(limitWindowKey(String(pool.driver), window)),
+      )
+      .sort((a, b) => {
+        if (isCodex) {
+          const order: Record<string, number> = { session: 0, weekly: 1, monthly: 2 };
+          return (order[a.kind] ?? 9) - (order[b.kind] ?? 9);
+        }
+        return 0;
+      });
+  }, [pool, visibleLimitKeys, isCodex]);
+
   if (windows.length === 0) return null;
   const primaryAccount = pool.accounts[0];
-  const primaryPlan = primaryAccount?.plan
-    ? formatPlanName(primaryAccount.plan)
-    : "Plus";
-  const singlePlan = primaryAccount?.plan ? formatPlanName(primaryAccount.plan) : "";
+  const primaryPlan = getAccountPlanLabel(primaryAccount, isCodex) ?? "Plus";
   const planSummary = pool.accounts.length > 1
     ? `${pool.accounts.length} / ${primaryPlan}`
-    : singlePlan;
+    : (primaryAccount?.plan ? primaryPlan : null);
 
   return (
     <section className="flex flex-col gap-3">
@@ -911,37 +991,46 @@ export function UsageLimitsPooled({
   readonly now: number;
   readonly cursorPrompt?: ReactNode;
 }) {
-  const accounts = collectLimitAccounts(presentations);
-  const pools = collectLimitPools(accounts, now);
-  const limitOptions = useMemo(
-    () => collectLimitOptions(presentations, now),
-    [presentations, now],
-  );
+  const accounts = useMemo(() => collectLimitAccounts(presentations), [presentations]);
+  const pools = useMemo(() => collectLimitPools(accounts, now), [accounts, now]);
   const hiddenLimitKeys = useAtomValue(hiddenLimitKeysAtom);
   const visibleLimitKeys = useMemo(
-    () =>
-      hiddenLimitKeys.size === 0
-        ? null
-        : new Set(limitOptions.map(([key]) => key).filter((key) => !hiddenLimitKeys.has(key))),
-    [hiddenLimitKeys, limitOptions],
+    () => {
+      if (hiddenLimitKeys.size === 0) return null;
+      return new Set(
+        pools.flatMap((pool) =>
+          displayLimitWindows(pool)
+            .map((window) => limitWindowKey(String(pool.driver), window))
+            .filter((key) => !hiddenLimitKeys.has(key)),
+        ),
+      );
+    },
+    [hiddenLimitKeys, pools],
   );
 
-  const rawNotices = collectLimitNotices(presentations);
+  const rawNotices = useMemo(() => collectLimitNotices(presentations), [presentations]);
   
   // Filter out spurious notices for notConfigured providers
-  const notices = rawNotices.filter((n) =>
-    !n.toLowerCase().includes("opencode") &&
-    !n.toLowerCase().includes("workbuddy") &&
-    !n.toLowerCase().includes("personal") &&
-    !n.toLowerCase().includes("antigravity")
+  const notices = useMemo(
+    () =>
+      rawNotices.filter((n) =>
+        !n.toLowerCase().includes("opencode") &&
+        !n.toLowerCase().includes("workbuddy") &&
+        !n.toLowerCase().includes("personal") &&
+        !n.toLowerCase().includes("antigravity")
+      ),
+    [rawNotices],
   );
 
-  const externalLinks = collectExternalUsageLinks(presentations);
-  const cursorPromptAt =
-    Math.max(
-      pools.findIndex((pool) => pool.driver === "codex"),
-      pools.findIndex((pool) => pool.driver === "claudeAgent" || (pool.driver as any) === "claude"),
-    ) + 1;
+  const externalLinks = useMemo(() => collectExternalUsageLinks(presentations), [presentations]);
+  const cursorPromptAt = useMemo(
+    () =>
+      Math.max(
+        pools.findIndex((pool) => pool.driver === "codex"),
+        pools.findIndex((pool) => pool.driver === "claudeAgent" || (pool.driver as any) === "claude"),
+      ) + 1,
+    [pools],
+  );
 
   const openSettings = (openAddProvider = false) => {
     if (typeof window !== "undefined") {
