@@ -94,7 +94,7 @@ export function ActivityHeatmap({
 
   const daily = dailyProp ?? dailyState;
 
-  const { weeks, allCells, active, peak, today } = useMemo(() => {
+  const { weeks, allCells, active, peak } = useMemo(() => {
     const value = (r?: DailyRecord) => Number((metric === 'tokens' ? r?.tokens : r?.cost) || 0);
     const byDay = new Map(daily.map((r) => [r.date, r]));
     const start = new Date();
@@ -140,7 +140,7 @@ export function ActivityHeatmap({
         ? peakTokens
         : (inRangeDaily.length > 0 ? inRangeDaily.reduce((max, d) => Math.max(max, value(d)), 0) : 0);
 
-    return { weeks, allCells: cells, active: activeCount, peak: resolvedPeak, today: todayStr };
+    return { weeks, allCells: cells, active: activeCount, peak: resolvedPeak };
   }, [daily, metric, sinceDay, untilDay, activeDays, peakTokens, peakValue]);
 
   const latestNonFutureIndex = useMemo(() => {
@@ -315,10 +315,9 @@ export function ActivityHeatmap({
               }
               const isCellInRange = (!sinceDay || c.key >= sinceDay) && (!untilDay || c.key <= untilDay);
               const isCellPeak = isCellInRange && peak > 0 && Math.abs(c.value - peak) < 0.0001;
-              const isCellToday = c.key === today;
               const cellDescriptor = [
                 formatHeatmapDate(c.key),
-                isCellToday ? '(Today)' : isCellPeak ? '(Peak day)' : undefined,
+                isCellPeak ? '(Peak day)' : undefined,
                 `${formatTokens(c.tokens)} tokens`,
                 formatUsd(c.cost),
               ].filter(Boolean).join(': ');
