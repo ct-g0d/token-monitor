@@ -94,7 +94,7 @@ export function supportsSharedSettingsSync(environment: {
 }): boolean {
   return (
     environment.connection.phase === "connected" &&
-    environment.serverConfig?.environment.capabilities.threadAutoSettlement === true
+    environment.serverConfig?.environment?.capabilities?.threadAutoSettlement === true
   );
 }
 

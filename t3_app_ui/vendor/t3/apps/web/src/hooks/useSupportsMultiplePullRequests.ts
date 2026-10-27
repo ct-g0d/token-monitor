@@ -5,6 +5,6 @@ export function useSupportsMultiplePullRequests(environmentId: EnvironmentId | n
   const configs = useServerConfigs();
   return (
     environmentId !== null &&
-    configs.get(environmentId)?.environment.capabilities.threadPullRequests === true
+    configs.get(environmentId)?.environment?.capabilities?.threadPullRequests === true
   );
 }

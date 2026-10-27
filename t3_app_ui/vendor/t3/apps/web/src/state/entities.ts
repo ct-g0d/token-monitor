@@ -256,70 +256,61 @@ export function useEnvironmentSupportsServerBrowser(environmentId: EnvironmentId
   const configs = useServerConfigs();
   return (
     environmentId !== null &&
-    configs.get(environmentId)?.environment.capabilities.serverBrowser === true
+    configs.get(environmentId)?.environment?.capabilities?.serverBrowser === true
   );
 }
 
 export function readEnvironmentSupportsServerBrowser(environmentId: EnvironmentId): boolean {
   return (
-    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
-      .serverBrowser === true
+    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment?.capabilities?.serverBrowser === true
   );
 }
 
 export function readEnvironmentSupportsTitleRegeneration(environmentId: EnvironmentId): boolean {
   return (
-    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
-      .threadTitleRegeneration === true
+    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment?.capabilities?.threadTitleRegeneration === true
   );
 }
 
 export function readEnvironmentSupportsPinning(environmentId: EnvironmentId): boolean {
   return (
-    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
-      .threadPinning === true
+    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment?.capabilities?.threadPinning === true
   );
 }
 
 export function readEnvironmentSupportsPinReorder(environmentId: EnvironmentId): boolean {
   return (
-    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
-      .threadPinReorder === true
+    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment?.capabilities?.threadPinReorder === true
   );
 }
 
 export function readEnvironmentSupportsAutoSettleOptOut(environmentId: EnvironmentId): boolean {
   return (
-    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
-      .threadAutoSettleOptOut === true
+    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment?.capabilities?.threadAutoSettleOptOut === true
   );
 }
 
 export function readEnvironmentSupportsActiveReorder(environmentId: EnvironmentId): boolean {
   return (
-    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
-      .threadActiveReorder === true
+    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment?.capabilities?.threadActiveReorder === true
   );
 }
 
 export function readEnvironmentSupportsSettlement(environmentId: EnvironmentId): boolean {
   return (
-    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
-      .threadSettlement === true
+    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment?.capabilities?.threadSettlement === true
   );
 }
 
 export function readEnvironmentSupportsSnooze(environmentId: EnvironmentId): boolean {
   return (
-    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
-      .threadSnooze === true
+    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment?.capabilities?.threadSnooze === true
   );
 }
 
 export function readEnvironmentSupportsVisitedTracking(environmentId: EnvironmentId): boolean {
   return (
-    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
-      .threadVisitedTracking === true
+    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment?.capabilities?.threadVisitedTracking === true
   );
 }
 

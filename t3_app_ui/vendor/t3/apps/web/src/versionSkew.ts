@@ -86,19 +86,19 @@ export function resolveServerConfigVersionMismatch(
 export function resolveServerSelfUpdateCapability(
   serverConfig: Pick<ServerConfig, "environment"> | null | undefined,
 ): ServerSelfUpdateCapability | null {
-  return serverConfig?.environment.capabilities.serverSelfUpdate ?? null;
+  return serverConfig?.environment?.capabilities?.serverSelfUpdate ?? null;
 }
 
 export function supportsDesktopAppUpdate(
   serverConfig: Pick<ServerConfig, "environment"> | null | undefined,
 ): boolean {
-  return serverConfig?.environment.capabilities.desktopAppUpdate === true;
+  return serverConfig?.environment?.capabilities?.desktopAppUpdate === true;
 }
 
 export function supportsServerUpdateThreadContinuation(
   serverConfig: Pick<ServerConfig, "environment"> | null | undefined,
 ): boolean {
-  return serverConfig?.environment.capabilities.serverUpdateThreadContinuation === true;
+  return serverConfig?.environment?.capabilities?.serverUpdateThreadContinuation === true;
 }
 
 export function manualServerUpdateCommand(

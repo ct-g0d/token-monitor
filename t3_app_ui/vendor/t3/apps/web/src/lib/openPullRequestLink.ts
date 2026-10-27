@@ -76,7 +76,7 @@ export function usePullRequestPreviewTarget(environmentId: EnvironmentId | null,
   return resolvePullRequestPreviewTarget({
     environmentId,
     projects,
-    pullRequestsEnabled: serverConfig?.environment.capabilities.pullRequests === true,
+    pullRequestsEnabled: serverConfig?.environment?.capabilities?.pullRequests === true,
     url,
   });
 }
@@ -129,7 +129,7 @@ export function useOpenChangeRequestLink(
     const parsed = parseChangeRequestUrl(targetUrl);
     if (parsed === null) return false;
     const reads = (environmentId: string) =>
-      serverConfigs.get(environmentId as EnvironmentId)?.environment.capabilities.pullRequests ===
+      serverConfigs.get(environmentId as EnvironmentId)?.environment?.capabilities?.pullRequests ===
       true;
     // Beside a thread the panel reads on that thread's environment, so a project from another
     // one could not be read there whatever its remote says: two environments can hold the same
@@ -152,15 +152,15 @@ export function useOpenChangeRequestLink(
         ? findProjectOnChangeRequestHost(
             projects.filter(
               (candidate) =>
-                serverConfigs.get(candidate.environmentId)?.environment.capabilities
-                  .threadPullRequests === true,
+                serverConfigs.get(candidate.environmentId)?.environment?.capabilities
+                  ?.threadPullRequests === true,
             ),
             parsed,
           )
         : undefined);
     if (project === undefined || !reads(project.environmentId)) return false;
     const repository =
-      serverConfigs.get(project.environmentId)?.environment.capabilities.threadPullRequests === true
+      serverConfigs.get(project.environmentId)?.environment?.capabilities?.threadPullRequests === true
         ? parsed.repository
         : (sourceControlRepositorySelector(project.repositoryIdentity) ?? parsed.repository);
     event.preventDefault();
@@ -172,8 +172,8 @@ export function useOpenChangeRequestLink(
           ? {}
           : { environmentId: project.environmentId }),
         projectId: project.id,
-        ...(serverConfigs.get(project.environmentId)?.environment.capabilities
-          .threadPullRequests === true
+        ...(serverConfigs.get(project.environmentId)?.environment?.capabilities
+          ?.threadPullRequests === true
           ? { host: parsed.authority ?? parsed.host }
           : {}),
         repository,

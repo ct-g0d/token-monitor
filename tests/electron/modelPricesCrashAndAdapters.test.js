@@ -321,3 +321,40 @@ test('applyModelAliasesPatch adds, updates and deletes model aliases', () => {
     'gpt-4o-2024-08-06': 'gpt-4o',
   });
 });
+
+test('capabilities safety guards prevent TypeError on null/undefined environment/capabilities', () => {
+  const configsWithEmptyEnv = new Map([
+    ['env-1', {}],
+    ['env-2', { environment: null }],
+    ['env-3', { environment: {} }],
+    ['env-4', { environment: { capabilities: null } }],
+    ['env-5', { environment: { capabilities: undefined } }],
+  ]);
+
+  for (const [, config] of configsWithEmptyEnv) {
+    assert.doesNotThrow(() => {
+      const hasPR = config?.environment?.capabilities?.pullRequests === true;
+      assert.equal(hasPR, false);
+    });
+    assert.doesNotThrow(() => {
+      const hasThreadPR = config?.environment?.capabilities?.threadPullRequests === true;
+      assert.equal(hasThreadPR, false);
+    });
+    assert.doesNotThrow(() => {
+      const hasBrowser = config?.environment?.capabilities?.serverBrowser === true;
+      assert.equal(hasBrowser, false);
+    });
+    assert.doesNotThrow(() => {
+      const hasTitle = config?.environment?.capabilities?.threadTitleRegeneration === true;
+      assert.equal(hasTitle, false);
+    });
+    assert.doesNotThrow(() => {
+      const hasPin = config?.environment?.capabilities?.threadPinning === true;
+      assert.equal(hasPin, false);
+    });
+    assert.doesNotThrow(() => {
+      const hasSettlement = config?.environment?.capabilities?.threadSettlement === true;
+      assert.equal(hasSettlement, false);
+    });
+  }
+});
