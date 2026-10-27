@@ -187,6 +187,80 @@ test('unified font settings: preserveInstrumentTypography preserves narrow instr
   assert.equal(fakeDocument.body.style.fontFamily, fontSettings.DEFAULT_DASHBOARD_INTERFACE_FONT);
 });
 
+test('unified font settings: preserveInstrumentTypography preserves explicit monospace and custom monospace selections', () => {
+  const createFakeDoc = () => {
+    const properties = new Map();
+    const dataset = {};
+    let bodyFontFamily = '';
+    return {
+      fakeDocument: {
+        documentElement: {
+          style: {
+            setProperty(k, v) { properties.set(k, String(v)); },
+            removeProperty(k) { properties.delete(k); }
+          },
+          dataset
+        },
+        body: {
+          style: {
+            get fontFamily() { return bodyFontFamily; },
+            set fontFamily(v) { bodyFontFamily = v; }
+          }
+        }
+      },
+      properties
+    };
+  };
+
+  // Explicit 'mono' preset selection (DEFAULT_INTERFACE_FONT)
+  {
+    const { fakeDocument, properties } = createFakeDoc();
+    const result = fontSettings.applyFontSettings(fakeDocument, {
+      interfaceFontFamily: fontSettings.DEFAULT_INTERFACE_FONT
+    }, {
+      interfaceDefault: fontSettings.DEFAULT_DASHBOARD_INTERFACE_FONT,
+      preserveInstrumentTypography: true
+    });
+    assert.equal(result.interfaceFont, fontSettings.DEFAULT_INTERFACE_FONT);
+    assert.equal(properties.get('--ui-font'), fontSettings.DEFAULT_INTERFACE_FONT);
+    assert.equal(properties.get('--font-sans'), fontSettings.DEFAULT_INTERFACE_FONT);
+    assert.equal(properties.get('--font-mono'), fontSettings.DEFAULT_INTERFACE_FONT);
+    assert.equal(properties.get('--tm-display'), 'Bahnschrift, "DIN Alternate", "DIN Condensed", var(--font-sans)');
+  }
+
+  // Explicit custom monospace font
+  {
+    const { fakeDocument, properties } = createFakeDoc();
+    const result = fontSettings.applyFontSettings(fakeDocument, {
+      interfaceFontFamily: 'JetBrains Mono, monospace'
+    }, {
+      interfaceDefault: fontSettings.DEFAULT_DASHBOARD_INTERFACE_FONT,
+      preserveInstrumentTypography: true
+    });
+    assert.equal(result.interfaceFont, 'JetBrains Mono, monospace');
+    assert.equal(properties.get('--ui-font'), 'JetBrains Mono, monospace');
+    assert.equal(properties.get('--font-sans'), 'JetBrains Mono, monospace');
+    assert.equal(properties.get('--font-mono'), 'JetBrains Mono, monospace');
+    assert.equal(properties.get('--tm-display'), 'Bahnschrift, "DIN Alternate", "DIN Condensed", var(--font-sans)');
+  }
+
+  // Explicit non-monospace font leaves --font-mono untouched
+  {
+    const { fakeDocument, properties } = createFakeDoc();
+    const result = fontSettings.applyFontSettings(fakeDocument, {
+      interfaceFontFamily: fontSettings.SYSTEM_UI_FONT
+    }, {
+      interfaceDefault: fontSettings.DEFAULT_DASHBOARD_INTERFACE_FONT,
+      preserveInstrumentTypography: true
+    });
+    assert.equal(result.interfaceFont, fontSettings.SYSTEM_UI_FONT);
+    assert.equal(properties.get('--ui-font'), fontSettings.SYSTEM_UI_FONT);
+    assert.equal(properties.get('--font-sans'), fontSettings.SYSTEM_UI_FONT);
+    assert.equal(properties.has('--font-mono'), false);
+    assert.equal(properties.get('--tm-display'), 'Bahnschrift, "DIN Alternate", "DIN Condensed", var(--font-sans)');
+  }
+});
+
 test('unified font settings: clientBridge exposes TokenMonitorFontSettings and default keys', () => {
   const bridge = clientBridgeApi.clientBridge;
   assert.ok(bridge, 'clientBridge should be defined');

@@ -92,10 +92,15 @@
         style.setProperty('--tm-display', `${displayFont}, var(--font-sans)`);
       }
 
+      const explicitInterface = Boolean(settings?.interfaceFontFamily && normalizeFontFamily(settings.interfaceFontFamily));
       const isMono =
         interfaceFont === DEFAULT_INTERFACE_FONT ||
-        /monospace|SFMono|Liberation Mono|ui-monospace/i.test(interfaceFont);
-      if (isMono && !options.preserveInstrumentTypography) {
+        /monospace|SFMono|Liberation Mono|ui-monospace|Consolas|Menlo|Monaco|Courier/i.test(interfaceFont);
+      const shouldSetMono = options.preserveInstrumentTypography
+        ? (explicitInterface && isMono)
+        : isMono;
+
+      if (shouldSetMono) {
         style.setProperty('--font-mono', interfaceFont);
       } else if (typeof style.removeProperty === 'function') {
         style.removeProperty('--font-mono');
