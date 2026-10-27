@@ -1507,10 +1507,7 @@ function UsageSkeleton() {
             />
           </div>
         </div>
-      </section>
-
-      <section className="grid gap-x-12 gap-y-8 lg:grid-cols-2">
-        <div className="flex flex-col gap-2.5">
+        <div className="flex flex-col gap-2.5 pt-2 sm:pt-3">
           <Skeleton className="h-5 w-28" />
           <Skeleton className="h-2" />
           <Skeleton className="h-4 w-72" />
