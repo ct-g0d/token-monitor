@@ -91,6 +91,15 @@ test('Zed plan labels omit only the redundant provider prefix', () => {
   assert.equal(limitProviderPlanDisplayLabel('codex', 'ChatGPT Plus'), 'ChatGPT Plus');
 });
 
+test('Antigravity plan labels normalize prefixes and display concise tiers', () => {
+  assert.equal(limitProviderPlanDisplayLabel('antigravity', 'pro'), 'Pro');
+  assert.equal(limitProviderPlanDisplayLabel('antigravity', 'Antigravity Pro'), 'Pro');
+  assert.equal(limitProviderPlanDisplayLabel('antigravity', 'Google AI Pro'), 'Pro');
+  assert.equal(limitProviderPlanDisplayLabel('antigravity', 'Google One Pro'), 'Pro');
+  assert.equal(limitProviderPlanDisplayLabel('antigravity', 'Pro'), 'Pro');
+  assert.equal(limitProviderPlanDisplayLabel('antigravity', 'Custom Tier'), 'Custom Tier');
+});
+
 test('Codex additional quota display names map gpt-reserve and preserve unknown names', () => {
   assert.equal(codexAdditionalQuotaDisplayName('gpt-reserve'), 'Luna Reserve');
   assert.equal(codexAdditionalQuotaDisplayName(' GPT-RESERVE '), 'Luna Reserve');
@@ -3230,6 +3239,28 @@ test('every limits tooltip flips below when the row has no room above it', () =>
 test('an attached subscription adds no resting decoration to the plan label', () => {
   const styles = readRendererFile('styles.css');
   assert.doesNotMatch(cssBlock(styles, '.subscription-plan-trigger'), /border-bottom/);
+});
+
+test('limit plan labels maintain line-height and layout to prevent clipping capital glyphs', () => {
+  const styles = readRendererFile('styles.css');
+  const homePlan = cssBlock(styles, '.home-limit-plan');
+  const limitPlan = cssBlock(styles, '.limit-plan');
+  const trigger = cssBlock(styles, '.subscription-plan-trigger');
+  const homeHead = cssBlock(styles, '.home-limit-account-head:has(> .home-limit-plan)');
+
+  assert.match(homePlan, /line-height:\s*1\.3/);
+  assert.match(homePlan, /min-width:\s*fit-content/);
+  assert.match(limitPlan, /line-height:\s*1\.3/);
+  assert.match(limitPlan, /min-width:\s*fit-content/);
+  assert.match(trigger, /font:\s*inherit/);
+  assert.match(trigger, /line-height:\s*inherit/);
+  assert.match(homeHead, /fit-content\(50%\)/);
+});
+
+test('UsageLimitsPooled.tsx capitalizes plan names and protects planSummary from row breakage', () => {
+  const code = fs.readFileSync(path.join(__dirname, '..', '..', 't3_app_ui', 'src', 'components', 'usage', 'UsageLimitsPooled.tsx'), 'utf8');
+  assert.match(code, /function formatPlanName/);
+  assert.match(code, /shrink-0 whitespace-nowrap text-xs text-muted-foreground/);
 });
 
 test('subscription form controls stay shrinkable so a long option cannot overflow the panel', () => {

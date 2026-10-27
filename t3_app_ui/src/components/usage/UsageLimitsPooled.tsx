@@ -95,6 +95,13 @@ function getProviderLabel(driver: string): string {
   return providerClients.get(driver as any)?.label ?? driver;
 }
 
+function formatPlanName(plan: string | undefined): string {
+  if (!plan) return "";
+  const trimmed = plan.trim();
+  if (!trimmed) return "";
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+}
+
 function accountInitials(email: string): string {
   const [local = "", domain = ""] = email.split("@");
   return `${local[0] ?? ""}${domain[0] ?? ""}`.toUpperCase() || "?";
@@ -684,27 +691,28 @@ function PoolSection({
   if (windows.length === 0) return null;
   const primaryAccount = pool.accounts[0];
   const primaryPlan = primaryAccount?.plan
-    ? primaryAccount.plan.charAt(0).toUpperCase() + primaryAccount.plan.slice(1)
+    ? formatPlanName(primaryAccount.plan)
     : "Plus";
+  const singlePlan = primaryAccount?.plan ? formatPlanName(primaryAccount.plan) : "";
   const planSummary = pool.accounts.length > 1
     ? `${pool.accounts.length} / ${primaryPlan}`
-    : pool.accounts[0]?.plan;
+    : singlePlan;
 
   return (
     <section className="flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <h2 className="flex items-center gap-2 text-sm font-medium text-foreground">
+      <div className="flex items-center justify-between gap-2 min-w-0">
+        <h2 className="flex items-center gap-2 text-sm font-medium text-foreground min-w-0">
           <ProviderInstanceIcon
             driverKind={pool.driver}
             displayName={label}
             indicatorBackground="var(--background)"
-            className="size-5"
+            className="size-5 shrink-0"
             iconClassName="size-4 text-foreground/80"
           />
-          {label}
+          <span className="truncate">{label}</span>
         </h2>
         {planSummary ? (
-          <span className="text-xs text-muted-foreground tabular-nums">{planSummary}</span>
+          <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground tabular-nums">{planSummary}</span>
         ) : null}
       </div>
       {windows.map((window) => {

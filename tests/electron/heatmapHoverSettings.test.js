@@ -60,3 +60,16 @@ test('ActivityHeatmap.tsx exports HeatmapHoverBehavior and integrates hoverBehav
   assert.match(heatmap, /hoverBehavior !== 'compact' \|\| metric === 'tokens'/);
   assert.match(heatmap, /hoverBehavior !== 'compact' \|\| metric === 'cost'/);
 });
+
+test('ActivityHeatmap.tsx preserves boundary hover rings and removes Today badge from tooltip', () => {
+  const heatmap = fs.readFileSync(path.join(rootDir, 't3_app_ui', 'src', 'components', 'usage', 'ActivityHeatmap.tsx'), 'utf8');
+  // 1. Grid container padding/negative-margin prevents edge hover ring clipping on all sides
+  assert.match(heatmap, /overflow-hidden p-1 -m-1/);
+  // 2. Viewport client dimensions ensure tooltip doesn't clip on right boundary
+  assert.match(heatmap, /document\.documentElement\.clientWidth/);
+  assert.match(heatmap, /document\.documentElement\.clientHeight/);
+  // 3. Tooltip has max-width boundary constraint
+  assert.match(heatmap, /max-w-\[calc\(100vw-16px\)\]/);
+  // 4. Today badge removed from tooltip markup
+  assert.doesNotMatch(heatmap, /<span[^>]*Today<\/span>/);
+});

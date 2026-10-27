@@ -155,17 +155,21 @@ export function ActivityHeatmap({
   const updateTooltipPosition = useCallback((targetEl: HTMLElement) => {
     const cellRect = targetEl.getBoundingClientRect();
     const tooltipEl = tooltipRef.current;
-    const tooltipWidth = tooltipEl?.offsetWidth || 180;
-    const tooltipHeight = tooltipEl?.offsetHeight || 75;
+    const tooltipRect = tooltipEl?.getBoundingClientRect();
+    const tooltipWidth = tooltipRect?.width || tooltipEl?.offsetWidth || 180;
+    const tooltipHeight = tooltipRect?.height || tooltipEl?.offsetHeight || 75;
     const gap = 8;
     const pad = 8;
 
+    const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+    const viewportHeight = document.documentElement.clientHeight || window.innerHeight;
+
     const cellCenterX = cellRect.left + cellRect.width / 2;
-    const left = Math.max(pad, Math.min(window.innerWidth - pad - tooltipWidth, cellCenterX - tooltipWidth / 2));
+    const left = Math.max(pad, Math.min(viewportWidth - pad - tooltipWidth, cellCenterX - tooltipWidth / 2));
     const spaceAbove = cellRect.top - gap - tooltipHeight;
     const top = spaceAbove >= pad
       ? spaceAbove
-      : Math.min(window.innerHeight - pad - tooltipHeight, cellRect.bottom + gap);
+      : Math.min(viewportHeight - pad - tooltipHeight, cellRect.bottom + gap);
 
     // Functional update prevents unnecessary re-renders when coordinates have not changed
     setTooltipPos((prev) =>
@@ -187,7 +191,7 @@ export function ActivityHeatmap({
   }, []);
 
   useLayoutEffect(() => {
-    if (!activeCell || !activeTargetRef.current || !tooltipRef.current) return;
+    if (!activeCell || !activeTargetRef.current) return;
     updateTooltipPosition(activeTargetRef.current);
   }, [activeCell, updateTooltipPosition]);
 
@@ -289,7 +293,7 @@ export function ActivityHeatmap({
         role="grid"
         aria-label="Activity heatmap"
         aria-readonly="true"
-        className="flex min-w-0 flex-1 justify-end gap-[3px] overflow-hidden py-1 -my-1"
+        className="flex min-w-0 flex-1 justify-end gap-[3px] overflow-hidden p-1 -m-1"
         onPointerLeave={() => {
           if (!gridRef.current?.contains(document.activeElement)) {
             hideTooltip();
@@ -364,7 +368,7 @@ export function ActivityHeatmap({
               ref={tooltipRef}
               id="activity-heatmap-tooltip"
               role="tooltip"
-              className="surface-glass pointer-events-none fixed z-50 min-w-40 rounded-xl border border-border/50 px-2.5 py-2 text-xs shadow-lg"
+              className="surface-glass pointer-events-none fixed z-50 min-w-40 max-w-[calc(100vw-16px)] rounded-xl border border-border/50 px-2.5 py-2 text-xs shadow-lg"
               style={{
                 left: `${tooltipPos.left}px`,
                 top: `${tooltipPos.top}px`,
@@ -374,18 +378,11 @@ export function ActivityHeatmap({
                 <span className="tm-label">
                   {formatHeatmapDate(activeCell.key)}
                 </span>
-                <div className="flex items-center gap-1">
-                  {activeCell.key === today ? (
-                    <span className="rounded-sm bg-primary/15 px-1 py-0.5 font-mono text-3xs font-medium text-foreground">
-                      Today
-                    </span>
-                  ) : null}
-                  {(!sinceDay || activeCell.key >= sinceDay) && (!untilDay || activeCell.key <= untilDay) && peak > 0 && Math.abs(activeCell.value - peak) < 0.0001 ? (
-                    <span className="rounded-sm bg-muted px-1 py-0.5 font-mono text-3xs font-medium text-muted-foreground">
-                      Peak
-                    </span>
-                  ) : null}
-                </div>
+                {(!sinceDay || activeCell.key >= sinceDay) && (!untilDay || activeCell.key <= untilDay) && peak > 0 && Math.abs(activeCell.value - peak) < 0.0001 ? (
+                  <span className="rounded-sm bg-muted px-1 py-0.5 font-mono text-3xs font-medium text-muted-foreground">
+                    Peak
+                  </span>
+                ) : null}
               </div>
               {hoverBehavior !== 'compact' || metric === 'tokens' ? (
                 <div className="flex items-center justify-between gap-4 py-0.5">
