@@ -225,6 +225,7 @@ function PoolSegment({
   now,
   index,
   showAccountName,
+  singleColumn,
 }: {
   readonly account: LimitAccount;
   readonly window: LimitPoolMember["window"];
@@ -233,6 +234,7 @@ function PoolSegment({
   readonly now: number;
   readonly index: number;
   readonly showAccountName: boolean;
+  readonly singleColumn?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const remaining = remainingPercent(window);
@@ -267,13 +269,20 @@ function PoolSegment({
             }}
           />
         ) : null}
-        <span
-          aria-hidden
-          className="absolute inset-0 flex items-center justify-center text-3xs leading-none font-semibold text-foreground/80 tabular-nums @2xl/pool:hidden"
+        {!singleColumn ? (
+          <span
+            aria-hidden
+            className="absolute inset-0 flex items-center justify-center text-3xs leading-none font-semibold text-foreground/80 tabular-nums @2xl/pool:hidden"
+          >
+            {index}
+          </span>
+        ) : null}
+        <div
+          className={cn(
+            "relative h-full min-w-0 items-center gap-1.5 px-2 text-xs",
+            singleColumn ? "flex" : "hidden @2xl/pool:flex",
+          )}
         >
-          {index}
-        </span>
-        <div className="relative hidden h-full min-w-0 items-center gap-1.5 px-2 text-xs @2xl/pool:flex">
           {showAccountName ? (
             <AccountName
               account={account}
@@ -347,7 +356,11 @@ function PoolLegendItem({
   const [open, setOpen] = useState(false);
   const remaining = remainingPercent(window);
   const resetsIn = formatResetsIn(window, now);
-  const countdown = resetsIn ? resetsIn.replace("resets in ", "") : null;
+  const countdown = resetsIn
+    ? resetsIn.startsWith("resets in ")
+      ? `in ${resetsIn.slice("resets in ".length)}`
+      : resetsIn
+    : null;
   const credits = account.limits.resetCredits?.availableCount ?? 0;
   const planLabel = getAccountPlanLabel(account);
   return (
@@ -375,7 +388,7 @@ function PoolLegendItem({
         ) : null}
         <span className="shrink-0 font-semibold text-foreground tabular-nums">{remaining}%</span>
         <span className="ms-auto flex shrink-0 items-center gap-1.5 text-2xs text-muted-foreground tabular-nums">
-          {countdown ? <span>in {countdown}</span> : null}
+          {countdown ? <span>{countdown}</span> : null}
           {credits ? (
             <>
               {countdown ? <span aria-hidden>·</span> : null}
@@ -492,12 +505,13 @@ function PoolBar({
               now={now}
               index={position + 1}
               showAccountName={pool.columns.length > 1}
+              singleColumn={pool.columns.length === 1}
             />
           ) : null,
         )}
       </div>
       {pool.columns.length > 1 ? (
-        <div className="grid grid-cols-1 @[260px]/pool:grid-cols-2 @[380px]/pool:grid-cols-3 gap-1.5 pt-1.5 @2xl/pool:hidden">
+        <div className="grid grid-cols-1 @[260px]/pool:grid-cols-2 @[480px]/pool:grid-cols-3 gap-1.5 pt-1.5 @2xl/pool:hidden">
           {pool.columns.map((member, position) =>
             member.window ? (
               <PoolLegendItem

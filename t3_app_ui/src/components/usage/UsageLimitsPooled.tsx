@@ -53,6 +53,7 @@ import {
   useResetCredit,
 } from "~/components/usage/UsageLimits";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
+import { formatCountdown, getAccountPlanLabel, resolvePlanSummary } from "./usageLimitsHelpers";
 
 function openExternalLink(url: string) {
   if (typeof window !== "undefined" && window.tokenMonitor?.openExternalUrl) {
@@ -186,16 +187,7 @@ function Row({ label, children }: { readonly label: string; readonly children: R
   );
 }
 
-function getAccountPlanLabel(account: LimitAccount | undefined, isCodex?: boolean): string | null {
-  if (!account) return isCodex ? "Plus" : null;
-  if (account.plan) {
-    const raw = account.plan.trim();
-    if (raw.length > 0) {
-      return raw.charAt(0).toUpperCase() + raw.slice(1);
-    }
-  }
-  return isCodex ? "Plus" : null;
-}
+
 
 
 function SegmentPopover({
@@ -307,7 +299,7 @@ function PoolSegment({
   const [open, setOpen] = useState(false);
   const remaining = remainingPercent(window);
   const resetsIn = formatResetsIn(window, now);
-  const countdown = resetsIn ? resetsIn.replace("resets in ", "") : null;
+  const countdown = formatCountdown(resetsIn);
   const credits = account.limits.resetCredits?.availableCount ?? 0;
   const planLabel = getAccountPlanLabel(account, isCodex);
 
@@ -489,7 +481,7 @@ function PoolLegendItem({
         ) : null}
         <span className="shrink-0 font-semibold text-foreground tabular-nums">{remaining}%</span>
         <span className="ms-auto flex shrink-0 items-center gap-1 text-2xs text-muted-foreground tabular-nums">
-          {countdown ? <span>in {countdown}</span> : null}
+          {countdown ? <span>{countdown}</span> : null}
           {credits ? (
             <>
               {countdown ? <span aria-hidden>·</span> : null}
@@ -631,7 +623,7 @@ function PoolBar({
         )}
       </div>
       {!isCodexPool && columns.length > 1 ? (
-        <div className="grid grid-cols-1 @[260px]/pool:grid-cols-2 @[380px]/pool:grid-cols-3 gap-1.5 pt-1.5 @lg/pool:hidden">
+        <div className="grid grid-cols-1 @[260px]/pool:grid-cols-2 @[480px]/pool:grid-cols-3 gap-1.5 pt-1.5 @lg/pool:hidden">
           {columns.map((member, position) =>
             member.window ? (
               <PoolLegendItem
@@ -772,11 +764,7 @@ function PoolSection({
   }, [pool, visibleLimitKeys, isCodex]);
 
   if (windows.length === 0) return null;
-  const primaryAccount = pool.accounts[0];
-  const primaryPlan = getAccountPlanLabel(primaryAccount, isCodex) ?? "Plus";
-  const planSummary = pool.accounts.length > 1
-    ? `${pool.accounts.length} / ${primaryPlan}`
-    : (primaryAccount?.plan ? primaryPlan : null);
+  const planSummary = resolvePlanSummary(pool.accounts, isCodex);
 
   return (
     <section className="flex flex-col gap-3">
