@@ -452,7 +452,7 @@ function PoolLegendItem({
   const [open, setOpen] = useState(false);
   const remaining = remainingPercent(window);
   const resetsIn = formatResetsIn(window, now);
-  const countdown = resetsIn ? resetsIn.replace("resets in ", "") : null;
+  const countdown = formatCountdown(resetsIn);
   const credits = account.limits.resetCredits?.availableCount ?? 0;
   const planLabel = getAccountPlanLabel(account, isCodex);
 

@@ -64,6 +64,30 @@ test('countdown formatting: source and vendor UsageLimitsPooled avoid "in resets
   assert.match(vendor, /\{countdown \? <span>\{countdown\}<\/span> : null\}/);
 });
 
+test('countdown formatting: source PoolLegendItem uses formatCountdown and avoids bare duration replacement', () => {
+  const src = fs.readFileSync(srcUsageLimitsPooledPath, 'utf8');
+
+  const startIndex = src.indexOf('function PoolLegendItem(');
+  assert.ok(startIndex !== -1, 'PoolLegendItem must be defined in source');
+  const endIndex = src.indexOf('function RedeemableSegmentPopup(', startIndex);
+  assert.ok(endIndex !== -1, 'RedeemableSegmentPopup must follow PoolLegendItem');
+  const legendBody = src.slice(startIndex, endIndex);
+
+  // Must use formatCountdown(resetsIn)
+  assert.match(
+    legendBody,
+    /const countdown = formatCountdown\(resetsIn\);/,
+    'PoolLegendItem must use formatCountdown(resetsIn)',
+  );
+
+  // Must not use resetsIn.replace("resets in ", "")
+  assert.doesNotMatch(
+    legendBody,
+    /resetsIn\.replace\("resets in ", ""\)/,
+    'PoolLegendItem must not use resetsIn.replace("resets in ", "")',
+  );
+});
+
 test('container query: 480px breakpoint is raised in both source and vendor copies', () => {
   const src = fs.readFileSync(srcUsageLimitsPooledPath, 'utf8');
   const vendor = fs.readFileSync(vendorUsageLimitsPooledPath, 'utf8');
