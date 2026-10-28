@@ -120,6 +120,18 @@ function Row({ label, children }: { readonly label: string; readonly children: R
   );
 }
 
+function getAccountPlanLabel(account: LimitAccount | undefined): string | null {
+  if (!account) return null;
+  if (account.plan) {
+    const raw = account.plan.trim();
+    if (raw.length > 0) {
+      return raw.charAt(0).toUpperCase() + raw.slice(1);
+    }
+  }
+  return null;
+}
+
+
 function SegmentPopover({
   account,
   window,
@@ -164,7 +176,7 @@ function SegmentPopover({
         ) : null}
       </div>
       <div className="flex flex-col gap-1 border-t border-border/60 pt-2.5">
-        {account.plan ? <Row label="Plan">{account.plan}</Row> : null}
+        {getAccountPlanLabel(account) ? <Row label="Plan">{getAccountPlanLabel(account)!}</Row> : null}
         {where ? (
           <Row label={account.environments.length > 0 ? "Signed in" : "Via"}>{where}</Row>
         ) : null}
@@ -213,6 +225,7 @@ function PoolSegment({
   now,
   index,
   showAccountName,
+  singleColumn,
 }: {
   readonly account: LimitAccount;
   readonly window: LimitPoolMember["window"];
@@ -221,11 +234,13 @@ function PoolSegment({
   readonly now: number;
   readonly index: number;
   readonly showAccountName: boolean;
+  readonly singleColumn?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const remaining = remainingPercent(window);
   const resetsIn = formatResetsIn(window, now);
   const credits = account.limits.resetCredits?.availableCount ?? 0;
+  const planLabel = getAccountPlanLabel(account);
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
@@ -234,7 +249,7 @@ function PoolSegment({
           <button
             type="button"
             style={{ gridColumn: index, gridRow: 1 }}
-            aria-label={`${account.displayName ?? (account.email ? accountInitials(account.email) : account.driver)}: ${remaining}% left${resetsIn ? `, ${resetsIn}` : ""}${credits ? `, ${credits} reset ${credits === 1 ? "credit" : "credits"} banked` : ""}`}
+            aria-label={`${account.displayName ?? (account.email ? accountInitials(account.email) : account.driver)}: ${planLabel ? `${planLabel}, ` : ""}${remaining}% left${resetsIn ? `, ${resetsIn}` : ""}${credits ? `, ${credits} reset ${credits === 1 ? "credit" : "credits"} banked` : ""}`}
             className="relative h-5 min-w-0 cursor-pointer overflow-hidden rounded-md bg-muted text-start outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background data-[popup-open]:ring-1 data-[popup-open]:ring-inset data-[popup-open]:ring-border @2xl/pool:h-8"
           />
         }
@@ -254,18 +269,30 @@ function PoolSegment({
             }}
           />
         ) : null}
-        <span
-          aria-hidden
-          className="absolute inset-0 flex items-center justify-center text-3xs leading-none font-semibold text-foreground/80 tabular-nums @2xl/pool:hidden"
+        {!singleColumn ? (
+          <span
+            aria-hidden
+            className="absolute inset-0 flex items-center justify-center text-3xs leading-none font-semibold text-foreground/80 tabular-nums @2xl/pool:hidden"
+          >
+            {index}
+          </span>
+        ) : null}
+        <div
+          className={cn(
+            "relative h-full min-w-0 items-center gap-1.5 px-2 text-xs",
+            singleColumn ? "flex" : "hidden @2xl/pool:flex",
+          )}
         >
-          {index}
-        </span>
-        <div className="relative hidden h-full min-w-0 items-center gap-1.5 px-2 text-xs @2xl/pool:flex">
           {showAccountName ? (
             <AccountName
               account={account}
               className="min-w-0 truncate font-medium text-foreground"
             />
+          ) : null}
+          {planLabel ? (
+            <span className="shrink-0 rounded bg-background/80 px-1 py-0.5 text-3xs font-medium text-muted-foreground uppercase tracking-wide">
+              {planLabel}
+            </span>
           ) : null}
           <span className="shrink-0 font-semibold text-foreground tabular-nums">{remaining}%</span>
           <span className="ms-auto flex shrink-0 items-center gap-1.5 rounded-sm bg-background/85 px-1.5 py-0.5 text-2xs text-foreground tabular-nums">
@@ -286,7 +313,6 @@ function PoolSegment({
           </span>
         </div>
       </PopoverTrigger>
-      <LegendRow account={account} window={window} color={color} now={now} index={index} />
       {account.redeem ? (
         <RedeemableSegmentPopup
           account={account}
@@ -312,58 +338,96 @@ function PoolSegment({
   );
 }
 
-function LegendRow({
+function PoolLegendItem({
   account,
   window,
+  reset,
   color,
   now,
   index,
 }: {
   readonly account: LimitAccount;
   readonly window: LimitPoolMember["window"];
+  readonly reset: LimitPoolWindow["resets"][number] | undefined;
   readonly color: string;
   readonly now: number;
   readonly index: number;
 }) {
+  const [open, setOpen] = useState(false);
   const remaining = remainingPercent(window);
   const resetsIn = formatResetsIn(window, now);
+  const countdown = resetsIn
+    ? resetsIn.startsWith("resets in ")
+      ? `in ${resetsIn.slice("resets in ".length)}`
+      : resetsIn
+    : null;
   const credits = account.limits.resetCredits?.availableCount ?? 0;
+  const planLabel = getAccountPlanLabel(account);
   return (
-    <PopoverTrigger
-      style={{ gridColumn: "1 / -1", gridRow: index + 1 }}
-      render={<Button variant="ghost" size="compact" />}
-      className="min-w-0 @2xl/pool:hidden"
-    >
-      <span className="relative inline-flex size-4 shrink-0 items-center justify-center rounded-sm text-3xs leading-none font-semibold text-foreground/80 tabular-nums">
-        <span
-          aria-hidden
-          className="absolute inset-0 rounded-sm opacity-35"
-          style={{ backgroundColor: color }}
-        />
-        <span className="sr-only">Segment </span>
-        <span className="relative">{index}</span>
-      </span>
-      <AccountName account={account} className="min-w-0 truncate font-medium text-foreground" />
-      <span className="shrink-0 font-semibold text-foreground tabular-nums">{remaining}%</span>
-      <span className="ms-auto flex shrink-0 items-center gap-1.5 text-2xs text-muted-foreground tabular-nums">
-        {resetsIn?.replace("resets in ", "↻ ") ?? ""}
-        {credits ? (
-          <>
-            {resetsIn ? <span aria-hidden>·</span> : null}
-            <span
-              aria-hidden
-              className="inline-flex items-center gap-0.5 font-semibold text-foreground"
-            >
-              <TicketIcon className="size-3" aria-hidden />
-              {credits}
-            </span>
-            <span className="sr-only">
-              {credits} reset {credits === 1 ? "credit" : "credits"} banked
-            </span>
-          </>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        openOnHover
+        render={<Button variant="ghost" size="compact" />}
+        aria-label={`${account.displayName ?? (account.email ? accountInitials(account.email) : account.driver)}: ${planLabel ? `${planLabel}, ` : ""}${remaining}% left${resetsIn ? `, ${resetsIn}` : ""}${credits ? `, ${credits} reset ${credits === 1 ? "credit" : "credits"} banked` : ""}`}
+        className="h-7 min-w-0 w-full justify-start px-2 py-0 text-xs gap-1.5 hover:bg-muted/60"
+      >
+        <span className="relative inline-flex size-4 shrink-0 items-center justify-center rounded-sm text-3xs leading-none font-semibold text-foreground/80 tabular-nums">
+          <span
+            aria-hidden
+            className="absolute inset-0 rounded-sm opacity-35"
+            style={{ backgroundColor: color }}
+          />
+          <span className="sr-only">Segment </span>
+          <span className="relative">{index}</span>
+        </span>
+        <AccountName account={account} className="min-w-0 truncate font-medium text-foreground" />
+        {planLabel ? (
+          <span className="shrink-0 rounded bg-muted/80 px-1 py-0.25 text-3xs font-medium text-muted-foreground uppercase tracking-wide">
+            {planLabel}
+          </span>
         ) : null}
-      </span>
-    </PopoverTrigger>
+        <span className="shrink-0 font-semibold text-foreground tabular-nums">{remaining}%</span>
+        <span className="ms-auto flex shrink-0 items-center gap-1.5 text-2xs text-muted-foreground tabular-nums">
+          {countdown ? <span>{countdown}</span> : null}
+          {credits ? (
+            <>
+              {countdown ? <span aria-hidden>·</span> : null}
+              <span
+                aria-hidden
+                className="inline-flex items-center gap-0.5 font-semibold text-foreground"
+              >
+                <TicketIcon className="size-3" aria-hidden />
+                {credits}
+              </span>
+              <span className="sr-only">
+                {credits} reset {credits === 1 ? "credit" : "credits"} banked
+              </span>
+            </>
+          ) : null}
+        </span>
+      </PopoverTrigger>
+      {account.redeem ? (
+        <RedeemableSegmentPopup
+          account={account}
+          window={window}
+          reset={reset}
+          now={now}
+          redeemAt={account.redeem}
+          closePopover={() => setOpen(false)}
+        />
+      ) : (
+        <PopoverPopup side="top" sideOffset={6}>
+          <SegmentPopover
+            account={account}
+            window={window}
+            reset={reset}
+            now={now}
+            redeem={null}
+            onRedeem={() => {}}
+          />
+        </PopoverPopup>
+      )}
+    </Popover>
   );
 }
 
@@ -441,10 +505,28 @@ function PoolBar({
               now={now}
               index={position + 1}
               showAccountName={pool.columns.length > 1}
+              singleColumn={pool.columns.length === 1}
             />
           ) : null,
         )}
       </div>
+      {pool.columns.length > 1 ? (
+        <div className="grid grid-cols-1 @[260px]/pool:grid-cols-2 @[480px]/pool:grid-cols-3 gap-1.5 pt-1.5 @2xl/pool:hidden">
+          {pool.columns.map((member, position) =>
+            member.window ? (
+              <PoolLegendItem
+                key={member.account.key}
+                account={member.account}
+                window={member.window}
+                reset={restores.get(member.account.key)}
+                color={color}
+                now={now}
+                index={position + 1}
+              />
+            ) : null,
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
