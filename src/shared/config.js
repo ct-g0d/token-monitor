@@ -17,6 +17,9 @@ function sharedDataDir(options = {}) {
     return projectDataDir;
   }
   const platform = options.platform || process.platform;
+  if (!options.homeDir && !options.platform && platform === 'win32' && fs.existsSync('D:\\TokeX\\data')) {
+    return 'D:\\TokeX\\data';
+  }
   const homeDir = options.homeDir || os.homedir();
   const productName = 'Token Monitor';
   if (platform === 'darwin') return path.join(homeDir, 'Library', 'Application Support', productName);

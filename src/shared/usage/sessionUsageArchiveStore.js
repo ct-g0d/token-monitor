@@ -203,7 +203,7 @@ function createSessionUsageArchiveStore(options = {}) {
     for (const entry of Object.values(archive?.sessions || {})) {
       const day = entry?.day || entry?.capturedAt?.slice(0, 10);
       if (!day || !affectedDays.has(day)) continue;
-      const period = entry.periods?.today || entry.periods?.allTime;
+      const period = entry.periods?.today;
       if (!period) continue;
       const models = period.models || {};
       const totalSessionTokens = Number(period.totalTokens || 0) || 1;
@@ -240,13 +240,13 @@ function createSessionUsageArchiveStore(options = {}) {
         date, client, model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, total_tokens, cost, turn_count, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(date, client, model) DO UPDATE SET
-        input_tokens = excluded.input_tokens,
-        output_tokens = excluded.output_tokens,
-        cache_read_tokens = excluded.cache_read_tokens,
-        cache_write_tokens = excluded.cache_write_tokens,
-        total_tokens = excluded.total_tokens,
-        cost = excluded.cost,
-        turn_count = excluded.turn_count,
+        input_tokens = MAX(daily_rollups.input_tokens, excluded.input_tokens),
+        output_tokens = MAX(daily_rollups.output_tokens, excluded.output_tokens),
+        cache_read_tokens = MAX(daily_rollups.cache_read_tokens, excluded.cache_read_tokens),
+        cache_write_tokens = MAX(daily_rollups.cache_write_tokens, excluded.cache_write_tokens),
+        total_tokens = MAX(daily_rollups.total_tokens, excluded.total_tokens),
+        cost = MAX(daily_rollups.cost, excluded.cost),
+        turn_count = MAX(daily_rollups.turn_count, excluded.turn_count),
         updated_at = excluded.updated_at
     `);
     const nowIso = new Date().toISOString();

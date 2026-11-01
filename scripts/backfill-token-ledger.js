@@ -8,10 +8,25 @@ const { dailyHistoryArchivePath, readDailyHistoryArchive, writeDailyHistoryArchi
 
 loadDotEnv();
 
-const SOURCES = [
-  'C:\\Users\\user2\\AppData\\Roaming\\Token Monitor\\token_ledger.sqlite',
-  'C:\\Users\\charl\\AppData\\Roaming\\Token Monitor\\token_ledger.sqlite'
-];
+const os = require('node:os');
+const path = require('node:path');
+
+function resolveCandidateSources() {
+  const candidates = new Set();
+  const appData = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
+  candidates.add(path.join(appData, 'Token Monitor', 'token_ledger.sqlite'));
+  const userProfile = process.env.USERPROFILE || os.homedir();
+  const usersDir = path.dirname(userProfile);
+  if (fs.existsSync(usersDir)) {
+    try {
+      for (const entry of fs.readdirSync(usersDir)) {
+        const candidate = path.join(usersDir, entry, 'AppData', 'Roaming', 'Token Monitor', 'token_ledger.sqlite');
+        if (fs.existsSync(candidate)) candidates.add(candidate);
+      }
+    } catch (_) {}
+  }
+  return [...candidates];
+}
 
 function normalizeProviderName(provider) {
   const p = String(provider || '').trim().toLowerCase();
@@ -26,7 +41,7 @@ function runBackfill() {
 
   const store = createSessionUsageArchiveStore();
 
-  for (const sourcePath of SOURCES) {
+  for (const sourcePath of resolveCandidateSources()) {
     if (!fs.existsSync(sourcePath)) {
       console.log(`[backfill] Source not found, skipping: ${sourcePath}`);
       continue;
