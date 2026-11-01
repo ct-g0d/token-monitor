@@ -14,7 +14,15 @@ const {
 const SESSION_ARCHIVE_DATABASE_VERSION = 1;
 
 function sessionUsageArchiveDatabasePath(options = {}) {
-  return options.databasePath || path.join(sharedDataDir(options), 'session-usage-archive.sqlite');
+  const env = options.env || process.env;
+  if (env.TOKEN_MONITOR_DB_PATH) return env.TOKEN_MONITOR_DB_PATH;
+  if (options.databasePath) return options.databasePath;
+  const baseDir = sharedDataDir(options);
+  const preferred = path.join(baseDir, 'token-monitor.sqlite');
+  if (fs.existsSync(preferred)) return preferred;
+  const legacy = path.join(baseDir, 'session-usage-archive.sqlite');
+  if (fs.existsSync(legacy)) return legacy;
+  return preferred;
 }
 
 function removeIfPresent(filePath, unlinkSync = fs.unlinkSync) {
@@ -181,6 +189,76 @@ function createSessionUsageArchiveStore(options = {}) {
     }
   }
 
+  function syncDailyRollupsForKeys(keys) {
+    if (!keys || keys.length === 0) return;
+    const affectedDays = new Set();
+    for (const key of keys) {
+      const entry = archive?.sessions?.[key];
+      const day = entry?.day || entry?.capturedAt?.slice(0, 10);
+      if (day) affectedDays.add(day);
+    }
+    if (affectedDays.size === 0) return;
+
+    const dayTotals = new Map();
+    for (const entry of Object.values(archive?.sessions || {})) {
+      const day = entry?.day || entry?.capturedAt?.slice(0, 10);
+      if (!day || !affectedDays.has(day)) continue;
+      const period = entry.periods?.today || entry.periods?.allTime;
+      if (!period) continue;
+      const models = period.models || {};
+      const totalSessionTokens = Number(period.totalTokens || 0) || 1;
+      const totalSessionTurns = Number(period.messageCount || 1);
+      for (const [model, tokens] of Object.entries(models)) {
+        const groupKey = `${day}\u0000${entry.client || 'unknown'}\u0000${model}`;
+        const current = dayTotals.get(groupKey) || {
+          date: day,
+          client: entry.client || 'unknown',
+          model,
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          totalTokens: 0,
+          cost: 0,
+          turnCount: 0
+        };
+        const comp = period.modelTokenComponents?.[model] || {};
+        current.inputTokens += Number(comp.inputTokens || 0);
+        current.outputTokens += Number(comp.outputTokens || 0);
+        current.cacheReadTokens += Number(comp.cacheReadTokens || 0);
+        current.cacheWriteTokens += Number(comp.cacheWriteTokens || 0);
+        current.totalTokens += Number(tokens || 0);
+        current.cost += Number(period.modelCosts?.[model] || 0);
+        const modelTurns = Math.max(1, Math.round((Number(tokens || 0) / totalSessionTokens) * totalSessionTurns));
+        current.turnCount += modelTurns;
+        dayTotals.set(groupKey, current);
+      }
+    }
+
+    const upsert = database.prepare(`
+      INSERT INTO daily_rollups (
+        date, client, model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, total_tokens, cost, turn_count, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(date, client, model) DO UPDATE SET
+        input_tokens = excluded.input_tokens,
+        output_tokens = excluded.output_tokens,
+        cache_read_tokens = excluded.cache_read_tokens,
+        cache_write_tokens = excluded.cache_write_tokens,
+        total_tokens = excluded.total_tokens,
+        cost = excluded.cost,
+        turn_count = excluded.turn_count,
+        updated_at = excluded.updated_at
+    `);
+    const nowIso = new Date().toISOString();
+    for (const item of dayTotals.values()) {
+      upsert.run(
+        item.date, item.client, item.model,
+        item.inputTokens, item.outputTokens, item.cacheReadTokens, item.cacheWriteTokens,
+        item.totalTokens, item.cost, item.turnCount, nowIso
+      );
+    }
+  }
+
   function migrateLegacyArchive() {
     if (metadataValue('legacy-migrated') === '1') return;
     database.exec('BEGIN IMMEDIATE');
@@ -247,6 +325,29 @@ function createSessionUsageArchiveStore(options = {}) {
         );
         CREATE INDEX IF NOT EXISTS sessions_revision_idx
           ON sessions(revision, session_key);
+        CREATE TABLE IF NOT EXISTS daily_rollups (
+          date TEXT NOT NULL,
+          client TEXT NOT NULL,
+          model TEXT NOT NULL,
+          input_tokens INTEGER DEFAULT 0,
+          output_tokens INTEGER DEFAULT 0,
+          cache_read_tokens INTEGER DEFAULT 0,
+          cache_write_tokens INTEGER DEFAULT 0,
+          total_tokens INTEGER DEFAULT 0,
+          cost REAL DEFAULT 0.0,
+          turn_count INTEGER DEFAULT 0,
+          updated_at TEXT,
+          PRIMARY KEY (date, client, model)
+        );
+        CREATE TABLE IF NOT EXISTS backfill_audit (
+          source_file TEXT PRIMARY KEY,
+          rows_read INTEGER,
+          rows_imported INTEGER,
+          total_tokens INTEGER,
+          min_date TEXT,
+          max_date TEXT,
+          imported_at TEXT
+        );
       `);
       const storedVersion = metadataValue('schema-version');
       if (storedVersion && Number(storedVersion) !== SESSION_ARCHIVE_DATABASE_VERSION) {
@@ -363,6 +464,7 @@ function createSessionUsageArchiveStore(options = {}) {
       if (keys.length > 0) {
         nextRevision = storedRevision + 1;
         upsertEntries(keys, nextRevision);
+        syncDailyRollupsForKeys(keys);
         setMetadataValue('revision', nextRevision);
       }
       if (archive.prunedDay && archive.prunedDay !== storedPrunedDay) {
@@ -463,7 +565,80 @@ function createSessionUsageArchiveStore(options = {}) {
     refresh,
     snapshot,
     databasePath,
-    legacyPath
+    legacyPath,
+    batchUpsertSessions(entries) {
+      if (!entries || entries.length === 0) return 0;
+      ensureDatabase();
+      database.exec('BEGIN IMMEDIATE');
+      try {
+        let storedRevision = Number(metadataValue('revision') || 0);
+        const upsert = database.prepare(`
+          INSERT INTO sessions (session_key, entry_json, revision)
+          VALUES (?, ?, ?)
+          ON CONFLICT(session_key) DO UPDATE SET
+            entry_json = excluded.entry_json,
+            revision = excluded.revision
+        `);
+        for (const [key, entry] of entries) {
+          storedRevision += 1;
+          upsert.run(key, typeof entry === 'string' ? entry : JSON.stringify(entry), storedRevision);
+        }
+        setMetadataValue('revision', storedRevision);
+        database.exec('COMMIT');
+        revision = storedRevision;
+        reloadRequired = true;
+        return entries.length;
+      } catch (err) {
+        try { database.exec('ROLLBACK'); } catch (_) {}
+        throw err;
+      }
+    },
+    getDailyRollups() {
+      ensureDatabase();
+      return database.prepare('SELECT * FROM daily_rollups ORDER BY date ASC, client ASC, model ASC').all();
+    },
+    upsertDailyRollup(date, client, model, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, totalTokens, cost, turnCount, updatedAt) {
+      ensureDatabase();
+      database.prepare(`
+        INSERT INTO daily_rollups (
+          date, client, model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, total_tokens, cost, turn_count, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(date, client, model) DO UPDATE SET
+          input_tokens = MAX(daily_rollups.input_tokens, excluded.input_tokens),
+          output_tokens = MAX(daily_rollups.output_tokens, excluded.output_tokens),
+          cache_read_tokens = MAX(daily_rollups.cache_read_tokens, excluded.cache_read_tokens),
+          cache_write_tokens = MAX(daily_rollups.cache_write_tokens, excluded.cache_write_tokens),
+          total_tokens = MAX(daily_rollups.total_tokens, excluded.total_tokens),
+          cost = MAX(daily_rollups.cost, excluded.cost),
+          turn_count = MAX(daily_rollups.turn_count, excluded.turn_count),
+          updated_at = excluded.updated_at
+      `).run(
+        date, client, model,
+        Number(inputTokens || 0),
+        Number(outputTokens || 0),
+        Number(cacheReadTokens || 0),
+        Number(cacheWriteTokens || 0),
+        Number(totalTokens || 0),
+        Number(cost || 0),
+        Number(turnCount || 0),
+        updatedAt || new Date().toISOString()
+      );
+    },
+    recordBackfillAudit(sourceFile, rowsRead, rowsImported, totalTokens, minDate, maxDate) {
+      ensureDatabase();
+      database.prepare(`
+        INSERT INTO backfill_audit (
+          source_file, rows_read, rows_imported, total_tokens, min_date, max_date, imported_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(source_file) DO UPDATE SET
+          rows_read = excluded.rows_read,
+          rows_imported = excluded.rows_imported,
+          total_tokens = excluded.total_tokens,
+          min_date = excluded.min_date,
+          max_date = excluded.max_date,
+          imported_at = excluded.imported_at
+      `).run(sourceFile, rowsRead, rowsImported, totalTokens, minDate, maxDate, new Date().toISOString());
+    }
   };
 }
 

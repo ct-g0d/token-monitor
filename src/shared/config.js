@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 
 const crypto = require('node:crypto');
 const fs = require('node:fs');
@@ -12,6 +12,10 @@ function projectRoot() {
 function sharedDataDir(options = {}) {
   const env = options.env || process.env;
   if (env.TOKEN_MONITOR_SHARED_DIR) return env.TOKEN_MONITOR_SHARED_DIR;
+  const projectDataDir = path.join(projectRoot(), 'data');
+  if (!options.homeDir && !options.platform && fs.existsSync(projectDataDir)) {
+    return projectDataDir;
+  }
   const platform = options.platform || process.platform;
   const homeDir = options.homeDir || os.homedir();
   const productName = 'Token Monitor';
