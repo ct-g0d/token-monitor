@@ -132,6 +132,17 @@
     VENDOR_PRESENTATION.map((entry) => [entry.id, entry.mask || iconFile(entry)])
   ));
 
+  // Marks painted with their own artwork rather than masked. A mask keeps only
+  // the alpha channel and fills it with currentColor, which is what makes every
+  // other mark a single ink; these are the files that carry a fill of their own
+  // and can therefore show a brand colour. The rest stay masked: their artwork
+  // either is drawn in currentColor, or is white ink on a stripped tile (kimi,
+  // pi, proma, catpaw) and would disappear on a light surface.
+  const COLOUR_MARKS = Object.freeze([
+    'claude', 'antigravity', 'amp', 'omp', 'zed', 'mimo', 'reasonix', 'cherrystudio',
+    'xiaomi', 'doubao', 'volcengine', 'trae', 'alibaba', 'nvidia', 'newapi', 'sub2api'
+  ]);
+
   // A fresh, mutable map: the renderers apply the user's vendor-colour
   // overrides onto it in place.
   function vendorColors() {
@@ -162,6 +173,7 @@
   }
 
   return {
+    COLOUR_MARKS,
     DEFAULT_VENDOR_COLOR,
     MARK_IDS,
     ROW_ICON_MASKS,

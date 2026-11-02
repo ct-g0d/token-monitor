@@ -365,11 +365,15 @@ test('saved-only WorkBuddy subscription card does not appear on the sole live si
 });
 
 test('Notion rolling and monthly allowances render in both display modes and hide independently', () => {
+  // Reset times relative to now: a fixed date turns into "already reset" once the
+  // clock passes it, and the row then legitimately stops drawing a countdown.
+  const soon = new Date(Date.now() + 2 * 3600_000).toISOString();
+  const later = new Date(Date.now() + 20 * 86400_000).toISOString();
   const provider = normalizeLimitProvider({
     provider: 'notion', status: 'ok', source: 'web',
     windows: [
-      { kind: 'session', label: 'Rolling', used: 21, limit: 50, usedPercent: 42, resetsAt: '2026-11-01T00:00:00Z' },
-      { kind: 'billing', label: 'Monthly', used: 18, limit: 100, usedPercent: 18, resetsAt: '2026-12-01T00:00:00Z' }
+      { kind: 'session', label: 'Rolling', used: 21, limit: 50, usedPercent: 42, resetsAt: soon },
+      { kind: 'billing', label: 'Monthly', used: 18, limit: 100, usedPercent: 18, resetsAt: later }
     ]
   });
   const before = JSON.stringify(provider);
@@ -474,7 +478,9 @@ test('Home text and bars use the plan text rendered by Limits account rows', () 
   const app = fs.readFileSync(path.join(root, 'src/electron/renderer/app.js'), 'utf8');
   const start = app.indexOf('function homeLimitRows()');
   const end = app.indexOf('function homeLimitWindowLabel(', start);
-  const renderStart = app.indexOf('function renderHomeLimitModule()');
+  // The email cell is painted by its own helper, which Home calls while rendering
+  // the row; slice it in with the module so the sandbox matches the page.
+  const renderStart = app.indexOf('function homeLimitEmailNode(');
   const renderEnd = app.indexOf('function renderHomeModelModule(', renderStart);
   for (const homeLimitDisplayMode of ['text', 'bars']) {
     for (const maskLimitAccountEmails of [true, false]) {
@@ -499,6 +505,7 @@ test('Home text and bars use the plan text rendered by Limits account rows', () 
           limitUsageItemsApi: require('../../src/shared/limits/usageItems'),
           homeOverviewApi: require('../../src/electron/renderer/homeOverview'),
           limitProviderPresentationApi: limitPresentationApi,
+          accountIdentityApi: require('../../src/electron/renderer/accountIdentity'),
           limitWindowsView: view,
           limitAccountTitle: view.limitAccountTitle,
           ...limitWindowLabels,
@@ -519,6 +526,7 @@ test('Home text and bars use the plan text rendered by Limits account rows', () 
           limitFillPercent: limitDisplayMode.limitFillPercent,
           optionalFiniteNumber: Number,
           limitWindowsView: view,
+          accountIdentityApi: require('../../src/electron/renderer/accountIdentity'),
           t: (key) => key,
           limitProviderPresentationApi: limitPresentationApi
         });
@@ -2476,283 +2484,3 @@ test('EdgeDock render hold preserves account gestures and open tooltips', () => 
 
 
 
-test('Notch ears preserve configured tray items and embedded fields across all styles', () => {
-  const trayLayout = require('../../src/shared/trayLayout');
-  const typography = require('../../src/electron/renderer/trayTypography');
-  const { buildNotchData } = require('../../src/electron/notch/data');
-  const source = fs.readFileSync(path.join(root, 'src/electron/renderer/notch/renderer.js'), 'utf8');
-  const el = (tag, classes, text = '') => {
-    const node = new FakeElement(tag); node.className = classes; node.textContent = text; return node;
-  };
-  const context = {
-    el, trayTypographyApi: typography, trayBarsApi: require('../../src/electron/renderer/trayBars'), notchNumbers: new Map(), cancelAnimationFrame() {},
-    providerLabel: id => id, positionNotchSummary() {},
-    notchIcon: item => el('span', 'edge-dock-mark', item.provider),
-    notchText: (_item, row) => el('span', 'notch-text-run', row.text)
-  };
-  vm.runInNewContext(source.slice(source.indexOf('function allocateNotchSummary('), source.indexOf('function zoomForNotchText(')), context);
-  const stats = {
-    limits: { providers: [{ provider: 'codex', status: 'ok', accountKey: 'test', accountEmail: 'test@example.test', windows: [
-      { kind: 'session', remainingPercent: 64, resetsAt: new Date(Date.now() + 3600000).toISOString() },
-      { kind: 'weekly', remainingPercent: 74 }
-    ] }] }, periods: { today: { totalTokens: 9500, costUsd: 0 } }
-  };
-  for (const style of trayLayout.STYLE_IDS) {
-    const item = trayLayout.createTrayLayoutItem(style);
-    const icon = trayLayout.createTrayLayoutItem('providerIcon'); icon.source.provider = 'codex';
-    const cost = trayLayout.createTrayLayoutItem('cost');
-    const separator = trayLayout.createTrayLayoutItem('separatorDot');
-    const readings = !['icon', 'spacer'].includes(item.type);
-    if (readings) {
-      const summary = buildNotchData(stats, [], { notchSummaryMode: 'custom',
-        notchCustomLayout: { version: trayLayout.VERSION, items: [icon, item] } }).summary;
-      const single = context.notchSummary({ summary, geometry: { gapWidth: 179 }, appearance: {} });
-      assert.equal(single.find('notch-left').querySelectorAll('.notch-reading').length, 0, `${style} remains one field even with multiple rows`);
-      assert.equal(single.find('notch-right').querySelectorAll('.notch-reading').length, 1);
-    }
-    for (const gapWidth of [179, 0]) {
-      const summary = buildNotchData(stats, [], { notchSummaryMode: 'custom',
-        notchCustomLayout: { version: trayLayout.VERSION, items: [icon, item, separator, cost] }
-      }).summary;
-      const head = context.notchSummary({ summary, geometry: { gapWidth }, appearance: {} });
-      const left = head.find('notch-left').children[0], right = head.find('notch-right').children[0];
-      if (gapWidth && readings) {
-        assert.equal(left.children.length, 2, style);
-        assert.equal(right.children.length, 1, style);
-        assert.equal(right.dataset.notchOptional, 'true');
-        assert.equal(left.children[0].textContent, 'codex');
-        assert.equal(left.children[1].dataset.notchPrimary, 'true');
-        assert.equal(right.children[0].dataset.notchSpacer, 'false', 'no separator starts the right ear');
-        if (item.type === 'stack' || item.type === 'bars') {
-          const block = left.find(item.type === 'stack' ? 'notch-stack' : 'notch-bars');
-          assert.equal(block.children.length, item.rows?.length || item.lines.length, `${style} rows stay together`);
-          if (item.type === 'bars') {
-            assert.equal(block.style.gap, '3px');
-            for (const track of block.children) {
-              assert.equal(track.style.width, '18px', 'bars retain the compact tray width');
-              assert.equal(track.style.height, '5px');
-            }
-          }
-          if (summary.items[1].iconProvider) {
-            const field = left.find('notch-summary-field');
-            assert.equal(field.children.length, 2, 'only the embedded mark stays with its field');
-            assert.equal(field.style.gap, item.type === 'bars' ? '3px' : '2px');
-          }
-        }
-        assert.match(right.text, /0/, 'zero cost remains a displayed field');
-      } else {
-        assert.equal(left.querySelectorAll('.notch-reading').filter(node => node.dataset.notchSpacer !== 'true').length, 0, `${style} keeps readings together on the right`);
-      }
-    }
-  }
-});
-
-test('ear fitting keeps graphics whole within the hard budget', () => {
-  const source = fs.readFileSync(path.join(root, 'src/electron/renderer/notch/renderer.js'), 'utf8');
-  const el = (tag, classes, text = '') => {
-    const node = new FakeElement(tag); node.className = classes; node.textContent = text;
-    node.getBoundingClientRect = () => ({ width: node.width ?? node.children.filter(child => !child.hidden)
-      .reduce((total, child, index) => total + child.getBoundingClientRect().width + (index ? 6 : 0), 0) });
-    return node;
-  };
-  const context = { el, fitNotchTypeface() {}, getComputedStyle: () => ({ zoom: 1, gap: '6px' }) };
-  vm.runInNewContext(source.slice(source.indexOf('function zoomForNotchText('), source.indexOf('function reportNotchSlots(')), context);
-  const content = el('div', 'notch-slot-content');
-  const field = el('span', 'notch-summary-field');
-  const mark = el('span', 'edge-dock-mark'); mark.width = 17;
-  const reading = el('span', 'notch-reading'); reading.width = 40;
-  field.append(mark, reading); content.append(field);
-  const primary = context.fitNotchSlot(content, 20);
-  assert.equal(primary.minimum, 63, 'the icon and primary number are both reserved');
-  assert.equal(field.hidden, true, 'an indivisible group cannot exceed the budget');
-  const optional = el('div', 'notch-slot-content'); optional.dataset.notchOptional = 'true';
-  optional.append(field);
-  const overflow = el('span', 'notch-reading notch-overflow', '⋯'); overflow.width = 8;
-  optional.append(overflow);
-  const result = context.fitNotchSlot(optional, 20);
-  assert.equal(result.minimum, 0);
-  assert.equal(field.hidden, true, 'the whole group disappears, not just its reading');
-  assert.equal(mark.hidden, undefined);
-  assert.equal(overflow.hidden, false);
-});
-
-
-test('custom summary order never infers standalone icon ownership or removes same-ear separators', () => {
-  const source = fs.readFileSync(path.join(root, 'src/electron/renderer/notch/renderer.js'), 'utf8');
-  const el = (tag, classes, text = '') => { const node = new FakeElement(tag); node.className = classes; node.textContent = text; return node; };
-  const context = { el, trayTypographyApi: require('../../src/electron/renderer/trayTypography'), notchNumbers: new Map(),
-    cancelAnimationFrame() {}, providerLabel: id => id, positionNotchSummary() {},
-    notchIcon: item => el('span', 'edge-dock-mark', item.provider), notchText: (_item, row) => el('span', 'notch-text-run', row.text) };
-  vm.runInNewContext(source.slice(source.indexOf('function allocateNotchSummary('), source.indexOf('function zoomForNotchText(')), context);
-  const icon = provider => ({ type: 'icon', provider });
-  const text = value => ({ type: 'text', text: value });
-  const dot = { type: 'spacer', variant: 'dot' };
-  const cases = [
-    { items: [icon('codex'), icon('claude'), text('89%'), text('62%')], left: ['codex', 'claude', '89%'], right: ['62%'] },
-    { items: [icon('codex'), text('89%'), icon('claude'), text('62%')], left: ['codex', '89%'], right: ['claude', '62%'] },
-    { items: [text('51M'), dot, text('$1'), dot, text('62%')], left: ['51M'], right: ['$1', '·', '62%'] },
-    { items: [text('89%'), icon('claude'), text('62%'), icon('codex')], left: ['89%'], right: ['claude', '62%', 'codex'] }
-  ];
-  for (const row of cases) for (const gapWidth of [179, 0]) {
-    const head = context.notchSummary({ summary: { items: row.items }, geometry: { gapWidth }, appearance: {} });
-    const left = head.find('notch-left').children[0], right = head.find('notch-right').children[0];
-    const texts = node => [...node.walk()].map(n => n.textContent).filter(Boolean);
-    const actual = [...texts(left), ...texts(right)];
-    const expected = gapWidth ? [...row.left, ...row.right] : row.items.map(item => item.provider || item.text || '·');
-    assert.deepEqual(actual, expected);
-    assert.equal(left.find('notch-summary-field'), null, 'standalone icons do not become part of another field');
-    if (gapWidth) { assert.deepEqual(texts(left), row.left); assert.deepEqual(texts(right), row.right); }
-  }
-});
-
-test('primary reading survives extra standalone icons without inflating the minimum budget', () => {
-  const source = fs.readFileSync(path.join(root, 'src/electron/renderer/notch/renderer.js'), 'utf8');
-  const el = (tag, classes, text = '') => {
-    const node = new FakeElement(tag); node.className = classes; node.textContent = text;
-    node.getBoundingClientRect = () => ({ width: node.width ?? node.children.filter(child => !child.hidden).reduce((sum, child, i) => sum + child.getBoundingClientRect().width + (i ? 6 : 0), 0) });
-    return node;
-  };
-  const context = { el, fitNotchTypeface() {}, getComputedStyle: () => ({ zoom: 1, gap: '6px' }) };
-  vm.runInNewContext(source.slice(source.indexOf('function zoomForNotchText('), source.indexOf('function reportNotchSlots(')), context);
-  const content = el('div', 'notch-slot-content');
-  const icons = Array.from({ length: 10 }, () => { const node = el('span', 'edge-dock-mark'); node.width = 17; return node; });
-  const reading = el('span', 'notch-reading'); reading.width = 40; reading.dataset.notchPrimary = 'true';
-  content.append(...icons, reading);
-  const overflow = el('span', 'notch-reading notch-overflow', '⋯'); overflow.width = 8; content.append(overflow);
-  const result = context.fitNotchSlot(content, 80);
-  assert.equal(result.minimum, 40, 'only the primary reading sets the minimum');
-  assert.equal(reading.hidden, false);
-  assert.equal(icons.filter(node => !node.hidden).length, 1);
-  assert.equal(overflow.hidden, false);
-  assert.ok(result.width <= 80);
-  context.fitNotchSlot(content, 40);
-  assert.ok(icons.every(node => node.hidden));
-  assert.equal(reading.hidden, false);
-  assert.equal(overflow.hidden, true);
-});
-
-
-test('switching camera clearance rebuilds the same summary without losing configured separators', () => {
-  const source = fs.readFileSync(path.join(root, 'src/electron/renderer/notch/renderer.js'), 'utf8');
-  const el = (tag, classes, text = '') => { const node = new FakeElement(tag); node.className = classes; node.textContent = text; return node; };
-  const layer = el('div', 'content');
-  layer.prepend = node => { node.parent = layer; layer.children.unshift(node); };
-  const context = { el, contentLayer: layer, root: el('div', 'root'), state: { appearanceKey: 'unchanged' }, pluginHost: null,
-    notchHeaderKey: '', notchClock: 0, notchNumbers: new Map(), trayTypographyApi: require('../../src/electron/renderer/trayTypography'),
-    refreshVisit: 0, refreshFeedbackTimer: null, refreshBusy: false, refreshResult: '',
-    clearTimeout() {}, cancelAnimationFrame() {}, settleNotchNumbers() {}, panel: { suspend() {} }, settleNotchStatNumbers() {}, resetRefreshVisit() {}, paintRefreshButton() {}, captureRingResetMotion() {}, animateRingResets() {},
-    notchSummaryObserver: { disconnect() {}, observe() {} }, providerLabel: id => id, positionNotchSummary() {},
-    notchIcon: item => el('span', 'edge-dock-mark', item.provider), notchText: (_item, row) => el('span', 'notch-text-run', row.text) };
-  const summarySource = source.slice(source.indexOf('function allocateNotchSummary('), source.indexOf('function zoomForNotchText('));
-  const renderSource = source.slice(source.indexOf('function renderNotch('), source.indexOf('  const summary = contentLayer.querySelector', source.indexOf('function renderNotch(')));
-  vm.runInNewContext(`${summarySource}\n${renderSource}\n}`, context);
-  const payload = { summary: { items: [{ type: 'icon', provider: 'codex' }, { type: 'text', text: '51M' },
-    { type: 'spacer', variant: 'dot' }, { type: 'text', text: '$1' }] }, appearance: {}, geometry: { notched: true, gapWidth: 179 } };
-  context.renderNotch(payload);
-  const attached = layer.find('notch-summary');
-  assert.equal(attached.find('notch-left').text, 'codex 51M');
-  assert.equal(attached.find('notch-right').text, '$1');
-  context.renderNotch({ ...payload, geometry: { notched: false, gapWidth: 0 } });
-  const pill = layer.find('notch-summary');
-  assert.notEqual(pill, attached);
-  assert.equal(pill.find('notch-left').text, 'codex');
-  assert.equal(pill.find('notch-right').text, '51M · $1');
-  context.renderNotch({ ...payload, geometry: { notched: true, gapWidth: 0 } });
-  assert.equal(layer.find('notch-summary'), pill, 'camera-free outlines share the compact grouping');
-  context.renderNotch(payload);
-  assert.notEqual(layer.find('notch-summary'), pill);
-  assert.equal(layer.find('notch-right').text, '$1');
-});
-
-
-test('summary text ellipsis preserves the full value and restores within a larger budget', () => {
-  const source = fs.readFileSync(path.join(root, 'src/electron/renderer/notch/renderer.js'), 'utf8');
-  for (const zoom of [1, 1.25]) {
-    const el = (tag, classes, text = '') => {
-      const node = new FakeElement(tag); node.className = classes; node.textContent = text;
-      node.getBoundingClientRect = () => {
-        const width = node.width ?? (node.classList.contains('notch-overflow') ? (node.textContent === '…' && /12px/.test(node.style.font || '') ? 12 : 8) : node.children.filter(child => !child.hidden)
-          .reduce((total, child, index) => total + child.getBoundingClientRect().width + (index ? 6 : 0), 0));
-        const maximum = parseFloat(node.style.maxWidth);
-        return { width: Number.isFinite(maximum) ? Math.min(width, maximum * zoom) : width };
-      };
-      return node;
-    };
-    const context = { el, fitNotchTypeface() {}, getComputedStyle: () => ({ zoom, gap: '6px', font: '', fontStyle: 'normal', fontWeight: '500', fontSize: '12px', fontFamily: 'sans-serif' }) };
-    vm.runInNewContext(source.slice(source.indexOf('function zoomForNotchText('), source.indexOf('function reportNotchSlots(')), context);
-    const content = el('div', 'notch-slot-content');
-    const reading = el('span', 'notch-reading');
-    const run = el('span', 'notch-text-run', 'HK$7557194.97'); run.width = 100;
-    run.dataset.horizontalScale = '1'; run.closest = () => content;
-    reading.append(run); content.append(reading);
-    const fitted = context.fitNotchSlot(content, 40);
-    assert.equal(fitted.width, 40);
-    assert.equal(run.style.maxWidth, `${40 / zoom}px`);
-    assert.equal(run.textContent, 'HK$7557194.97');
-    assert.equal(content.querySelector('.notch-overflow').hidden, true, 'native text ellipsis needs no second marker');
-    context.fitNotchSlot(content, 8);
-    assert.equal(reading.hidden, true, 'too little space for the text ellipsis cannot leave a partial glyph');
-    assert.equal(content.querySelector('.notch-overflow').hidden, false);
-    context.fitNotchSlot(content, 0);
-    assert.equal(reading.hidden, true);
-    const restored = context.fitNotchSlot(content, 200);
-    assert.equal(restored.width, 100);
-    assert.equal(run.style.maxWidth, 'none');
-    assert.equal(reading.hidden, false);
-    assert.equal(run.textContent, 'HK$7557194.97');
-  }
-});
-
-test('summary overflow marks omitted content, not removed spacing', () => {
-  const source = fs.readFileSync(path.join(root, 'src/electron/renderer/notch/renderer.js'), 'utf8');
-  const context = {};
-  vm.runInNewContext(source.slice(source.indexOf('function fitNotchSummaryItems('), source.indexOf('function fitNotchSlot(')), context);
-  const reading = { width: 35, minimum: 35, spacer: false };
-  const spacer = { width: 4, minimum: 4, spacer: true };
-  const cases = [
-    { name: 'trailing decoration', items: [reading, spacer], budget: Infinity, visible: [0], overflow: false },
-    { name: 'spacing only', items: [spacer, spacer], budget: Infinity, visible: [], overflow: false },
-    { name: 'decoration exceeds clearance', items: [reading, spacer], budget: 40, visible: [0], overflow: false },
-    { name: 'optional trailing decoration', items: [reading, spacer], budget: 80, optional: true, visible: [0], overflow: false },
-    { name: 'optional spacing only', items: [spacer], budget: 80, optional: true, visible: [], overflow: false },
-    { name: 'internal separator remains', items: [reading, spacer, reading], budget: 100, visible: [0, 1, 2], overflow: false },
-    { name: 'omitted reading', items: [reading, spacer, reading], budget: 60, visible: [0], overflow: true },
-    { name: 'omitted icon beside primary', items: [{ width: 17, minimum: 17, spacer: false }, reading], budget: 50, primary: 1, visible: [1], overflow: true }
-  ];
-  for (const row of cases) {
-    const fitted = context.fitNotchSummaryItems(row.items, { budget: row.budget, gap: 6, overflowWidth: 8, primary: row.primary ?? -1, optional: row.optional === true });
-    assert.deepEqual(Array.from(fitted.visible), row.visible, row.name);
-    assert.equal(fitted.overflow, row.overflow, row.name);
-  }
-});
-
-test('summary allocation and width fitting need only ordered items and measured widths', () => {
-  const source = fs.readFileSync(path.join(root, 'src/electron/renderer/notch/renderer.js'), 'utf8');
-  const context = {};
-  vm.runInNewContext(source.slice(source.indexOf('function allocateNotchSummary('), source.indexOf('function notchSummary(')), context);
-  vm.runInNewContext(source.slice(source.indexOf('function fitNotchSummaryItems('), source.indexOf('function fitNotchSlot(')), context);
-  const types = ['icon', 'text', 'spacer', 'icon', 'stack', 'spacer', 'text'];
-  const items = Object.freeze(types.map(type => Object.freeze({ type })));
-  const plan = context.allocateNotchSummary(items, true);
-  assert.deepEqual(Array.from(plan.left), [0, 1]);
-  assert.deepEqual(Array.from(plan.right), [3, 4, 5, 6], 'only the camera split loses its separator');
-  assert.equal(plan.primary, 1);
-  const compact = context.allocateNotchSummary(items, false);
-  assert.deepEqual([...compact.left, ...compact.right], items.map((_item, index) => index));
-  assert.equal(compact.primary, null);
-  const widths = Object.freeze([
-    Object.freeze({ width: 17, minimum: 17, spacer: false }),
-    Object.freeze({ width: 40, minimum: 40, spacer: false })
-  ]);
-  const fitted = context.fitNotchSummaryItems(widths, { budget: 40, gap: 6, overflowWidth: 8, primary: 1 });
-  assert.deepEqual(Array.from(fitted.visible), [1], 'the reading survives when its independent icon does not fit');
-  assert.equal(fitted.minimum, 40);
-  assert.equal(fitted.overflow, false);
-  const embedded = context.fitNotchSummaryItems([{ width: 63, minimum: 63, spacer: false }],
-    { budget: 40, gap: 6, overflowWidth: 8, primary: 0 });
-  assert.deepEqual(Array.from(embedded.visible), [], 'an indivisible item cannot exceed the budget');
-  assert.equal(embedded.minimum, 63);
-  const hidden = context.fitNotchSummaryItems(widths, { budget: 0, gap: 6, overflowWidth: 8, optional: true });
-  assert.deepEqual(Array.from(hidden.visible), []);
-  assert.equal(hidden.overflow, false, 'unknown or occupied clearance admits no optional overflow');
-});

@@ -187,20 +187,27 @@ test('Home OpenRouter credits-only success does not repeat grouped profile names
   assert.equal(solo.plan, 'Work');
 });
 
-function renderHomeWindows(windows, settings = {}, plan = '', providerId = '', locale = 'en') {
+function renderHomeWindows(windows, settings = {}, plan = '', providerId = '', locale = 'en', email = '') {
   class Element {
     constructor() {
       this.children = [];
       this.style = { setProperty(name, value) { this[name] = value; } };
       this.attributes = {};
+      this.handlers = {};
       this.classList = {
         values: new Set(),
         add(name) { this.values.add(name); },
-        contains(name) { return this.values.has(name); }
+        contains(name) { return this.values.has(name); },
+        toggle(name, force) {
+          if (force === undefined ? !this.values.has(name) : force) this.values.add(name);
+          else this.values.delete(name);
+        }
       };
     }
     append(...children) { this.children.push(...children); }
     setAttribute(name, value) { this.attributes[name] = value; }
+    addEventListener(type, handler) { (this.handlers[type] ||= []).push(handler); }
+    click() { for (const handler of this.handlers.click || []) handler({ stopPropagation() {} }); }
   }
   const document = { createElement: () => new Element() };
   const module = new Element();
@@ -213,7 +220,15 @@ function renderHomeWindows(windows, settings = {}, plan = '', providerId = '', l
     state: { settings },
     homeModulePreferencesApi: preferences,
     homeModuleShell: () => ({ module, body }),
-    homeLimitRows: () => [{ name: providerId || 'Claude', providerId, plan, color: '#d97757', windows }],
+    homeLimitRows: () => [{
+      name: providerId || 'Claude',
+      providerLabel: providerId || 'Claude',
+      providerId,
+      email,
+      plan,
+      color: '#d97757',
+      windows
+    }],
     applyHomeListMark() {},
     iconKindFor: () => 'claude',
     formatHomeLimitWindowValue: () => 'value',
@@ -226,6 +241,7 @@ function renderHomeWindows(windows, settings = {}, plan = '', providerId = '', l
       applyBarScale: (fill, scale) => fill.style.setProperty('--bar-scale', String(scale))
     }),
     t: (key, params) => require('../../src/electron/renderer/i18n').translate(locale, key, params),
+    accountIdentityApi: require('../../src/electron/renderer/accountIdentity'),
     formatLimitBoundary: () => 'Reset 4h',
     limitProviderPresentationApi: require('../../src/electron/renderer/limits/providerPresentation')
   };
@@ -490,6 +506,23 @@ test('Home account display count setting is translated in every locale', () => {
   }
 });
 
+
+test('Home prints the provider, then the account address, hidden until it is clicked', () => {
+  const window = { kind: 'session', remainingPercent: 40 };
+  const [row] = renderHomeWindows([window], {}, '', 'codex', 'en', 'work@example.com');
+  const name = row.accountHead.children[1];
+  assert.deepEqual([name.children[0], name.children[2]], ['codex (', ')']);
+  const email = name.children[1];
+  assert.equal(email.textContent, 'utfx@wygfu8d.92f', 'a stand-in, not the address');
+  assert.equal(email.classList.contains('revealed'), false);
+  email.click();
+  assert.equal(email.textContent, 'work@example.com');
+  assert.equal(email.classList.contains('revealed'), true);
+  email.click();
+  assert.equal(email.textContent, 'utfx@wygfu8d.92f');
+  const [plain] = renderHomeWindows([window], {}, '', 'codex');
+  assert.equal(plain.accountHead.children[1].textContent, 'codex');
+});
 
 test('Home displays separate WorkBuddy accounts unless quota totals are explicitly enabled', () => {
   const providers = ['a', 'b', 'c'].map((accountKey) => ({

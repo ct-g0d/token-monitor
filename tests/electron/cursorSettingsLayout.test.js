@@ -142,23 +142,8 @@ test('Cursor account status stays inline with the linked-account summary', () =>
   assert.equal(declaration(expandedRule, 'transform'), 'rotate(180deg)');
 });
 
-test('Hub secret input stays masked and exposes an accessible paste button', () => {
-  const html = readRendererFile('index.html');
-  const secretFieldMatch = html.match(/<div class="settings-field hub-secret-field">[\s\S]*?<\/div>\s*<div/);
-  const secretField = secretFieldMatch?.[0]?.replace(/<div$/, '') || '';
-  const secretLabel = secretField.match(/<label for="secretInput" data-i18n="settings\.sync\.secret">Secret<\/label>/)?.[0] || '';
-  const secretRow = secretField.match(/<div class="hub-secret-row">[\s\S]*?<\/div>/)?.[0] || '';
-  // Outer container must carry settings-field so it inherits font-size 11px
-  assert.match(secretField, /<div class="settings-field hub-secret-field">[\s\S]*?<label for="secretInput" data-i18n="settings\.sync\.secret">Secret<\/label>[\s\S]*?<div class="hub-secret-row">/);
-  assert.match(secretLabel, /<label for="secretInput" data-i18n="settings\.sync\.secret">Secret<\/label>/);
-  assert.doesNotMatch(secretLabel, /secretPasteButton/);
-  assert.match(secretRow, /<input id="secretInput" type="password"[\s\S]*data-i18n-placeholder="settings\.sync\.secretPlaceholder"/);
-  assert.match(secretRow, /<button id="secretPasteButton" type="button" class="icon-button" aria-label="Paste secret" data-i18n-aria-label="settings\.sync\.pasteSecret">/);
-
+test('Settings inputs use the shared control styling', () => {
   const css = readRendererFile('styles.css');
-  // No standalone .hub-secret-field layout rule — settings-field handles it
-  assert.doesNotMatch(css, /\.hub-secret-field\s*\{/);
-
   const sharedInputRule = cssRulesForSelector(css, '.settings-panel input').find(rule => (
     declaration(rule, 'width') === '100%'
       && declaration(rule, 'min-width') === '0'
@@ -174,23 +159,6 @@ test('Hub secret input stays masked and exposes an accessible paste button', () 
   assert.equal(declaration(sharedInputRule, 'border'), '1px solid var(--line)');
   assert.equal(declaration(sharedInputRule, 'border-radius'), '6px');
   assert.equal(declaration(sharedInputRule, 'background'), 'rgba(var(--sunken-rgb), 0.48)');
-
-  const secretRowRule = cssRule(css, '.settings-panel .hub-secret-row input');
-  assert.equal(declaration(secretRowRule, 'flex'), '1 1 0');
-  assert.equal(declaration(secretRowRule, 'width'), '0');
-  assert.equal(declaration(secretRowRule, 'min-width'), '0');
-  assert.equal(declaration(secretRowRule, 'padding'), '');
-  assert.equal(declaration(secretRowRule, 'font-size'), '');
-
-  const app = readRendererFile('app.js');
-  const start = app.indexOf("els.secretPasteButton?.addEventListener('click', async () => {");
-  const end = app.indexOf("els.limitsRefreshInput.addEventListener('change', async () => {", start);
-  assert.notEqual(start, -1, 'secret paste handler should exist');
-  assert.notEqual(end, -1, 'secret paste handler should end before limits refresh handler');
-  const pasteBody = app.slice(start, end);
-  assert.match(pasteBody, /const text = await navigator\.clipboard\.readText\(\);/);
-  assert.match(pasteBody, /els\.secretInput\.value = text\.trim\(\);/);
-  assert.match(pasteBody, /markHubDraftDirty\('secret'\);/);
 });
 
 test('Cursor account header uses the shared linked-account summary', () => {
@@ -1231,6 +1199,10 @@ test('Claude Web account panel stores a redacted cookie and opens only the usage
   const claudeStatus = accountStatusProjection({ claudeWebCookie: 'private' }, {});
   assert.equal(claudeStatus.claudeWebCookieConfigured, true);
   assert.equal(claudeStatus.claudeWebCookieSource, 'settings');
+  const claudeDiscoveredStatus = accountStatusProjection({}, { CLAUDE_CODE_OAUTH_TOKEN: 'token' });
+  assert.equal(claudeDiscoveredStatus.claudeWebCookieConfigured, true);
+  assert.equal(claudeDiscoveredStatus.claudeAutoDetected, true);
+  assert.equal(claudeDiscoveredStatus.claudeWebCookieSource, 'env');
   const allowlist = functionBody(main, 'isAllowedExternalUrl', 'revealWindow');
   assert.match(allowlist, /limitProviderUrlAllowed\(parsed\.hostname, parsed\.pathname\)/);
   const { limitProviderUrlAllowed } = require('../../src/shared/limits/accounts');
@@ -1995,29 +1967,7 @@ test('collection cadence setting is exposed in the Collection panel', () => {
   assert.match(listenerSlice, /600000/);
 });
 
-test('sync upload interval setting is exposed in the Multi-device Sync panel', () => {
-  const html = readRendererFile('index.html');
-  const controls = html.match(/<label id="syncUploadIntervalRow" class="sync-upload-interval-row[^"]*"[\s\S]*?<select id="syncUploadIntervalInput"[\s\S]*?<\/select>[\s\S]*?<\/label>/)?.[0] || '';
-  assert.ok(html.indexOf('id="syncUploadIntervalRow"') > html.indexOf('id="saveSettingsButton"'));
-  assert.ok(html.indexOf('id="syncUploadIntervalRow"') < html.indexOf('id="syncDevicePanel"'));
-  assert.match(controls, /data-i18n="settings\.sync\.uploadInterval"/);
-  assert.match(controls, /<option value="0"[\s\S]*data-i18n="settings\.sync\.uploadInterval\.live"/);
-  assert.match(controls, /<option value="600000"[\s\S]*data-i18n="settings\.sync\.uploadInterval\.10m"/);
-  assert.match(controls, /<option value="1200000"[\s\S]*data-i18n="settings\.sync\.uploadInterval\.20m"/);
-  assert.match(controls, /<option value="1800000"[\s\S]*data-i18n="settings\.sync\.uploadInterval\.30m"/);
 
-  const app = readRendererFile('app.js');
-  const syncBody = functionBody(app, 'syncSettingsForm', 'enabledClientSet');
-  assert.match(syncBody, /syncUploadIntervalInput/);
-  assert.match(syncBody, /state\.settings\.syncUploadIntervalMs/);
-  assert.match(syncBody, /Array\.from\(els\.syncUploadIntervalInput\.options/);
-  assert.doesNotMatch(syncBody, /const allowed = \[0, 600000, 1200000, 1800000\]/);
-  const listenerStart = app.indexOf("els.syncUploadIntervalInput?.addEventListener('change'");
-  const listenerEnd = app.indexOf("els.collectionCadenceInput?.addEventListener('change'", listenerStart);
-  assert.notEqual(listenerStart, -1, 'sync upload interval listener should exist');
-  assert.notEqual(listenerEnd, -1, 'collection cadence listener should follow sync upload listener');
-  assert.match(app.slice(listenerStart, listenerEnd), /saveSettings\(\{\s*syncUploadIntervalMs:/);
-});
 
 // Run the shipped event wiring against controls that model a settings push:
 // an auto-saved interval updates persisted state while the Hub fields keep
@@ -2059,8 +2009,8 @@ function loadHubSettingsWiring(els, context) {
   const modeEnd = app.indexOf('function renderHubStatus()', modeStart);
   const draftStart = app.indexOf('const HUB_DRAFT_FIELDS = [');
   const draftEnd = app.indexOf('function syncSettingsForm()', draftStart);
-  const saveStart = app.indexOf("els.saveSettingsButton.addEventListener('click'");
-  const saveEnd = app.indexOf("els.hubModeOptions.addEventListener('change'", saveStart);
+  const saveStart = app.indexOf("els.saveSettingsButton?.addEventListener('click'");
+  const saveEnd = app.indexOf("els.hubModeOptions?.addEventListener('change'", saveStart);
   const intervalStart = app.indexOf('for (const input of els.showLimitUsedInputs || [])', saveEnd);
   const intervalEnd = app.indexOf("els.collectionCadenceInput?.addEventListener('change'", intervalStart);
   assert.notEqual(modeStart, -1, 'Hub mode UI sync should exist');
@@ -2680,16 +2630,10 @@ test('Host Hub port draft survives leaving and returning to Host mode', async ()
 });
 
 test('remote Hub build status is wired as a separate localized sync hint', () => {
-  const html = readRendererFile('index.html');
   const app = readRendererFile('app.js');
   const i18n = readRendererFile('i18n.js');
   const preload = fs.readFileSync(path.join(rendererDir, '..', 'preload.js'), 'utf8');
   const main = fs.readFileSync(path.join(rendererDir, '..', 'main.js'), 'utf8');
-  const clientFields = html.slice(html.indexOf('<div id="hubClientFields"'), html.indexOf('<div id="hubHostFields"'));
-
-  assert.match(clientFields, /id="hubBuildStatus"[\s\S]*role="status"[\s\S]*hidden/);
-  assert.doesNotMatch(clientFields, /id="syncClientStatus"/);
-  assert.ok(html.indexOf('hubBuildPresentation.js') < html.indexOf('app.js'));
   assert.match(app, /getHubBuildStatus/);
   assert.match(app, /function renderHubBuildStatus\(\)/);
   assert.doesNotMatch(app, /await refreshHubBuildStatus\(\)/);

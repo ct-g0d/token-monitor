@@ -11,7 +11,6 @@ Headless agent 就是去掉界面的 widget 采集器。它扫描本机上的 AI
 - 服务器、SSH 主机等会用 AI 工具、但不运行桌面 widget 的机器。
 - 在 WSL 内采集 Windows widget 无法可靠读取的 SQLite 工具。请按照 [WSL SQLite 用量配置指南](wsl-sqlite-setup.zh-CN.md)操作，它在本指南之上补充了 WSL 专属步骤。
 
-已经运行 widget 的机器不需要 agent：开启多设备同步后，widget 会自动上报本机用量。iCloud Drive 同步仅供 widget 使用，不接受 agent。
 
 ## 前置条件
 

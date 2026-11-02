@@ -44,7 +44,8 @@ function harness(settings = {}, overrides = {}) {
     ...overrides
   });
   const draft = app.slice(app.indexOf('const HUB_DRAFT_FIELDS = ['), app.indexOf('let settingsDomSyncPending ='));
-  const save = app.slice(app.indexOf("els.saveSettingsButton.addEventListener('click'"), app.indexOf('els.syncPanelOpenDevices?.addEventListener'));
+  const saveStart = app.indexOf("els.saveSettingsButton?.addEventListener('click'") !== -1 ? app.indexOf("els.saveSettingsButton?.addEventListener('click'") : app.indexOf("els.saveSettingsButton.addEventListener('click'");
+  const save = app.slice(saveStart, app.indexOf('els.syncPanelOpenDevices?.addEventListener'));
   vm.runInContext(`${draft}\n${save}`, context);
   context.syncHubDraftFields();
   const edit = (field, value) => {

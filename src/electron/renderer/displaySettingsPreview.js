@@ -6,21 +6,18 @@
     const appearanceKeys = ['language', 'theme', 'themePreset', 'themeColors', 'vendorColors', 'interfaceFontFamily', 'displayFontFamily', 'textSize', 'glassOpacity', 'glassBlur', 'systemGlass', 'currency', 'currencyRate', 'currencyRateOverride', 'currencyRatesEffective', 'showCompactTotalTokens', 'sessionContextMetric', 'tokenNumberAnimation', 'compactTokenUnits', 'showLimitUsed', 'limitsEnabled', 'limitProviders', 'limitProviderOrder', 'showCodexAdditionalLimits', 'limitProviderHiddenItems', 'showTrayProviderBadge', 'maskLimitAccountEmails', 'tokenRateMode', 'contextDisplayMode'];
     function keyFor(surface, phase) {
       const preferences = settings();
-      const keys = Object.keys(preferences).filter(key => key.startsWith(surface) || appearanceKeys.includes(key) || surface === 'notch' && key.startsWith('tray'));
+      const keys = Object.keys(preferences).filter(key => key.startsWith(surface) || appearanceKeys.includes(key));
       return JSON.stringify([phase, ...keys.sort().map(key => [key, preferences[key]])]);
     }
     function fit(entry) {
       if (!entry.data || !entry.frame || entry.stage.clientWidth <= 0) return;
-      const { width, height, previewHeight = height, scale: size = 1, align } = entry.data;
-      // One fixed scene scale for the notch so changing its size remains visible.
-      const scale = entry.surface === 'notch' ? Math.min(1, entry.stage.clientWidth / 740)
-        : Math.min(.9 * size, 220 / height);
+      const { width, height, scale: size = 1, align } = entry.data;
+      const scale = Math.min(.9 * size, 220 / height);
       const frame = entry.frame;
       frame.style.width = `${width}px`; frame.style.height = `${height}px`;
       frame.style.transform = `scale(${scale})`;
       frame.style.left = `${align === 'left' ? 0 : align === 'right' ? entry.stage.clientWidth - width * scale : (entry.stage.clientWidth - width * scale) / 2}px`;
       frame.style.top = entry.surface === 'edgeDock' ? `${(entry.stage.clientHeight - height * scale) / 2}px` : '0';
-      if (entry.surface === 'notch') entry.stage.style.height = `${Math.max(40, Math.ceil(previewHeight * scale) + 6)}px`;
     }
     function request(entry, slots) {
       return bridge.getDisplayPreview(entry.surface, entry.phase, slots);

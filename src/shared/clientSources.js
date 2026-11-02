@@ -263,7 +263,10 @@ function clientSourceRoots(clientsCsv, options = {}) {
   add('cursor', ['tokscale-cursor-cache', path.join(tokscaleHome, '.config', 'tokscale', 'cursor-cache')]);
   add('antigravity',
     ['tokscale-antigravity-cache', path.join(tokscaleConfigRoot, 'antigravity-cache')],
-    ['antigravity-extension-data', path.join(home, '.gemini', 'antigravity', 'conversations')]);
+    ['antigravity-extension-data', path.join(home, '.gemini', 'antigravity', 'conversations')],
+    // T3 Code's ACP stores for agy: same databases, different root, so they are
+    // watched for changes like the IDE's own `conversations` directory.
+    ...antigravityAcpRoots({ homeDir: home, env }).map((dir) => ['antigravity-acp', dir, null, true]));
   // A whitespace-only KIMI_CODE_HOME counts as unset, matching tokscale: it
   // joins `sessions` onto the raw value, so a blank export would resolve to the
   // root-level /sessions and hide the real one.
@@ -556,6 +559,7 @@ function antigravityCliDataDir({ homeDir = os.homedir(), env = process.env } = {
 }
 
 module.exports = {
+  antigravityAcpRoots,
   antigravityCliDataDir,
   canonicalWatchPath,
   canonicalWatchFilePath,
@@ -563,3 +567,26 @@ module.exports = {
   clientSourceRoots,
   copilotExporterWatch
 };
+
+// T3 Code runs Antigravity through its own ACP server, which keeps one
+// `conversations/*.db` directory per signed-in account inside T3's data root. The
+// databases are the same shape the IDE writes, so the bundled scanner parses them
+// like the native root — nothing points it there otherwise, and an agy user who
+// never opens the IDE has no native root at all.
+function antigravityAcpRoots({ homeDir = os.homedir(), env = process.env } = {}) {
+  const t3Home = nonBlankEnvPath('T3_HOME', path.join(homeDir, '.t3'), env);
+  const providers = path.join(t3Home, 'userdata', 'providers', 'antigravity');
+  let entries;
+  try { entries = fs.readdirSync(providers, { withFileTypes: true }); } catch (_) { return []; }
+  const roots = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    // The scanner's extra-root contract is the same directory it reads natively:
+    // the one holding `*.db`, not its parent.
+    const conversations = path.join(providers, entry.name, 'antigravity-acp', 'conversations');
+    try {
+      if (fs.statSync(conversations).isDirectory()) roots.push(conversations);
+    } catch (_) { /* account without an ACP store */ }
+  }
+  return roots;
+}

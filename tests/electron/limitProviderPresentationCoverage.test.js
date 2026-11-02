@@ -140,7 +140,7 @@ test('every catalog provider resolves to a mark asset through its CSS rule', () 
     // nor a descendant rule (.row-icon-<id> .child) paints the element this
     // guard is about, and both would otherwise satisfy it.
     const rule = styles.match(new RegExp(`^\\.row-icon-${id}(?=\\s*[,{])[^{}]*\\{([^}]*)\\}`, 'm'));
-    assert.ok(rule, `${id} needs a .row-icon-${id} mask (a vendor table entry)`);
+    assert.ok(rule, `${id} needs a .row-icon-${id} rule (a vendor table entry)`);
     // The invariant is that a provider resolves to a mark, not that the mark is
     // named after it — zaiteam masks with zai.svg, mimo with xiaomi.svg — so the
     // rule is the mapping and the asset is checked through it. Resolve the URL

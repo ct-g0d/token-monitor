@@ -14,19 +14,10 @@
     "ensure:tokscale": "node scripts/ensure-vendored-tokscale.js",
     "test": "node --test \"tests/**/*.test.js\"",
     "test:coverage": "c8 npm test",
-    "build:mac-widget": "node scripts/build-macos-widget.js",
     "build:windows-dock": "node scripts/build-windows-dock.js",
-    "dev:mac-widget": "node scripts/dev-macos-widget.js",
-    "verify:mac:widget-app": "node scripts/verify-macos-widget-app.js",
     "sync:worker": "node scripts/sync-worker-shared.js",
     "update:hub-build": "node scripts/update-hub-build.js && npm run sync:worker",
     "pack": "npm run ensure:tokscale && electron-builder --config scripts/electron-builder.config.js --dir",
-    "pack:mac:widget": "npm run ensure:tokscale -- --platform=darwin-arm64 && TOKEN_MONITOR_WIDGET_ENABLED=1 TOKEN_MONITOR_LOCAL_DEVELOPMENT_SIGNING=1 npm run build:mac-widget && TOKEN_MONITOR_WIDGET_ENABLED=1 TOKEN_MONITOR_LOCAL_DEVELOPMENT_SIGNING=1 node scripts/macos-packaging.js && TOKEN_MONITOR_WIDGET_ENABLED=1 TOKEN_MONITOR_LOCAL_DEVELOPMENT_SIGNING=1 electron-builder --config scripts/electron-builder.config.js --dir",
-    "pack:mac:widget:x64": "npm run ensure:tokscale -- --platform=darwin-x64 --allow-missing-target-package && TOKEN_MONITOR_WIDGET_ENABLED=1 TOKEN_MONITOR_WIDGET_ARCH=x64 TOKEN_MONITOR_LOCAL_DEVELOPMENT_SIGNING=1 npm run build:mac-widget && TOKEN_MONITOR_WIDGET_ENABLED=1 TOKEN_MONITOR_WIDGET_ARCH=x64 TOKEN_MONITOR_LOCAL_DEVELOPMENT_SIGNING=1 node scripts/macos-packaging.js && TOKEN_MONITOR_WIDGET_ENABLED=1 TOKEN_MONITOR_WIDGET_ARCH=x64 TOKEN_MONITOR_LOCAL_DEVELOPMENT_SIGNING=1 electron-builder --config scripts/electron-builder.config.js --mac --x64 --dir --config.directories.output=dist/mac-x64",
-    "dist:mac": "npm run ensure:tokscale -- --platform=darwin-arm64 && electron-builder --config scripts/electron-builder.config.js --mac --arm64 --publish never",
-    "dist:mac:x64": "npm run ensure:tokscale -- --platform=darwin-x64 && electron-builder --config scripts/electron-builder.config.js --mac --x64 --publish never",
-    "dist:mac:widget": "npm run ensure:tokscale -- --platform=darwin-arm64 && TOKEN_MONITOR_WIDGET_ENABLED=1 TOKEN_MONITOR_WIDGET_DISTRIBUTION=1 TOKEN_MONITOR_WIDGET_ARCH=arm64 npm run build:mac-widget && TOKEN_MONITOR_WIDGET_ENABLED=1 TOKEN_MONITOR_WIDGET_DISTRIBUTION=1 TOKEN_MONITOR_WIDGET_ARCH=arm64 node scripts/macos-packaging.js && TOKEN_MONITOR_WIDGET_ENABLED=1 TOKEN_MONITOR_WIDGET_DISTRIBUTION=1 TOKEN_MONITOR_WIDGET_ARCH=arm64 electron-builder --config scripts/electron-builder.config.js --mac --arm64 --publish never",
-    "dist:mac:widget:x64": "npm run ensure:tokscale -- --platform=darwin-x64 && TOKEN_MONITOR_WIDGET_ENABLED=1 TOKEN_MONITOR_WIDGET_DISTRIBUTION=1 TOKEN_MONITOR_WIDGET_ARCH=x64 npm run build:mac-widget && TOKEN_MONITOR_WIDGET_ENABLED=1 TOKEN_MONITOR_WIDGET_DISTRIBUTION=1 TOKEN_MONITOR_WIDGET_ARCH=x64 node scripts/macos-packaging.js && TOKEN_MONITOR_WIDGET_ENABLED=1 TOKEN_MONITOR_WIDGET_DISTRIBUTION=1 TOKEN_MONITOR_WIDGET_ARCH=x64 electron-builder --config scripts/electron-builder.config.js --mac --x64 --publish never",
     "dist:win": "npm run ensure:tokscale -- --platform=win32-x64 && electron-builder --win --x64 --publish never",
     "dist:win:dir": "npm run ensure:tokscale -- --platform=win32-x64 && electron-builder --win dir --x64 --publish never",
     "dist:win:prepackaged": "electron-builder --prepackaged dist/win-unpacked --win nsis portable --x64 --publish never",
@@ -34,8 +25,7 @@
     "verify:release-artifact-names": "node scripts/verify-updater-artifact-names.js dist",
     "benchmark:hub-bandwidth": "node scripts/benchmark-hub-bandwidth.js",
     "lint": "eslint .",
-    "verify": "npm run lint && npm test",
-    "verify:plugins": "electron scripts/test-plugin-trusted.cjs && electron scripts/test-plugin-trusted-runtime.cjs && electron scripts/test-plugin-trusted-app.cjs && electron scripts/test-plugin-trusted-surfaces.cjs"
+    "verify": "npm run lint && npm test"
   },
   "build": {
     "beforePack": "scripts/build-windows-dock.js",
@@ -58,20 +48,6 @@
       "node_modules/tokscale/**/*",
       "node_modules/koffi/**/*"
     ],
-    "mac": {
-      "artifactName": "Token-Monitor-${version}-${arch}.${ext}",
-      "target": [
-        "dmg",
-        "zip"
-      ],
-      "forceCodeSigning": true,
-      "minimumSystemVersion": "13.0",
-      "category": "public.app-category.developer-tools",
-      "icon": "assets/icon.png",
-      "extendInfo": {
-        "LSUIElement": true
-      }
-    },
     "win": {
       "extraResources": [
         {
@@ -161,10 +137,8 @@
     "url": "https://github.com/Javis603/token-monitor/issues"
   },
   "dependencies": {
-    "@xhayper/discord-rpc": "^1.5.1",
     "chokidar": "^4.0.3",
     "dotenv": "^17.4.2",
-    "electron-updater": "6.8.12",
     "image-size": "^2.0.4",
     "koffi": "^3.3.5",
     "markdown-it": "^15.0.3",

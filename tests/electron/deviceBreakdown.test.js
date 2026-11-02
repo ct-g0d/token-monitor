@@ -63,13 +63,13 @@ test('Devices, sync settings and TPS agree on labels in Node and browser entrypo
     });
     const rows = vm.runInContext(`${rowsSource}\ndeviceRowsForPeriod()`, context);
     assert.equal(JSON.stringify(rows.map((row) => row.name)), JSON.stringify(expectedNames));
-    for (const hubMode of ['client', 'host', 'icloud']) {
+    for (const hubMode of ['client', 'host']) {
       const selection = api.TokenMonitorTokenRate.selectLiveTokenRatePeriods({ devices }, 'remote', hubMode, 'all');
       assert.equal(JSON.stringify(selection.entries.map((entry) => entry.name)), JSON.stringify(expectedNames));
       // Display names never become partition keys.
       assert.equal(selection.entries[0].id, 'device:remote');
     }
-    for (const hubMode of ['local', 'client', 'host', 'icloud']) {
+    for (const hubMode of ['local', 'client', 'host']) {
       const selection = api.TokenMonitorTokenRate.selectLiveTokenRatePeriods({ devices }, 'remote', hubMode, 'device');
       assert.equal(selection.entries[0].name, 'Studio');
     }

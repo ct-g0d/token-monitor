@@ -18,7 +18,7 @@
   const api = factory(
     node ? require('../../../shared/limits/providers') : root?.TokenMonitorLimitProviders,
     node ? require('../../../shared/limits/usageItems') : root?.TokenMonitorLimitUsageItems,
-    node ? require('../../../shared/plugins/placements') : root?.TokenMonitorPluginPlacements
+    null
   );
   if (node) module.exports = api;
   if (root) root.TokenMonitorEdgeDockItems = api;

@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <!-- Provider: pi -->
+  <g id="provider-icon">
+    <svg x="5" y="5" width="80" height="80" viewBox="165.29 165.29 469.43 469.43">
+      <?xml version="1.0" encoding="UTF-8"?>
+
+  <!-- P shape: outer boundary clockwise, inner hole counter-clockwise -->
+  <path fill="#fff" fill-rule="evenodd" d="
+    M165.29 165.29
+    H517.36
+    V400
+    H400
+    V517.36
+    H282.65
+    V634.72
+    H165.29
+    Z
+    M282.65 282.65
+    V400
+    H400
+    V282.65
+    Z
+  "/>
+  <!-- i dot -->
+  <path fill="#fff" d="M517.36 400 H634.72 V634.72 H517.36 Z"/>
+
+    </svg>
+  </g>
+  <!-- Multi-Instance Sub-Icon Badge (Bottom-Right) -->
+  <g id="instance-subicon" transform="translate(62, 62)">
+    <circle cx="16" cy="16" r="15" fill="#000" stroke="#ffffff" stroke-width="2.5" />
+    <text x="16" y="21.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="15" font-weight="700" fill="#ffffff" text-anchor="middle">2</text>
+  </g>
+</svg>

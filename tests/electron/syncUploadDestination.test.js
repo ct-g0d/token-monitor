@@ -84,10 +84,7 @@ test('the actual settings IPC handler rejects a destination change while publica
     ipcMain: { handle: (_channel, callback) => { handler = callback; } },
     getSyncContentRuntime: () => ({ publishPatch: () => held, status: () => ({ identity: context.url }) }),
     applySettingsPatch: () => { applied = true; }, latestUsageHost: null });
-  const guardStart = source.indexOf('function assertPluginSkinRequest(');
-  const guardEnd = source.indexOf('\nfunction settingsForRenderer(', guardStart);
-  assert.ok(guardStart >= 0 && guardEnd > guardStart);
-  vm.runInContext(source.slice(guardStart, guardEnd) + source.slice(start, end), sandbox);
+  vm.runInContext(source.slice(start, end), sandbox);
   const edit = handler(null, { customModelPricing: [] });
   await Promise.resolve();
   context = { ...context, url: 'https://second.example' };
@@ -240,8 +237,7 @@ for (const failure of ['cleanup', 'preferences', 'bind']) test(`host ${failure} 
       start: async () => { if (failing && failure === 'bind') throw Object.assign(new Error('occupied'), { code: 'EADDRINUSE' }); }, stop: async () => {}
     }; },
     getHubInfo: () => ({ error: sandbox.embeddedHubError, listening: Boolean(sandbox.embeddedHub), secret: sandbox.settings.hubHostSecret }),
-    sendHubPush: payload => events.push(payload),
-    advanceMacWidgetProducerAndSourceEpoch: () => {}, clearLatestHubStatsCache: () => {},
+    sendHubPush: payload => events.push(payload), clearLatestHubStatsCache: () => {},
     stopIcloudRuntime: async () => {}, stopLocalCollector: () => events.push('stopLocal'),
     stopStatsStream: () => {}, stopHostStats: () => {}, stopSyncCollector: () => {},
     syncStatsPublication: { cancel: () => {} },

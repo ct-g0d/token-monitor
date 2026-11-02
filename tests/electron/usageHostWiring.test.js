@@ -242,12 +242,6 @@ test('the worker is handed the agent PID file and exactly the settings the trans
   assert.match(body, /transformSettings: usageTransformSettings\(settings\)/);
 });
 
-test('archive diagnostics come from the worker while it owns the archive', () => {
-  const start = main.indexOf('getArchiveState: () => {');
-  assert.ok(start >= 0, 'getArchiveState not found');
-  const body = main.slice(start, main.indexOf('\n  },', start));
-  assert.match(body, /latestUsageHost\?\.getArchiveState\?\.\(\) \|\| usageTransform\.getState\(\)/);
-});
 
 test('clearing the archive waits for a worker-hosted collector to exit first', () => {
   const start = main.indexOf("ipcMain.handle('sessionUsageArchive:clear', async () => {");
@@ -288,10 +282,7 @@ test('Dots visibility refresh only delays its own settings save, including after
   let saved;
   const refresh = new Promise((_resolve, reject) => { failRefresh = reject; });
   const contentRuntime = { status: () => ({ identity: 'test' }), publishPatch: async () => {} };
-  const guardStart = main.indexOf('function assertPluginSkinRequest(');
-  const guardEnd = main.indexOf('\nfunction settingsForRenderer(', guardStart);
-  assert.ok(guardStart >= 0 && guardEnd > guardStart);
-  vm.runInNewContext(main.slice(guardStart, guardEnd) + registration, {
+  vm.runInNewContext(registration, {
     pluginRuntime: null,
     ipcMain: { handle: (_name, handler) => { update = handler; } },
     getSyncContentRuntime: () => contentRuntime,
@@ -324,10 +315,7 @@ test('a delayed Dots visibility reply keeps the settings saved by a later write'
   const refresh = new Promise((resolve) => { release = resolve; });
   const contentRuntime = { status: () => ({ identity: 'test' }), publishPatch: async () => {} };
   let saved = { codexDotsVisible: true, currency: 'USD', clients: 'codex' };
-  const guardStart = main.indexOf('function assertPluginSkinRequest(');
-  const guardEnd = main.indexOf('\nfunction settingsForRenderer(', guardStart);
-  assert.ok(guardStart >= 0 && guardEnd > guardStart);
-  vm.runInNewContext(main.slice(guardStart, guardEnd) + registration, {
+  vm.runInNewContext(registration, {
     pluginRuntime: null,
     ipcMain: { handle: (_name, handler) => { update = handler; } },
     getSyncContentRuntime: () => contentRuntime,

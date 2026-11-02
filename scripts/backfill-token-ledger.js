@@ -41,6 +41,12 @@ function runBackfill() {
 
   const store = createSessionUsageArchiveStore();
 
+  // Two accounts on one machine can see the same session files (a junction makes
+  // both scan one directory), so their ledgers hold the same daily rows. Merge by
+  // the row's own key and keep the first copy: summing them counted every day
+  // twice (88.9B where one account's ledger holds 42.5B).
+  const seenDailyKeys = new Set();
+
   for (const sourcePath of resolveCandidateSources()) {
     if (!fs.existsSync(sourcePath)) {
       console.log(`[backfill] Source not found, skipping: ${sourcePath}`);
@@ -256,6 +262,15 @@ function runBackfill() {
       const total = row.total_processed || (input + output);
       const cost = row.total_known_cost_usd || 0.0;
       const turnCount = row.turn_count || 1;
+
+      const dailyKey = `${date}|${client}|${model}`;
+      if (seenDailyKeys.has(dailyKey)) {
+        // The other account's copy of the same day: already counted.
+        if (!minDate || date < minDate) minDate = date;
+        if (!maxDate || date > maxDate) maxDate = date;
+        continue;
+      }
+      seenDailyKeys.add(dailyKey);
 
       store.upsertDailyRollup(
         date, client, model,

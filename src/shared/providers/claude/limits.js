@@ -108,7 +108,8 @@ async function readJsonFile(filePath, deps) {
 }
 
 function claudeCredentialPath(env = process.env) {
-  const base = env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
+  const home = env.HOME || env.USERPROFILE || os.homedir();
+  const base = env.CLAUDE_CONFIG_DIR || path.join(home, '.claude');
   return path.join(base, '.credentials.json');
 }
 
@@ -210,6 +211,38 @@ function claudeCredentialsFromOauth(oauth, meta = {}) {
     identity: meta.identity || `${meta.source || 'claude'}:${oauth.subscriptionType || ''}:${oauth.rateLimitTier || ''}`,
     accountLabel: claudePlanLabelFromParts(oauth.subscriptionType, oauth.rateLimitTier)
   };
+}
+
+function discoverClaudeAutomaticCredential(env = process.env) {
+  const token = typeof env.CLAUDE_CODE_OAUTH_TOKEN === 'string' ? env.CLAUDE_CODE_OAUTH_TOKEN.trim() : '';
+  if (token) return { source: 'env' };
+  const nativePath = claudeCredentialPath(env);
+  const candidates = [nativePath];
+  if (process.platform === 'win32' && !env.CLAUDE_CONFIG_DIR) {
+    try {
+      candidates.push(...wslClaudeCredentialPaths());
+    } catch (_) {}
+  }
+  for (const candidate of candidates) {
+    try {
+      if (fs.existsSync(candidate)) {
+        const stats = fs.statSync(candidate);
+        if (stats.isFile() && stats.size > 0) {
+          const raw = JSON.parse(fs.readFileSync(candidate, 'utf8'));
+          const oauth = extractClaudeOauth(raw);
+          if (oauth?.accessToken) {
+            return {
+              source: 'claude-cli',
+              subscriptionType: oauth.subscriptionType || '',
+              rateLimitTier: oauth.rateLimitTier || '',
+              accountLabel: claudePlanLabelFromParts(oauth.subscriptionType, oauth.rateLimitTier)
+            };
+          }
+        }
+      }
+    } catch (_) {}
+  }
+  return null;
 }
 
 async function readClaudeCredentials(deps = {}) {
@@ -647,6 +680,14 @@ async function writeClaudeCredentials(filePath, fileShape, updated, deps = {}) {
     existing = JSON.parse(await readFile(filePath, 'utf8'));
   } catch (_) { return false; }
   if (!existing || typeof existing !== 'object') return false;
+  const currentOauth = fileShape === 'claudeAiOauth' ? existing.claudeAiOauth : existing;
+  // Compare-and-swap guard: if another process rotated the refresh token concurrently, abort write.
+  if (deps.expectedRefreshToken && currentOauth?.refreshToken && currentOauth.refreshToken !== deps.expectedRefreshToken) {
+    return false;
+  }
+  if (currentOauth?.expiresAt && updated?.expiresAt && currentOauth.expiresAt >= updated.expiresAt) {
+    return false;
+  }
   if (fileShape === 'claudeAiOauth') {
     existing.claudeAiOauth = { ...(existing.claudeAiOauth || {}), ...updated };
   } else {
@@ -665,7 +706,8 @@ async function writeClaudeCredentials(filePath, fileShape, updated, deps = {}) {
 
 async function persistClaudeRefresh(credentials, refreshed, deps = {}) {
   if (credentials.source !== 'file' || !credentials.filePath) return;
-  await writeClaudeCredentials(credentials.filePath, credentials.fileShape, refreshed, deps).catch(() => {});
+  const writeDeps = { ...deps, expectedRefreshToken: credentials.refreshToken };
+  await writeClaudeCredentials(credentials.filePath, credentials.fileShape, refreshed, writeDeps).catch(() => {});
 }
 
 function callClaudeUsage(accessToken, deps = {}) {
@@ -2278,6 +2320,7 @@ async function touchClaudeAuthPath(deps = {}) {
 }
 
 module.exports = {
+  discoverClaudeAutomaticCredential,
   claudeWebAccountMetadata,
   normalizeClaudeManagedAccounts,
   fetchClaudeAccountsLimits,
@@ -2295,6 +2338,8 @@ module.exports = {
   rankClaudeCredentialFiles,
   refreshClaudeAccessToken,
   refreshClaudeCredentials,
+  writeClaudeCredentials,
+  persistClaudeRefresh,
   runClaudeAuthStatus,
   touchClaudeAuthPath,
   wslClaudeCredentialPaths

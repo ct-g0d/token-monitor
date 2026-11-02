@@ -103,7 +103,7 @@ function t(key, params) {
 // the resolved views it shows and reports which are on screen; main pushes
 // updates on a channel separate from cell renders, so a plugin's live value
 // repaints only its own node.
-const pluginSurface = surface === 'notch' ? 'notch' : 'edgeDock';
+const pluginSurface = 'edgeDock';
 const pluginViewsApi = window.TokenMonitorPluginViews;
 const pluginHost = pluginViewsApi && bridge.onPluginViews ? pluginViewsApi.createPluginViewHost({
   document,
@@ -111,8 +111,6 @@ const pluginHost = pluginViewsApi && bridge.onPluginViews ? pluginViewsApi.creat
   t,
   services: { app: bridge, native: { get quota() { return limitWindowsView; } } },
   getContext: () => ({ nativeData: state.payload, surfaceVariant: surface }),
-  onLoaded: () => { if (surface === 'notch') notchRenderer?.paintSummaryPlugins(); },
-  isSurfaceActive: (_surface, container) => !container.closest('.notch-page')?.inert,
   onDemand: (_surface, refs) => bridge.setPluginDemand(refs),
   motionAllowed: () => !prefersReducedMotion(),
   motionMode: () => tokenNumberAnimationApi.normalize(appearance().tokenNumberAnimation)
@@ -129,15 +127,13 @@ let pluginContentsKey = '';
 function updatePluginViews(payload) {
   if (payload?.surface !== pluginSurface) return;
   pluginHost?.update(payload);
-  if (surface === 'notch') notchRenderer?.paintSummaryPlugins();
   if (surface === 'rail') refreshPluginCellLabels(railNode);
   const key = JSON.stringify(Object.values(payload.views || {}).map(view => [view.ref, view.revision, view.targets, view.mode, view.selector, view.contentOrder]));
   void window.tokenMonitorTrustedPlugins.contentSelections().then(value => {
     const next = key + JSON.stringify(value);
     if (pluginContentsKey === next) return;
     pluginContentsKey = next; contentSelections = value;
-    if (surface === 'notch') notchRenderer?.pluginViewsChanged();
-    else if (state.payload) render(state.payload);
+    if (state.payload) render(state.payload);
   });
 }
 if (pluginHost) {
@@ -191,7 +187,6 @@ const codexAccountControl = codexAccountControlApi.createCodexAccountControl({
   switchAccount: (accountId) => bridge.switchCodexAccount(accountId),
   requestRender: () => {
     if (surface === 'bubble' && state.payload?.cell) renderBubble(state.payload);
-    if (surface === 'notch' && state.payload) notchRenderer.render(state.payload);
   },
   onSwitchFailure: (message) => {
     console.log(`[edge-dock] codex account switch failed: ${message}`);
@@ -309,9 +304,11 @@ function clientLabel(id) {
   return CLIENT_LABELS[id] || LIMIT_PROVIDER_LABELS[id] || id;
 }
 
-// Whether `.row-icon-<id>` has a mask — a vendor mark installed by
-// rowIconMasks.js, or one of the few styles.css keeps (token-monitor). Probed
-// rather than listed so the dock can never drift from the rules it borrows.
+// Whether `.row-icon-<id>` draws a mark: a masked vendor mark installed by
+// rowIconMasks.js, one of the few masks styles.css keeps (token-monitor), or one
+// of the marks it paints with their own artwork. Probed rather than listed so the
+// dock can never drift from the rules it borrows; asking only about the mask
+// missed every painted mark and drew the colour dot instead.
 function hasMask(id) {
   if (maskSupport.has(id)) return maskSupport.get(id);
   const probe = el('span', `row-icon-${id}`);
@@ -320,8 +317,9 @@ function hasMask(id) {
   document.body.append(probe);
   const computed = getComputedStyle(probe);
   const image = computed.webkitMaskImage || computed.maskImage || 'none';
+  const painted = computed.backgroundImage || 'none';
   probe.remove();
-  const supported = Boolean(id) && image !== 'none';
+  const supported = Boolean(id) && (image !== 'none' || painted !== 'none');
   maskSupport.set(id, supported);
   return supported;
 }
@@ -476,8 +474,7 @@ function createCardWindowsView(cell = () => state.payload?.cell, forecast = () =
           limitTooltip.active = false;
           if (!limitTooltip.pending) return;
           limitTooltip.pending = false;
-          if (surface === 'notch' && state.payload) notchRenderer.render(state.payload);
-          else if (state.payload?.cell) renderBubble(state.payload);
+          if (state.payload?.cell) renderBubble(state.payload);
         });
       }
     },
@@ -546,6 +543,8 @@ const limitWindowsView = createCardWindowsView();
 
 // The path arrives from the main process, which derived it together with the
 // native mask, so the painted tint and the clipped glass cannot disagree.
+const SHAPE_CLIP = 'edge-dock-shape-clip';
+
 function updateShape(payload) {
   const shape = payload.shape;
   const key = shape?.key || '';
@@ -555,13 +554,38 @@ function updateShape(payload) {
   if (!shape?.d) return;
   shapeLayer.setAttribute('viewBox', `0 0 ${shape.width} ${shape.height}`);
   shapeLayer.setAttribute('preserveAspectRatio', 'none');
+  // The silhouette is sized to the bounds the main process shaped the window
+  // with, not to the whole viewport. Chromium rounds those DIP bounds before it
+  // lays the page out, so the viewport can be a whole device pixel taller than
+  // the window: stretched to it, the bottom of the silhouette (and the
+  // antialiased last row that softens it) was clipped by the window and read as
+  // a hard, stepped edge, while the top stayed smooth.
+  const zoom = payload.zoom || 1;
+  shapeLayer.style.width = `${shape.width / zoom}px`;
+  shapeLayer.style.height = `${shape.height / zoom}px`;
   const fill = document.createElementNS(SVG_NS, 'path');
   fill.setAttribute('class', 'edge-dock-shape-fill');
   fill.setAttribute('d', shape.d);
   const line = document.createElementNS(SVG_NS, 'path');
   line.setAttribute('class', 'edge-dock-shape-line');
   line.setAttribute('d', shape.outline || shape.d);
-  shapeLayer.append(fill, line);
+  // The rim is clipped to the silhouette instead of straddling it. A centred
+  // stroke puts half of itself outside the shape, where the window's own region
+  // (a pixel-stepped mask on Windows) cuts it: that half showed as a ragged,
+  // uneven line whose width depended on the desktop behind it. Clipped by the
+  // smooth path, the visible half is antialiased like everything else.
+  const defs = document.createElementNS(SVG_NS, 'defs');
+  const clip = document.createElementNS(SVG_NS, 'clipPath');
+  clip.setAttribute('id', SHAPE_CLIP);
+  clip.setAttribute('clipPathUnits', 'userSpaceOnUse');
+  const clipPath = document.createElementNS(SVG_NS, 'path');
+  clipPath.setAttribute('d', shape.d);
+  clip.append(clipPath);
+  defs.append(clip);
+  const rim = document.createElementNS(SVG_NS, 'g');
+  rim.setAttribute('clip-path', `url(#${SHAPE_CLIP})`);
+  rim.append(line);
+  shapeLayer.append(defs, fill, rim);
 }
 
 // ---- Peek ----------------------------------------------------------------
@@ -588,11 +612,6 @@ function ensureRefreshButton() {
   return refreshButton;
 }
 
-function resetRefreshVisit() {
-  refreshVisit++; clearTimeout(refreshFeedbackTimer);
-  refreshBusy = false; refreshResult = '';
-}
-
 function paintRefreshButton() {
   if (!refreshButton) return;
   const key = refreshBusy ? 'refreshButton.refreshing'
@@ -605,10 +624,6 @@ function paintRefreshButton() {
 }
 
 async function refreshDockLimits() {
-  const allowed = surface === 'notch'
-    ? state.payload?.expanded === true && state.payload?.refreshEnabled === true
-    : state.payload?.peekMode === 'refresh';
-  if (refreshBusy || !allowed || state.payload?.refreshable !== true) return;
   const visit = refreshVisit;
   clearTimeout(refreshFeedbackTimer);
   refreshBusy = true;
@@ -678,27 +693,6 @@ if (surface === 'peek') {
   document.documentElement.addEventListener('mouseleave', reportPointer);
 }
 
-// The notch window passes the pointer through, with its moves forwarded, until
-// the main process sees the pointer on the shell. Moves are reported once a
-// frame so the shell takes input as the pointer arrives; presses and wheel
-// events only reach the page while it does, and the main process decides what
-// they mean from the cursor position.
-if (surface === 'notch') {
-  let pointerFrame = 0;
-  const reportPointer = () => {
-    if (pointerFrame) return;
-    pointerFrame = requestAnimationFrame(() => { pointerFrame = 0; bridge.pointer(); });
-  };
-  document.addEventListener('mousemove', reportPointer);
-  document.documentElement.addEventListener('mouseleave', () => bridge.pointer());
-  document.addEventListener('mousedown', (event) => { if (event.button === 0) bridge.press(); });
-  // Line-based deltas are rare on macOS; scale them to points like Chromium.
-  window.addEventListener('wheel', (event) => {
-    const scale = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? window.innerHeight : 1;
-    bridge.wheel(event.deltaX * scale, event.deltaY * scale);
-  }, { passive: true });
-}
-
 // ---- Rail ----------------------------------------------------------------
 
 function waitingRingStart(cellId, isWaiting) {
@@ -721,9 +715,12 @@ function ringNode(remainingPercent, color, mark, waitingStartedAt = null) {
   const track = document.createElementNS(SVG_NS, 'circle');
   track.setAttribute('class', 'edge-dock-ring-track');
   // The consumed part of the ring is a tint of the provider's own colour, the
-  // same treatment as the limit meters' track.
+  // same treatment as the limit meters' track. It is also all an empty ring has
+  // left, so the tint only replaces the neutral track when the colour can carry
+  // an outline by itself: a near-black brand tinted onto the slab would leave
+  // nothing to see the moment the quota ran out.
   const trackRgb = parseColor(color);
-  if (trackRgb) track.style.stroke = `rgba(${trackRgb.join(', ')}, 0.2)`;
+  if (trackRgb && luminance(trackRgb) > 0.04) track.style.stroke = `rgba(${trackRgb.join(', ')}, 0.45)`;
   const fill = document.createElementNS(SVG_NS, 'circle');
   fill.setAttribute('class', 'edge-dock-ring-fill');
   for (const circle of [track, fill]) {
@@ -1228,6 +1225,13 @@ root.addEventListener('animationend', (event) => {
   if (event.animationName === 'edge-dock-rail-in') root.classList.remove('is-revealing');
 });
 
+// What a cell's node is built from: its own projection plus the appearance the
+// builders read (unit system, used-versus-remaining, warn colours). Everything
+// else — focus, placement — is applied to the kept node instead of rebuilding it.
+function cellSignature(cell) {
+  return JSON.stringify([cell, state.appearanceKey]);
+}
+
 function renderRail(payload) {
   root.dataset.side = payload.side;
   root.classList.toggle('is-always', payload.always === true);
@@ -1246,9 +1250,24 @@ function renderRail(payload) {
   const layout = payload.cellLayout || null;
   railNode.classList.toggle('is-compact', layout?.compact === true);
   const retainedPlugins = new Map([...railNode.children].filter(node => node.dataset.pluginRef).map(node => [node.dataset.cellId, node]));
+  const previousCells = new Map([...railNode.children]
+    .filter(node => node.dataset.cellId && node.dataset.signature)
+    .map(node => [node.dataset.cellId, node]));
   const nodes = [];
   (payload.cells || []).forEach((cell, index) => {
-    const node = cell.kind === 'stat' ? statCellNode(cell) : cell.kind === 'plugin' ? pluginCellNode(cell, retainedPlugins.get(cell.id)?.dataset.pluginRef === cell.ref ? retainedPlugins.get(cell.id) : null) : providerCellNode(cell);
+    // A cell whose reading did not change is kept as it is, so moving the pointer
+    // between rings only toggles `is-focused` on a live node: the halo then fades
+    // in and out with the filter transition instead of being rebuilt at full
+    // strength on the next push.
+    const signature = cellSignature(cell);
+    const previous = previousCells.get(cell.id);
+    const reusable = previous && previous.dataset.kind === String(cell.kind) && previous.dataset.signature === signature;
+    const node = reusable ? previous
+      : cell.kind === 'stat' ? statCellNode(cell) : cell.kind === 'plugin' ? pluginCellNode(cell, retainedPlugins.get(cell.id)?.dataset.pluginRef === cell.ref ? retainedPlugins.get(cell.id) : null) : providerCellNode(cell);
+    if (!reusable) {
+      node.dataset.kind = String(cell.kind);
+      node.dataset.signature = signature;
+    }
     node.dataset.cellId = cell.id;
     node.dataset.index = String(index);
     // Cells are placed on the main process's layout so hover hit-testing and
@@ -1562,34 +1581,237 @@ function sessionsContainer(sessions, options = {}) {
   return node;
 }
 
-function providerCard(cell, view = limitWindowsView) {
+// How long each quota window lasts. Providers agree on the reset instant but not
+// on a start, so the length comes from the window's kind — only the ratio matters
+// for the pace marker.
+const QUOTA_WINDOW_MS = {
+  session: 5 * 60 * 60 * 1000,
+  daily: 24 * 60 * 60 * 1000,
+  weekly: 7 * 24 * 60 * 60 * 1000,
+  monthly: 30 * 24 * 60 * 60 * 1000,
+  billing: 30 * 24 * 60 * 60 * 1000
+};
+
+// Share of the window a steady spend would leave today: with `left` still to run
+// out of a window `duration` long, that is `left / duration`. Providers that report
+// the window's own length are believed over the kind's usual one.
+function paceRemaining(window, kind) {
+  const resetAt = Date.parse(window?.resetsAt || '');
+  const minutes = Number(window?.windowMinutes);
+  const duration = Number.isFinite(minutes) && minutes > 0 ? minutes * 60000 : QUOTA_WINDOW_MS[kind];
+  if (!Number.isFinite(resetAt) || !duration) return null;
+  return Math.max(0, Math.min(1, (resetAt - Date.now()) / duration));
+}
+
+// Time until a window resets, at two units like T3's limits page: `1d 4h`,
+// `2h 15m`, `45m`. Seconds never matter on a quota bar.
+function resetCountdown(window) {
+  const resetAt = Date.parse(window?.resetsAt || '');
+  if (!Number.isFinite(resetAt)) return null;
+  const left = Math.max(0, resetAt - Date.now());
+  if (left < 60000) return 'now';
+  const days = Math.floor(left / 86400000);
+  const hours = Math.floor((left % 86400000) / 3600000);
+  const minutes = Math.floor((left % 3600000) / 60000);
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
+// The little circular arrow T3 puts in front of a reset countdown, drawn inline so
+// the dock does not depend on an icon sheet.
+function resetGlyph() {
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('class', 'edge-dock-quota-glyph');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('aria-hidden', 'true');
+  for (const d of ['M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8', 'M3 3v5h5']) {
+    const path = document.createElementNS(SVG_NS, 'path');
+    path.setAttribute('d', d);
+    svg.append(path);
+  }
+  return svg;
+}
+
+// A ticket outline: the shape T3 uses for a banked reset, at the size of a badge.
+function bankedGlyph() {
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('class', 'edge-dock-quota-glyph');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('aria-hidden', 'true');
+  const path = document.createElementNS(SVG_NS, 'path');
+  path.setAttribute('d', 'M3 8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4Z');
+  const notch = document.createElementNS(SVG_NS, 'path');
+  notch.setAttribute('d', 'M9 6v12');
+  svg.append(path, notch);
+  return svg;
+}
+
+// How many banked resets this plan still holds, and when the first one expires.
+function bankedResets(members) {
+  let count = 0;
+  let nextExpiresAt = null;
+  for (const account of members) {
+    const credits = account.record?.resetCredits;
+    const available = Number(credits?.availableCount);
+    if (Number.isFinite(available) && available > 0) count += available;
+    const expires = Date.parse(credits?.nextExpiresAt || '');
+    if (Number.isFinite(expires) && (nextExpiresAt === null || expires < nextExpiresAt)) nextExpiresAt = expires;
+  }
+  return count > 0 ? { count, nextExpiresAt } : null;
+}
+
+function providerCard(cell, _view = limitWindowsView) {
   const card = el('section', 'edge-dock-card');
   const color = limitProviderColor(cell.provider);
   const label = providerLabel(cell.provider);
-  const records = [];
-  for (const account of cell.accounts) {
+  const accounts = [];
+  for (const account of cell.accounts || []) {
     if (!account.record) continue;
     accountSummaries.set(account.record, account);
-    records.push(account.record);
+    accounts.push(account);
   }
   cardForecast = cell.forecast || null;
 
-  // The card is the Limits page's provider row: one row for a single account,
-  // the page's group header and account list for several. Everything the card
-  // used to build by hand — the mark, the plan pill, the "Updated · OAuth" meta
-  // line, the account count, the switch affordance, the meters, the spend and
-  // balance lines, the reset forecast and its tooltip — is that row, and the
-  // per-provider choices the page makes are the view's own policy now, so this
-  // caller passes the provider and nothing else.
-  const accounts = el('div', 'edge-dock-accounts');
-  if (records.length > 1) {
-    accounts.append(view.renderLimitProviderGroup(cell.provider, label, records, color));
-  } else if (records.length === 1) {
-    accounts.append(view.renderLimitProviderSolo(cell.provider, label, records[0], color));
-  } else {
-    accounts.append(el('div', 'edge-dock-note', t('edgeDock.unavailable')));
+  // Merge accounts only inside the same plan: a Free and a Plus account report
+  // different quota windows, and averaging them hid the Free row entirely and
+  // made the Plus reading meaningless. One block per plan instead.
+  const WINDOW_SHORT = { session: '5h', daily: '24h', weekly: '7d', monthly: '30d', billing: '30d' };
+  const quota = el('div', 'edge-dock-quota');
+  const planOf = (account) => String(account.record?.planLabel || account.record?.accountLabel || '').trim() || 'Default';
+  const groups = new Map();
+  for (const account of accounts) {
+    const plan = planOf(account);
+    if (!groups.has(plan)) groups.set(plan, []);
+    groups.get(plan).push(account);
   }
-  card.append(accounts);
+  for (const [plan, members] of groups) {
+    const block = el('div', 'edge-dock-quota-block');
+    const nameRow = el('div', 'edge-dock-quota-provider');
+    const nameText = el('span', 'edge-dock-quota-name');
+    nameText.textContent = `${label} · ${plan}`;
+    nameRow.append(nameText);
+    const rows = [];
+    // Whatever windows the plan actually reports: a Free account can be a single
+    // monthly window, and asking only for 5h/7d made it look unavailable.
+    const planKinds = [];
+    for (const account of members) {
+      for (const entry of account.record?.windows || []) {
+        const kind = String(entry?.kind || '').trim().toLowerCase();
+        if (kind && !planKinds.includes(kind)) planKinds.push(kind);
+      }
+    }
+    const kindOrder = ['session', 'daily', 'weekly', 'monthly', 'billing'];
+    planKinds.sort((a, b) => kindOrder.indexOf(a) - kindOrder.indexOf(b));
+    for (const kind of planKinds) {
+      const values = [];
+      for (const account of members) {
+        const window = (account.record?.windows || []).find(
+          (entry) => String(entry?.kind || '').trim().toLowerCase() === kind
+        );
+        if (window) values.push(window);
+      }
+      if (values.length === 0) continue;
+      const mean = values.reduce((sum, window) => sum + Math.max(0, Math.min(100, Number(window.remainingPercent) || 0)), 0) / values.length;
+      rows.push({ kind, values, mean, label: String(values[0]?.label || '').trim() });
+    }
+    if (rows.length > 0) {
+      const totals = el('span', 'edge-dock-quota-total');
+      // Same words as the rows below: "Monthly 100%", not "30d 100%".
+      const shortLabel = (row) => (WINDOW_SHORT[row.kind] === '30d'
+        ? (row.label || '30d')
+        : (WINDOW_SHORT[row.kind] || row.label || row.kind));
+      // A credits row has no meaningful share: print the money instead of a mean.
+      const rowValue = (row) => {
+        const creditsWindow = row.values.find((window) => String(window.metric || '').trim().toLowerCase() === 'credits');
+        if (!creditsWindow) return `${Math.round(row.mean)}%`;
+        const amount = Number(creditsWindow.remaining);
+        return Number.isFinite(amount) ? `$${amount.toFixed(2)}` : `${Math.round(row.mean)}%`;
+      };
+      totals.textContent = rows
+        .map((row) => `${shortLabel(row)} ${rowValue(row)}`)
+        .join(' · ');
+      const banked = bankedResets(members);
+      if (banked) {
+        // Banked resets ride at the end of the summary line, where they cannot
+        // squeeze a bar, and only when the plan actually holds one.
+        const badge = el('span', 'edge-dock-quota-banked');
+        badge.append(bankedGlyph(), el('span', '', String(banked.count)));
+        badge.setAttribute('aria-label', `${banked.count} banked`);
+        const tail = el('span', 'edge-dock-quota-tail');
+        tail.append(totals, badge);
+        nameRow.append(tail);
+      } else {
+        nameRow.append(totals);
+      }
+    }
+    block.append(nameRow);
+    if (rows.length === 0) {
+      // A plan that reports no window still has to be visible, or it looks like
+      // the account disappeared.
+      block.append(el('div', 'edge-dock-note', t('edgeDock.unavailable')));
+      quota.append(block);
+      continue;
+    }
+    for (const row of rows) {
+      const barRow = el('div', 'edge-dock-quota-row');
+      const tag = el('span', 'edge-dock-quota-tag');
+      // 5h / 7d read as scales; a monthly window keeps its own name ("Monthly").
+      tag.textContent = WINDOW_SHORT[row.kind] === '30d'
+        ? (row.label || '30d')
+        : (WINDOW_SHORT[row.kind] || row.label || row.kind);
+      const stack = el('div', 'edge-dock-quota-stack');
+      const bar = el('div', 'edge-dock-quota-bar');
+      const resets = el('div', 'edge-dock-quota-resets');
+      // Five accounts leave about 45px per segment: the countdown drops a size
+      // rather than losing the minutes it was just given.
+      if (row.values.length > 3) resets.classList.add('is-dense');
+      for (const window of row.values) {
+        const segment = el('div', 'edge-dock-quota-segment');
+        segment.style.flex = `1 1 ${(100 / row.values.length).toFixed(4)}%`;
+        const remaining = Math.max(0, Math.min(100, Number(window.remainingPercent) || 0));
+        // A balance is money, not a share of a quota: a "0%" fill says nothing,
+        // so the bar reads as a full track carrying the amount.
+        const credits = String(window.metric || '').trim().toLowerCase() === 'credits';
+        const fill = el('div', 'edge-dock-quota-fill');
+        fill.style.transform = `scaleX(${(credits ? 1 : remaining / 100).toFixed(4)})`;
+        fill.style.background = color;
+        // The pace maker: where a steady spend would leave this window today, so
+        // "ahead of budget" reads as fill to the right of the tick without doing
+        // the arithmetic in your head. Credits have no window to be paced against.
+        const pace = credits ? null : paceRemaining(window, row.kind);
+        const marker = pace === null ? null : el('span', 'edge-dock-quota-pace');
+        if (marker) marker.style.left = `${(pace * 100).toFixed(2)}%`;
+        const reading = el('span', 'edge-dock-quota-reading');
+        const amount = Number(window.remaining);
+        // A balance is money, so it reads at two decimals rather than the four a
+        // credit amount carries in the ledger.
+        reading.textContent = credits && Number.isFinite(amount)
+          ? `$${amount.toFixed(2)}`
+          : `${Math.round(remaining)}%`;
+        segment.append(fill);
+        if (marker) segment.append(marker);
+        segment.append(reading);
+        bar.append(segment);
+        // One countdown per segment, aligned under the account it belongs to: the
+        // row keeps a single bar but each account still answers "when does mine
+        // reset" without a second list.
+        const countdown = resetCountdown(window);
+        const reset = el('span', 'edge-dock-quota-reset');
+        reset.style.flex = `1 1 ${(100 / row.values.length).toFixed(4)}%`;
+        if (countdown) reset.append(resetGlyph(), el('span', 'edge-dock-quota-reset-text', countdown));
+        resets.append(reset);
+      }
+      stack.append(bar, resets);
+      barRow.append(tag, stack);
+      block.append(barRow);
+    }
+    quota.append(block);
+  }
+  if (quota.childElementCount === 0) {
+    quota.append(el('div', 'edge-dock-note', t('edgeDock.unavailable')));
+  }
+  card.append(quota);
 
   // The rows are the cell's activity reading as well as this card's list, so the
   // switch decides what is drawn here rather than whether the cell has them.
@@ -1856,6 +2078,11 @@ function commitCard(card, cellId) {
   const focusedGroup = sameCard ? document.activeElement?.dataset?.sessionGroupKey : null;
   const resetSnapshot = cardResetAnimator.capture(contentLayer);
   contentLayer.replaceChildren(card);
+  // Pointing at another ring swaps the whole card in one frame. The fade belongs
+  // to this card rather than to the window, so a later push that rebuilds the same
+  // cell inserts a fresh card without replaying it. Reduced motion stops it with
+  // the sheet's blanket rule.
+  if (previous && !sameCard) card.classList.add('is-card-switching');
   overflowText.refresh();
   if (focusedGroup) {
     const summary = [...card.querySelectorAll('summary[data-session-group-key]')]
@@ -1970,29 +2197,15 @@ const bubbleSizeObserver = surface === 'bubble' && window.ResizeObserver ? new R
 bubbleSizeObserver?.observe(root);
 window.addEventListener('pagehide', () => bubbleSizeObserver?.disconnect(), { once: true });
 
-const notchRenderer = surface === 'notch'
-  ? window.TokenMonitorNotchRenderer.createNotchRenderer({
-    document, window, bridge, state, root, shapeLayer, contentLayer,
-    shared: {
-      el, t, appearance, prefersReducedMotion, readableColor, providerLabel, limitProviderColor,
-      markNode, hasMask, providerCellNode, formatTokens, formatCardTokens, formatBreakdownTokens, formatCost, usageCostNode, formatRate, overflowText, limitWindowsView,
-      limitAccountTitle: (...args) => limitWindowsView.limitAccountTitle(...args),
-      captureRingResetMotion, animateRingResets, updateShape, ensureRefreshButton, paintRefreshButton, resetRefreshVisit, pluginHost, pluginContent
-    }
-  }) : null;
-
 // ---- Wiring ---------------------------------------------------------------
 
 function render(payload) {
   if (!payload || payload.surface !== surface) return;
   state.payload = payload;
   applyAppearance(payload);
-  notchRenderer?.applyAppearance(payload);
-  if (surface === 'notch') notchRenderer.applyMotion(payload.motion);
-  else updateShape(payload);
+  updateShape(payload);
   if (surface === 'peek') renderPeek(payload);
   else if (surface === 'rail') renderRail(payload);
-  else if (surface === 'notch' && !deferBubbleRender()) notchRenderer.render(payload);
   else if (!deferBubbleRender()) renderBubble(payload);
   // A push carries fresh expiry times, so the self-repaint is re-armed from what
   // was just painted rather than left on the schedule the previous payload set.
@@ -2025,7 +2238,6 @@ function cellReadsSessions(cell) {
 }
 
 function surfacesShowingSessions() {
-  if (surface === 'notch') return notchRenderer.sessionCells().some(cellReadsSessions);
   if (surface === 'rail') return (state.payload?.cells || []).some(cellReadsSessions);
   if (surface === 'bubble') return cellReadsSessions(state.payload?.cell);
   return false;
@@ -2049,8 +2261,7 @@ const BUBBLE_REPAINT_MS = 30_000;
 // timer at all. The floor keeps a payload whose expiry has just passed from spinning.
 function sessionsExpiryDelayMs() {
   if (!surfacesShowingSessions()) return 0;
-  const cells = surface === 'notch' ? notchRenderer.sessionCells()
-    : surface === 'rail' ? state.payload?.cells || [] : [state.payload?.cell].filter(Boolean);
+  const cells = surface === 'rail' ? state.payload?.cells || [] : [state.payload?.cell].filter(Boolean);
   let soonest = 0;
   const now = Date.now();
   for (const cell of cells) {
@@ -2079,7 +2290,7 @@ function sessionsExpiryDelayMs() {
 // shortened wait does not lower the period that follows it.
 function selfRepaintDelayMs() {
   const expiry = sessionsExpiryDelayMs();
-  const period = surface === 'bubble' || surface === 'notch' && notchRenderer.needsClock() ? BUBBLE_REPAINT_MS : 0;
+  const period = surface === 'bubble' ? BUBBLE_REPAINT_MS : 0;
   const waits = [period, expiry].filter((value) => value > 0);
   return waits.length ? Math.min(...waits) : 0;
 }
@@ -2092,9 +2303,6 @@ function repaintSelf() {
     return;
   }
   if (surface === 'rail' && state.payload) renderRail(state.payload);
-  if (surface === 'notch' && state.payload && !deferBubbleRender()) {
-    notchRenderer.repaint();
-  }
 }
 
 // Re-armed after every repaint rather than fixed at one interval, so a surface

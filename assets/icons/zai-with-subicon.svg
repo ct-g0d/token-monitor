@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <!-- Provider: zai -->
+  <g id="provider-icon">
+    <svg x="5" y="5" width="80" height="80" viewBox="0 0 24 24">
+      <title>Z.ai</title><path d="M12.105 2L9.927 4.953H.653L2.83 2h9.276zM23.254 19.048L21.078 22h-9.242l2.174-2.952h9.244zM24 2L9.264 22H0L14.736 2H24z"></path>
+    </svg>
+  </g>
+  <!-- Multi-Instance Sub-Icon Badge (Bottom-Right) -->
+  <g id="instance-subicon" transform="translate(62, 62)">
+    <circle cx="16" cy="16" r="15" fill="#000000" stroke="#ffffff" stroke-width="2.5" />
+    <text x="16" y="21.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="15" font-weight="700" fill="#ffffff" text-anchor="middle">2</text>
+  </g>
+</svg>

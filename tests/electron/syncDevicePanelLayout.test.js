@@ -164,31 +164,30 @@ test('device presence uses a static solid online dot and an outlined offline dot
 });
 
 test('sync method selects the corresponding fields without touching draft input values', () => {
-  const source = functionSource('syncHubModeUi', 'renderIcloudStatus');
-  for (const mode of ['local', 'client', 'host', 'icloud']) {
+  const source = functionSource('syncHubModeUi', 'renderHubStatus');
+  for (const mode of ['local', 'client', 'host']) {
     const hidden = {};
     const field = id => ({ classList: { toggle(name, value) { hidden[id] = value; } } });
     const context = vm.createContext({
       syncContentForm: null,
       state: { settings: { hubMode: mode }, appInfo: { platform: 'win32' } },
       els: {
-        hubModeOptions: {}, syncModeDescription: {}, icloudModeOption: {},
-        hubClientFields: field('client'), hubHostFields: field('host'), icloudFields: field('icloud'),
+        hubModeOptions: {}, syncModeDescription: {},
+        hubClientFields: field('client'), hubHostFields: field('host'),
         hubSecretInput: {}, hubUrlInput: { value: 'https://draft.test' }, secretInput: { value: 'draft' }
       },
-      SYNC_MODE_DESCRIPTIONS: { local: 'local', client: 'client', host: 'host', icloud: 'icloud' },
+      SYNC_MODE_DESCRIPTIONS: { local: 'local', client: 'client', host: 'host' },
       syncModeSelect: { sync() {} },
-      t: key => key, renderHubStatus() {}, renderIcloudStatus() {}, renderSyncPanel() {},
+      t: key => key, renderHubStatus() {}, renderSyncPanel() {},
       renderHubBuildStatus() {}, syncHubConnectionUi() {}, syncHubSaveButton() {}
     });
     vm.runInContext(source, context);
     context.syncHubModeUi();
-    assert.equal(context.els.icloudModeOption.disabled, true);
     assert.equal(context.els.hubModeOptions.value, mode);
     assert.ok(context.els.syncModeDescription.textContent);
-    for (const id of ['client', 'host', 'icloud']) {
+    for (const id of ['client', 'host']) {
       assert.equal(hidden[id], mode !== id);
-      const node = context.els[id === 'client' ? 'hubClientFields' : id === 'host' ? 'hubHostFields' : 'icloudFields'];
+      const node = context.els[id === 'client' ? 'hubClientFields' : 'hubHostFields'];
       assert.equal(node.inert, mode !== id);
     }
     assert.equal(context.els.hubUrlInput.value, 'https://draft.test');
@@ -208,7 +207,7 @@ test('sync mode enhances the native source with shared icons and translated desc
   vm.runInContext(appSource.slice(start, end), context);
   assert.equal(calls.length, 1);
   assert.equal(calls[0].select, context.els.hubModeOptions);
-  for (const value of ['local', 'client', 'host', 'icloud']) {
+  for (const value of ['local', 'client', 'host']) {
     const meta = calls[0].options.getOptionMeta({ value });
     assert.match(meta.description, /^settings\.sync\./);
     assert.equal(typeof meta.icon, 'function');

@@ -67,7 +67,6 @@ function fixture() {
     migrateCodexAdditionalLimits() {},
     rendererSnapshots: { stamp: (_, stats) => stats },
     rendererStats: (stats) => stats,
-    scheduleMacWidgetSnapshot() {},
     pluginRuntime: null,
     updateTrayDisplay() {},
     mainWindow: null,
@@ -369,19 +368,6 @@ for (const entry of ['App', 'Edge Dock']) {
 }
 
 
-test('manual App refresh feeds an independently enabled Notch through the same snapshot source', async () => {
-  const { context, usage, limits } = fixture();
-  context.edgeDockController = null;
-  context.notchController = { isRunning: () => true };
-  let topStats;
-  context.pushNotchCells = (stats) => { topStats = stats; };
-  const refreshed = context.refreshManualStats();
-  usage.resolve(true);
-  await refreshed;
-  assert.equal(topStats, context.localStats);
-  limits.resolve();
-});
-
 test('generic settings/account refresh waits for new limits without dispatching usage', async () => {
   const { context, limits, calls } = fixture();
   let completed = false;
@@ -443,7 +429,6 @@ test('Tray-menu refresh retains its existing full usage request', async () => {
   const { context, usage, limits, calls } = fixture();
   Object.assign(context, {
     trayRefreshInFlight: false,
-    captureMacWidgetProducerOwner: () => null,
     runTrayMenuAction: ({ action }) => action(),
     refreshTrayContextMenu() {},
     latestStats: context.localStats,

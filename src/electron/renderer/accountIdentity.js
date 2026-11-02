@@ -5,6 +5,28 @@
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (root) root.TokenMonitorAccountIdentity = api;
 })(typeof window !== 'undefined' ? window : null, function createAccountIdentityApi() {
+  // A stable stand-in for a sensitive string: same length, same separators,
+  // different letters. A compact row shows this instead of the address so the
+  // real text only reaches the DOM once the row is revealed.
+  const REDACTED_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
+  function redactedPlaceholder(value) {
+    const text = String(value || '');
+    let state = 0x811c9dc5;
+    for (let index = 0; index < text.length; index += 1) {
+      state = Math.imul(state ^ text.charCodeAt(index), 0x01000193);
+    }
+    const nextChar = () => {
+      state = Math.imul(state ^ (state >>> 13), 0x85ebca6b);
+      state = Math.imul(state ^ (state >>> 16), 0xc2b2ae35);
+      return REDACTED_ALPHABET[Math.abs(state) % REDACTED_ALPHABET.length] || 'x';
+    };
+    let redacted = '';
+    for (const char of text) {
+      redacted += '@.-_'.includes(char) ? char : nextChar();
+    }
+    return redacted;
+  }
+
   function maskEmailAddress(value) {
     const email = String(value || '').trim();
     const at = email.lastIndexOf('@');
@@ -420,6 +442,7 @@
     localDeviceLimitsProviders,
     localLiveCodexProvider,
     maskEmailAddress,
+    redactedPlaceholder,
     sameAccount
   };
 });

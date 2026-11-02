@@ -24,3 +24,4 @@ worker/.wrangler/
 worker/node_modules/
 worker/.dev.vars
 devlog/
+src/electron/renderer-next/

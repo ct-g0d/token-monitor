@@ -125,7 +125,7 @@ function mainActivityHarness(hubMode, externalAgent = false) {
     fetch: async () => ({ ok: true, json: async () => aggregate() }),
     modeQueue: Promise.resolve(), setLatestHubStatsCache() {},
     getSyncContentRuntime: () => ({ notifyStats() {} }), electronPresentationStats: stats => stats,
-    migrateCodexAdditionalLimits() {}, scheduleMacWidgetSnapshot() {}, updateEdgeDockCells() {}, pluginRuntime: null,
+    migrateCodexAdditionalLimits() {}, updateEdgeDockCells() {}, pluginRuntime: null,
     syncCodexPresentationActiveAccount() {}, updateTrayDisplay() {}, statsHistoryRevision: () => '',
     maybeAdoptSharedSubscriptionRevision() {}, withoutSessionTitles: titles.withoutSessionTitles,
     mainWindow: { isDestroyed: () => false, webContents: { send: (_topic, payload) => pushes.push(payload) } },
@@ -134,7 +134,7 @@ function mainActivityHarness(hubMode, externalAgent = false) {
   };
   vm.runInNewContext(body('function hubModeRequestIsCurrent(', '\nfunction currentHubStatsIdentity(')
     + body('function ownsUsageRuntime(', '\nasync function deleteDeviceFromHub(')
-    + body('function injectLocalDeviceStatus(', '\nfunction macWidgetConfiguration(')
+    + body('function injectLocalDeviceStatus(', '\nfunction publishLocalSessionActivity(')
     + body('function publishLocalSessionActivity(', '\n// Two options')
     + body('function sendPush(', '\nfunction statsHistoryRevision(')
     + body('async function fetchStats(', '\nfunction managedPricingSidecarPath(')
@@ -254,8 +254,7 @@ test('a new Hub local collector batch cannot attribute the old Hub push revision
       },
       createSyncUploadScheduler: () => ({ enqueue: async () => {}, flush() {}, stop() {} }),
       createDeviceRuntime: options => { sink = options.sink; return {}; },
-      createElectronUsageRuntime() {}, stopSyncCollector() {}, updateDiscordRpcDisplay() {},
-      captureMacWidgetProducerOwner() {}, syncUploadIntervalMs: () => 300_000, postToHub() {},
+      createElectronUsageRuntime() {}, stopSyncCollector() {}, updateDiscordRpcDisplay() {}, syncUploadIntervalMs: () => 300_000, postToHub() {},
       seedInitialLimitProviders() {}, usageTransform: { transform: record => record },
       electronUsageConfig: () => ({}), electronDeviceEnvelope: () => ({}),
       electronLimitsConfig: () => ({}), electronLimitsDeps: () => ({}),

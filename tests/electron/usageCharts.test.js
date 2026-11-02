@@ -217,12 +217,13 @@ test('heatmapSvg keeps normal geometry without directional hover scaling', () =>
     monthLabels: [{ col: 0, label: '2026-06' }]
   }, { spotlightId: 'testSpotlight' });
 
-  assert.match(svg, /viewBox="0 0 24 37" width="24" height="37"/);
+  // 1px of ring padding on each side; every cell and label keeps its source
+  // coordinates, shifted by that padding.
+  assert.match(svg, /viewBox="0 0 26 39" width="26" height="39"/);
   assert.match(svg, /class="heat lvl-4" data-d="2026-06-22"[^>]*x="0" y="0" width="9" height="9"/);
   assert.match(svg, /class="heat lvl-3" data-d="2026-06-30"[^>]*x="15" y="12" width="9" height="9"/);
-  assert.match(svg, /class="heat heat-bright lvl-4" x="0" y="0" width="9" height="9"/);
-  assert.match(svg, /<mask id="testSpotlightMask"><rect x="0" y="0" width="24" height="21"/);
-  assert.match(svg, /class="heat-month" x="0" y="33"/);
+  assert.doesNotMatch(svg, /heat-bright|<mask/);
+  assert.match(svg, /class="heat-month" x="1" y="34"/);
 });
 
 test('heatmapSvg embeds escaped per-cell descriptions when supplied', () => {
@@ -238,7 +239,7 @@ test('heatmapSvg embeds escaped per-cell descriptions when supplied', () => {
   assert.match(svg, /<desc>2026-06-22 &lt; 1234<\/desc>/);
 });
 
-test('heatmapSvg can include a glow filter for hovered cells', () => {
+test('heatmapSvg draws no glow filter: the hover ring stays inside the cell', () => {
   const svg = heatmapSvg({
     width: 9,
     height: 9,
@@ -248,12 +249,13 @@ test('heatmapSvg can include a glow filter for hovered cells', () => {
     monthLabels: []
   }, { glowFilterId: 'homeActivityHeatGlow' });
 
-  assert.match(svg, /<defs><filter id="homeActivityHeatGlow"/);
-  assert.match(svg, /<feDropShadow/);
-  assert.equal((svg.match(/flood-color="rgb\(var\(--chart-heat-2-rgb, 120, 190, 255\)\)"/g) || []).length, 2);
+  // A filter region wider than the cell bled onto neighbouring modules, and its
+  // flood-color was a var() that SVG attributes do not resolve, so it painted
+  // black. The highlight is a stroke now, applied by styles.css.
+  assert.doesNotMatch(svg, /<filter|<feDropShadow/);
 });
 
-test('heatmapSvg can include a spotlight layer with cell data attributes', () => {
+test('heatmapSvg keeps the cells and their data attributes, with no spotlight layer', () => {
   const svg = heatmapSvg({
     width: 9,
     height: 9,
@@ -263,12 +265,21 @@ test('heatmapSvg can include a spotlight layer with cell data attributes', () =>
     monthLabels: []
   }, { spotlightId: 'homeActivitySpotlight' });
 
-  assert.match(svg, /id="homeActivitySpotlightGradient"/);
-  assert.match(svg, /id="homeActivitySpotlightMask"/);
+  // Hovering must light up only the cell under the pointer: the spotlight layer
+  // brightened everything within its radius, so it is gone.
+  assert.doesNotMatch(svg, /spotlight|heat-bright/);
   assert.match(svg, /class="heat-base-layer"/);
-  assert.match(svg, /class="heat-bright-layer"/);
   assert.match(svg, /data-d="2026-06-22"/);
   assert.match(svg, /data-t="1234"/);
+});
+
+test('heatmapSvg pads its box so an edge cell keeps its hover ring', () => {
+  const cell = { date: '2026-06-22', intensity: 4, tokens: 1, cost: 0, x: 0, y: 0, size: 9 };
+  const svg = heatmapSvg({ width: 9, height: 9, cell: 9, gap: 3, cells: [cell], monthLabels: [] });
+  // The 1px ring straddles the cell edge; half of it would fall outside the SVG
+  // box and be clipped by the scroll container on the first and last rows/columns.
+  assert.match(svg, /viewBox="0 0 11 27"/);
+  assert.match(svg, /transform="translate\(1 1\)"/);
 });
 
 test('statsCards returns ordered descriptors with kinds and coerced values', () => {

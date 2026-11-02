@@ -366,22 +366,11 @@ test('live rate selects every active hub device or only this device by scope', (
     ],
     source: 'devices:all'
   });
-  assert.deepEqual(tokenRateApi.selectLiveTokenRatePeriods(stats, 'this-device', 'icloud', 'all'), {
-    entries: [
-      { id: 'device:other', name: 'other', period: other },
-      { id: 'device:this-device', name: 'this-device', period: local }
-    ],
-    source: 'devices:all'
-  });
   assert.deepEqual(tokenRateApi.selectLiveTokenRatePeriods(stats, 'this-device', 'client', 'device'), {
     entries: [{ id: 'device:this-device', name: 'this-device', period: local }],
     source: 'device:this-device'
   });
   assert.deepEqual(tokenRateApi.selectLiveTokenRatePeriods(stats, 'missing', 'client', 'device'), {
-    entries: [],
-    source: 'device:missing'
-  });
-  assert.deepEqual(tokenRateApi.selectLiveTokenRatePeriods(stats, 'missing', 'icloud', 'device'), {
     entries: [],
     source: 'device:missing'
   });
@@ -411,17 +400,11 @@ test('live rate selects every active hub device or only this device by scope', (
     entries: [],
     source: 'device:this-device'
   });
-  assert.deepEqual(tokenRateApi.selectLiveTokenRatePeriods({
-    periods: { today: aggregate },
-    devices: [{ deviceId: 'old-device', periods: { today: other } }]
-  }, 'this-device', 'icloud', 'device'), {
-    entries: [],
-    source: 'device:this-device'
-  });
 });
 
-test('all live-rate surfaces use shared scope for iCloud', () => {
-  assert.equal(tokenRateApi.isSharedSyncMode('icloud'), true);
+test('all live-rate surfaces use shared scope for client and host sync', () => {
+  assert.equal(tokenRateApi.isSharedSyncMode('client'), true);
+  assert.equal(tokenRateApi.isSharedSyncMode('host'), true);
   assert.equal(tokenRateApi.isSharedSyncMode('local'), false);
   assert.match(app, /function effectiveLiveTokenRateScope\(\)[\s\S]*?tokenRateApi\.isSharedSyncMode\(hubMode\)/);
   assert.match(app, /function effectiveDisplayLiveTokenRateScope\(scope\)[\s\S]*?tokenRateApi\.isSharedSyncMode\(hubMode\)/);
@@ -933,7 +916,7 @@ test('live rate groups use configured device names with hostname fallback', () =
     { deviceId: 'macbook-m5', hostname: 'Javiss-MacBook-Air.local', periods: { today: period } }
   ];
   const stats = { devices };
-  for (const mode of ['client', 'host', 'icloud']) {
+  for (const mode of ['client', 'host']) {
     assert.deepEqual(tokenRateApi.selectLiveTokenRatePeriods(stats, 'imac-m1', mode, 'all').entries.map(({ name }) => name), ['imac-m1', 'macbook-m5']);
     assert.equal(tokenRateApi.selectLiveTokenRatePeriods(stats, 'imac-m1', mode, 'device').entries[0].name, 'imac-m1');
   }

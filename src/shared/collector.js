@@ -12,7 +12,7 @@ const { readJson, sharedDataDir } = require('./config');
 const { appVersion } = require('./appVersion');
 const { normalizeClientsCsv } = require('./clientTracking');
 const { FORK_ONLY_CLIENT_IDS } = require('./clientCatalog');
-const { antigravityCliDataDir, canonicalWatchPath, canonicalWatchFilePath, cherryStudioTranscriptRoots, clientSourceRoots, copilotExporterWatch } = require('./clientSources');
+const { antigravityAcpRoots, antigravityCliDataDir, canonicalWatchPath, canonicalWatchFilePath, cherryStudioTranscriptRoots, clientSourceRoots, copilotExporterWatch } = require('./clientSources');
 const { clientDiagnosticRoots, clientSourceChecks, dirExists, visibleDiagnosticRoots } = require('./clientSourceObservations');
 const {
   CLIENT_HEALTH_VERSION,
@@ -210,11 +210,29 @@ function tokscaleEnvWithBlanksDropped(env, platform = process.platform) {
   return dropped || env;
 }
 
+// T3 Code runs Antigravity through its own ACP server and keeps the same
+// conversation databases in T3's data root. The bundled scanner reads extra
+// Antigravity roots only when they are handed to it, and the user never configured
+// these, so they ride along with the custom scan paths on every scan.
+function withAntigravityAcpRoots(customScanPaths, options = {}) {
+  const roots = antigravityAcpRoots({
+    homeDir: options.homeDir || os.homedir(),
+    env: options.env || process.env
+  });
+  if (roots.length === 0) return customScanPaths;
+  const normalized = normalizeCustomScanPaths(customScanPaths, {
+    platform: options.platform || process.platform
+  });
+  const merged = [...(normalized.antigravity || [])];
+  for (const root of roots) if (!merged.includes(root)) merged.push(root);
+  return { ...normalized, antigravity: merged };
+}
+
 function tokscaleCommand(options = {}) {
   const resolved = resolvePlatformBinary();
   const useDirect = Boolean(resolved && resolved.source !== 'shim');
   const customExtraDirs = tokscaleExtraDirsEnv(
-    options.customScanPaths,
+    withAntigravityAcpRoots(options.customScanPaths, options),
     process.env.TOKSCALE_EXTRA_DIRS,
     { platform: options.platform || process.platform, home: options.homeDir }
   );
@@ -2303,7 +2321,7 @@ function collectorAnchorTrust(saved, options = {}) {
   // applying a new `cursor-auto` Today delta to them would split one mode.
   if (normalizeClientsCsv(clients).split(',').includes('cursor') && saved.cursorAutoModelVersion !== 1) return null;
   const pricingRevision = options.pricingRevision ?? pricingFingerprint(options);
-  if (saved.configFingerprint !== configFingerprint(clients, allTimeSince, projectsEnabled, qoderCnDbPath, qoderCnProjectsDir, customScanPaths, pricingRevision, options)) return null;
+  if (saved.configFingerprint !== configFingerprint(clients, allTimeSince, projectsEnabled, qoderCnDbPath, qoderCnProjectsDir, withAntigravityAcpRoots(customScanPaths, options), pricingRevision, options)) return null;
   const parsed = Date.parse(saved.fullScanAt || '');
   const capturedAtMs = Number.isFinite(parsed) && parsed <= now.getTime() ? parsed : null;
   return { capturedAtMs };
@@ -2808,7 +2826,7 @@ function startCollector(options) {
         wslStatus: wslStatusAnchor,
         ...(anchor.nativeSessions ? { nativeSessions: anchor.nativeSessions } : {}),
         ...(anchor.nativeProjects ? { nativeProjects: anchor.nativeProjects } : {}),
-        configFingerprint: configFingerprint(clients, allTimeSince, options.projectsEnabled, qoderCnDbPath, qoderCnProjectsDir, options.customScanPaths, tickPricingRevision, sourceOptions, tickSourceRevision),
+        configFingerprint: configFingerprint(clients, allTimeSince, options.projectsEnabled, qoderCnDbPath, qoderCnProjectsDir, withAntigravityAcpRoots(options.customScanPaths, options), tickPricingRevision, sourceOptions, tickSourceRevision),
         fullScanAt: new Date(lastFullScanAt).toISOString()
       }));
     } catch (_) {}

@@ -107,13 +107,13 @@ test('keyboard scroll and focus-navigation keys cancel an active settings scroll
   assert.match(app, /settingsPanel\?\.addEventListener\('keydown', cancelSettingsScrollAnchorOnKeydown\)/);
 });
 
-test('scroll anchoring follows the visible section order with plugins after sync', () => {
+test('scroll anchoring follows the visible section order with subscriptions after limits', () => {
   const html = fs.readFileSync(path.join(__dirname, '../../src/electron/renderer/index.html'), 'utf8');
   const visibleOrder = [...html.matchAll(/data-settings-section="([^"]+)"/g)].map(match => match[1]);
   const sectionIds = vm.runInNewContext(app.match(/const SETTINGS_SECTION_IDS = (\[[^;]+\]);/)[1]);
   assert.deepEqual(Array.from(sectionIds), visibleOrder);
-  const { api } = scrollAnchorHarness({ sectionIds, settingsSections: { sync: true } });
-  assert.equal(api.shouldAnchorSettingsScroll('plugins', true), true);
-  const reverse = scrollAnchorHarness({ sectionIds, settingsSections: { plugins: true } });
-  assert.equal(reverse.api.shouldAnchorSettingsScroll('sync', true), false);
+  const { api } = scrollAnchorHarness({ sectionIds, settingsSections: { limits: true } });
+  assert.equal(api.shouldAnchorSettingsScroll('subscriptions', true), true);
+  const reverse = scrollAnchorHarness({ sectionIds, settingsSections: { subscriptions: true } });
+  assert.equal(reverse.api.shouldAnchorSettingsScroll('limits', true), false);
 });

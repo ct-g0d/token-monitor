@@ -12,12 +12,14 @@ const {
   accountEmailLabel,
   accountTitleLabel,
   codexAccountDisplayLabel,
-  maskEmailAddress
+  maskEmailAddress,
+  redactedPlaceholder
 } = require('../../src/electron/renderer/accountIdentity');
 const limitWindowLabels = require('../../src/shared/limits/windowLabels');
 
 const TITLE_FUNCTIONS = [
   'limitAccountTitle',
+  'limitAccountEmail',
   'limitAccountEmailsMasked',
   'limitAccountDefaultTitle',
   'codexAccountTitle',
@@ -121,6 +123,31 @@ test('account email masking is applied by the shared limits title resolver', () 
   );
 });
 
+test('a compact row reads the account address, masked when the setting asks', () => {
+  const view = readRendererFile('limits/windowsView.js');
+  const expression = "limitAccountEmail({ provider: 'codex', accountEmail: 'work@example.com' }, [])";
+
+  assert.equal(runTitle(view, expression, titleContext(false)), 'work@example.com');
+  assert.equal(runTitle(view, expression, titleContext(true)), 'w***k@example.com');
+  // Nothing to print for an account that has no address.
+  assert.equal(runTitle(view, "limitAccountEmail({ provider: 'opencode' }, [])", titleContext(false)), '');
+});
+
+test('the hidden form of an address keeps its shape but not its letters', () => {
+  const value = 'work@example.com';
+  const redacted = redactedPlaceholder(value);
+
+  assert.equal(redacted, 'utfx@wygfu8d.92f');
+  assert.equal(redacted.length, value.length);
+  assert.equal(redactedPlaceholder(value), redacted, 'stable for the same address');
+  assert.notEqual(redactedPlaceholder('alex@example.com'), redacted, 'one address per stand-in');
+  for (let index = 0; index < value.length; index += 1) {
+    if ('@.-_'.includes(value[index])) assert.equal(redacted[index], value[index]);
+    else assert.notEqual(redacted[index], value[index]);
+  }
+  assert.equal(redactedPlaceholder(''), '');
+});
+
 // The Home cards used to keep their own provider branches and leaked raw Claude
 // addresses while the limits panel masked them. Every provider now resolves
 // through one table, and a provider that is missing from it must still mask.
@@ -160,8 +187,6 @@ test('title resolution matches between the limits panel and Home', () => {
   assert.match(app, /limitAccountTitle\(id, provider, index, providerEntries\)/);
   const detail = balancedBlock(dock, 'function providerCard(');
   assert.equal(detail.match(/limitAccountTitle/g), null, 'the detail card titles accounts through the view');
-  assert.match(dock, /limitAccountTitle: \(\.\.\.args\) => limitWindowsView\.limitAccountTitle\(\.\.\.args\)/, 'the notch uses the shared account title resolver');
-  assert.match(readRendererFile('notch/panel.js'), /limitAccountTitle\(entry\.provider, record, records\.indexOf\(record\), records\)/);
   for (const name of ['codexAccountTitle', 'opencodeAccountTitle', 'namedApiAccountTitle', 'volcenginePlanAccountTitle']) {
     assert.doesNotMatch(app, new RegExp(`${name}\\(provider, index`), `${name} should not be called from the page`);
   }

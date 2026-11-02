@@ -1,7 +1,5 @@
 'use strict';
 
-const { isHomeToken } = require('../shared/plugins/placements');
-
 const FLOATING_BUBBLE_HANDLE_WIDTH = 18;
 const FLOATING_BUBBLE_HANDLE_HEIGHT = 34;
 const FLOATING_BUBBLE_MARGIN = 8;
@@ -44,7 +42,7 @@ function floatingBubbleWindowChrome(platform = process.platform, collapsed = fal
 
 function normalizedInitialRendererValue(value, allowed, fallback) {
   const raw = String(value || '').trim();
-  return allowed.has(raw) || (allowed === INITIAL_RENDERER_BREAKDOWNS && isHomeToken(raw)) ? raw : fallback;
+  return allowed.has(raw) ? raw : fallback;
 }
 
 function normalizeInitialRendererViewState(value = {}, fallback = {}) {

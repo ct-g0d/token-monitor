@@ -14,7 +14,10 @@
     system: SYSTEM_UI_FONT,
     mono: DEFAULT_INTERFACE_FONT
   });
-  const TEXT_SIZE_SCALES = Object.freeze({ standard: 1, larger: 1.1, largest: 1.2 });
+  // Bigger than the first cut: the widget is a glance surface read at arm's
+  // length, and the old standard sat at the browser's 11px. Every preset moves up
+  // together so Standard/Larger/Largest keep their steps.
+  const TEXT_SIZE_SCALES = Object.freeze({ standard: 1.15, larger: 1.3, largest: 1.45 });
 
   function normalizeTextSize(value) {
     return typeof value === 'string' && Object.hasOwn(TEXT_SIZE_SCALES, value) ? value : 'standard';

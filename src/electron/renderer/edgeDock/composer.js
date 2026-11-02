@@ -34,10 +34,10 @@
     // Selection and the open add menu live here rather than in the DOM, because
     // every settings save repaints the whole form.
     const ui = { selected: '', menuOpen: false };
-    const limitsOnly = itemsKey === 'notchItems';
+    const limitsOnly = false;
     const refreshItem = { type: 'action', action: 'refresh' };
     const idFor = (item) => item.type === 'action' ? 'action:refresh' : itemsApi.itemId(item);
-    const refreshKey = itemsKey === 'notchItems' ? 'notchRefreshEnabled' : 'edgeDockRefreshEnabled';
+    const refreshKey = 'edgeDockRefreshEnabled';
     const refreshEnabled = () => getSettings()?.[refreshKey] === true;
     let drag = null;
     let renderedSignature = '';
@@ -301,7 +301,7 @@
       const item = items.find((entry) => idFor(entry) === ui.selected);
       if (!item) {
         pane.append(el('p', 'edge-dock-composer-hint', t(isAutomatic()
-          ? limitsOnly ? 'settings.notch.limitsHint' : 'settings.edgeDock.automaticHint'
+          ? 'settings.edgeDock.automaticHint'
           : (items.length ? 'settings.edgeDock.selectHint' : 'settings.edgeDock.emptyHint'))));
         return pane;
       }
@@ -323,7 +323,7 @@
         return pane;
       }
       if (item.type === 'action') {
-        pane.append(el('p', 'edge-dock-composer-hint', t(itemsKey === 'notchItems' ? 'settings.notch.refreshNote' : 'settings.edgeDock.refreshNote')));
+        pane.append(el('p', 'edge-dock-composer-hint', t('settings.edgeDock.refreshNote')));
         return pane;
       }
       if (item.type === 'stat') {
@@ -365,7 +365,7 @@
       }));
       if (!limitsOnly) pane.append(windowRow(item, id));
       if (item.provider === 'codex') {
-        pane.append(choiceRow(limitsOnly ? 'settings.notch.accountTitle' : 'settings.edgeDock.limitValue', item.accountMode === 'lowest' ? 'lowest' : 'active', [
+        pane.append(choiceRow('settings.edgeDock.limitValue', item.accountMode === 'lowest' ? 'lowest' : 'active', [
           { value: 'active', labelKey: 'trayComposer.account.active' },
           { value: 'lowest', labelKey: 'trayComposer.account.lowest' }
         ], (accountMode) => {
@@ -432,7 +432,7 @@
       if (root.contains(document.activeElement) && document.activeElement?.tagName === 'SELECT') return;
 
       const heading = el('div', 'edge-dock-composer-heading');
-      heading.append(el('span', '', t(limitsOnly ? 'notch.tab.limits' : 'settings.edgeDock.items')));
+      heading.append(el('span', '', t('settings.edgeDock.items')));
       const actions = el('span', 'edge-dock-composer-heading-actions');
       actions.append(el('span', 'edge-dock-composer-heading-hint', t('settings.edgeDock.itemsHint')));
       if (!isAutomatic() || refreshEnabled()) {

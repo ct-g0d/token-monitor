@@ -49,7 +49,7 @@
   const THEME_PRESETS = [
     { id: 'default', colors: { ...DEFAULT_THEME } },
     { id: 'obsidian', colors: { accent: '#e6e8ec', chart: DEFAULT_THEME.chart, bg: '#0b0c0e', text: '#eceef2', muted: '#8f949c' } },
-    { id: 'porcelain', colors: { accent: '#2563eb', chart: DEFAULT_THEME.chart, bg: '#f6f7f9', text: '#1c1f26', muted: '#5b626d' } }
+    { id: 'porcelain', colors: { accent: '#2563eb', chart: DEFAULT_THEME.chart, bg: '#d8d9e3', text: '#1c1f26', muted: '#5b626d' } }
   ];
 
   // Surface RGBs used when the background is light, so overlays/borders read as

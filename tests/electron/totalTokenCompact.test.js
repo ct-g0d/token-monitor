@@ -91,7 +91,6 @@ test('compact total is an opt-in appearance preference', () => {
   assert.match(main, /compactTokenUnits:\s*normalizeCompactTokenUnits\(patch\.compactTokenUnits \?\? settings\.compactTokenUnits\)/);
   assert.match(main, /require\('\.\.\/shared\/compactTokens'\)/);
   assert.match(main, /function compactTokenDisplayOptions\(\)[\s\S]*?locale: trayMenuLocale\(\)/);
-  assert.match(main, /function updateDiscordRpcDisplay\(stats\)[\s\S]*?compactTokenDisplayOptions\(\)/);
   assert.match(main, /function settingsForRenderer\(\)[\s\S]*?locale: trayMenuLocale\(\)/);
   assert.match(app, /showCompactTotalTokensInput: document\.getElementById\('showCompactTotalTokensInput'\)/);
   assert.match(app, /compactTokenUnitsInput: document\.getElementById\('compactTokenUnitsInput'\)/);

@@ -155,8 +155,10 @@
         return {
           key: account.key || String(index),
           providerId: account.providerId || '',
+          providerLabel: account.providerLabel || '',
           iconId: account.iconId || '',
           name: account.name || '',
+          email: account.email || '',
           plan: account.plan || '',
           color: account.color || '',
           lowestRemaining: Math.min(...compactWindows.map((window) => window.remainingPercent ?? 100)),
@@ -257,6 +259,7 @@
     sort = 'remaining',
     accountName,
     accountPlan,
+    accountEmail,
     accountColor,
     accountIcon,
     isWindowHidden = null
@@ -273,7 +276,11 @@
         accounts.push({
           key: `${id}:${index}`,
           providerId: id,
+          providerLabel: label,
           name: typeof accountName === 'function' ? accountName(provider, index, providerEntries) : label,
+          // The address the row shows next to the provider name, already masked
+          // when the display setting asks for it. Empty for accounts with none.
+          email: typeof accountEmail === 'function' ? accountEmail(provider, index, providerEntries) : '',
           plan: typeof accountPlan === 'function' ? accountPlan(provider, index, providerEntries) : '',
           color: typeof accountColor === 'function'
             ? accountColor(provider, id, colors[id] || colors.default || '')

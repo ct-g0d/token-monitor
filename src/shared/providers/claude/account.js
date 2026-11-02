@@ -38,15 +38,20 @@ module.exports = {
     sourceKey: 'claudeWebCookieSource',
     pendingKey: 'claudePendingCheckSince'
   },
-  accountStatus({ settings, env, limits }) {
+  discover: (env, limits) => limits.discoverClaudeAutomaticCredential(env),
+  accountStatus({ settings, env, limits, discovered }) {
     const stored = Boolean(settings?.claudeWebCookie);
-    const external = Boolean(limits.claudeWebCookie(env));
-    const managed = limits.normalizeClaudeManagedAccounts(settings?.claudeManagedAccounts).length > 0;
+    const external = Boolean(limits?.claudeWebCookie ? limits.claudeWebCookie(env) : env?.CLAUDE_WEB_COOKIE);
+    const managed = limits?.normalizeClaudeManagedAccounts ? limits.normalizeClaudeManagedAccounts(settings?.claudeManagedAccounts).length > 0 : Boolean(settings?.claudeManagedAccounts?.length);
+    const autoDetected = Boolean(discovered?.source);
     return {
-      claudeWebCookieConfigured: stored || external || managed,
-      claudeWebCookieSource: stored || managed ? 'settings' : external ? 'env' : '',
+      claudeWebCookieConfigured: stored || external || managed || autoDetected,
+      claudeWebCookieSource: stored || managed ? 'settings' : external ? 'env' : (discovered?.source || ''),
       claudeWebLegacyCookieConfigured: stored || external,
-      claudeWebLegacyCookieSource: stored ? 'settings' : external ? 'env' : ''
+      claudeWebLegacyCookieSource: stored ? 'settings' : external ? 'env' : '',
+      claudeAutoDetected: autoDetected,
+      claudeDiscoveredSource: discovered?.source || '',
+      claudeDiscoveredAccountLabel: discovered?.accountLabel || ''
     };
   },
   form: {

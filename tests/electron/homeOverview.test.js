@@ -364,6 +364,24 @@ test('homeLimitAccountsForProviders includes Grok billing and DeepSeek balance r
   ]);
 });
 
+test('homeLimitAccountsForProviders carries the provider name and the account address', () => {
+  const rows = homeLimitAccountsForProviders({
+    providers: [
+      { provider: 'codex', accountEmail: 'work@example.com', windows: [{ kind: 'session', remainingPercent: 40 }] },
+      { provider: 'opencode', windows: [{ kind: 'weekly', remainingPercent: 70 }] }
+    ],
+    providerOptions: [{ id: 'codex', label: 'Codex' }, { id: 'opencode', label: 'OpenCode' }],
+    enabledProviderIds: ['codex', 'opencode'],
+    accountEmail: (provider) => provider.accountEmail || '',
+    limit: 5
+  });
+
+  assert.deepEqual(rows.map((row) => [row.providerLabel, row.email]), [
+    ['Codex', 'work@example.com'],
+    ['OpenCode', '']
+  ]);
+});
+
 test('homeLimitsAwaitingFirstData is false once every enabled provider has reported', () => {
   const awaiting = homeLimitsAwaitingFirstData({
     providers: [{ provider: 'claude' }, { provider: 'zai' }],

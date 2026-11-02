@@ -12,7 +12,6 @@ const {
 const { homeLimitAccountsForProviders } = require('../../src/electron/renderer/homeOverview');
 const { collectLimitsOnce: collectLimitsOnceRaw } = require('../../src/shared/limits/collector');
 const { aggregateLimits } = require('../../src/shared/limits/core');
-const { buildMacWidgetSnapshot } = require('../../src/shared/macWidgetSnapshot');
 const { formatTrayText } = require('../../src/shared/trayText');
 
 const projectRoot = path.join(__dirname, '..', '..');
@@ -274,13 +273,6 @@ test('offline Hub cache filters local candidates before aggregation so a same-ac
     showLimitUsed: false
   }), '60%');
 
-  const snapshot = buildMacWidgetSnapshot(visibleStats, {
-    now: '2026-08-09T08:03:01.000Z'
-  });
-  const widgetWindows = snapshot.quota
-    .filter((provider) => provider.provider === 'opencode')
-    .flatMap((provider) => provider.windows);
-  assert.deepEqual(widgetWindows.map((window) => window.remainingPercent), [60]);
 });
 
 test('mixed local and Web OpenCode provider removes only local windows and keeps Web status actionable', () => {
@@ -503,10 +495,6 @@ test('Electron routes cached stats through the presentation projection', () => {
   const renderer = fs.readFileSync(path.join(projectRoot, 'src', 'electron', 'renderer', 'app.js'), 'utf8');
 
   assert.match(main, /function electronPresentationStats\(stats\)[\s\S]*projectLimitStatsForDisplay/);
-  assert.match(
-    main,
-    /const visibleStats = electronPresentationStats\(latestStats\);[\s\S]*scheduleMacWidgetSnapshot\(visibleStats, options\.widgetProducerOwner\)/
-  );
   assert.match(main, /function updateTrayDisplay\(\)[\s\S]*formatTrayText\(visibleStats, mode/);
   assert.match(main, /function refreshLimitStatsPresentation\(\)[\s\S]*reason: 'presentation'/);
   assert.match(main, /ipcMain\.handle\('stats:get'[\s\S]*return rendererSnapshots\.stamp\(stats, rendererStats\(electronPresentationStats\(stats\)\)\)/);

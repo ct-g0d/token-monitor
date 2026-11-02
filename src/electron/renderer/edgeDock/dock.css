@@ -16,7 +16,6 @@ html, body.edge-dock {
    edgeDockShapes.js, the same commands that mask the native material on macOS,
    so the tint and the glass behind it share one edge. */
 .edge-dock-root {
-  --edge-dock-card-enter-shift: 3px;
   position: relative;
   width: 100%;
   height: 100%;
@@ -62,6 +61,15 @@ html, body.edge-dock {
   stroke-linecap: round;
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
+}
+/* The rail floats over whatever is on screen, so it needs an edge of its own: a
+   pale rim along the three sides that face the content, bright enough to separate
+   the black slab from a dark page without becoming a drawn box. The line is clipped
+   to the silhouette, so only its inner half paints — half of this width is what the
+   eye gets. The display edge has no segment in the outline path and stays seamless. */
+.edge-dock-root[data-surface="rail"] .edge-dock-shape-line {
+  stroke: rgba(255, 255, 255, 0.55);
+  stroke-width: 3;
 }
 /* Without native material behind it the tint alone carries the surface, so it
    needs enough body to stay legible over whatever is on screen. */
@@ -167,7 +175,8 @@ html.edge-dock-reduced-motion .edge-dock-refresh[data-state="busy"] .edge-dock-r
 /* Hover is carried by the mark itself rather than a selection box: the focused
    ring thickens and glows in its own colour. */
 .edge-dock-cell.is-focused .edge-dock-ring-fill {
-  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--ring-color, var(--accent)) 55%, transparent));
+  filter: drop-shadow(0 0 7px color-mix(in srgb, var(--ring-color, var(--accent)) 90%, transparent));
+  stroke-width: 5;
 }
 
 .edge-dock-ring {
@@ -187,7 +196,9 @@ html.edge-dock-reduced-motion .edge-dock-refresh[data-state="busy"] .edge-dock-r
 }
 .edge-dock-ring-track {
   fill: none;
-  stroke: rgba(var(--overlay-rgb), 0.12);
+  /* The track is all an empty ring has left, so it has to hold as an outline on
+     the black slab rather than fade to nothing. */
+  stroke: rgba(var(--overlay-rgb), 0.22);
   stroke-width: 4;
 }
 .edge-dock-ring-fill {
@@ -195,7 +206,7 @@ html.edge-dock-reduced-motion .edge-dock-refresh[data-state="busy"] .edge-dock-r
   stroke: var(--ring-color, var(--accent));
   stroke-width: 4;
   stroke-linecap: round;
-  transition: stroke-dashoffset 420ms cubic-bezier(0.2, 0.8, 0.2, 1), filter 180ms ease;
+  transition: stroke-dashoffset 420ms cubic-bezier(0.2, 0.8, 0.2, 1), stroke-width 180ms ease, filter 180ms ease;
 }
 .edge-dock-cell[data-status="stale"] .edge-dock-ring-fill,
 .edge-dock-cell[data-status="error"] .edge-dock-ring-fill { opacity: 0.35; }
@@ -394,6 +405,10 @@ html.edge-dock-reduced-motion .edge-dock-refresh[data-state="busy"] .edge-dock-r
 .edge-dock-card {
   position: relative;
   width: 280px;
+  /* A provider with several plans and accounts outgrows the bubble's max height;
+     scrolling keeps the session list and usage tiles reachable instead of cut. */
+  overflow-y: auto;
+  overscroll-behavior: contain;
   box-sizing: border-box;
   padding: 12px 14px 10px;
   display: flex;
@@ -404,6 +419,178 @@ html.edge-dock-reduced-motion .edge-dock-refresh[data-state="busy"] .edge-dock-r
 .edge-dock-root[data-surface="bubble"][data-side="left"] .edge-dock-card { margin-left: 12px; }
 .edge-dock-card > header,
 .edge-dock-card > footer { flex-shrink: 0; }
+
+/* The provider card's three rows: name plus group totals, then one merged bar
+   per quota window with a tag in front and each account's reading inside. */
+.edge-dock-quota {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.edge-dock-quota-block {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.edge-dock-quota-provider {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+.edge-dock-quota-name {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.edge-dock-quota-total {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 0.625rem;
+  font-variant-numeric: tabular-nums;
+}
+.edge-dock-quota-row {
+  display: grid;
+  /* The tag sizes to its own word ("Monthly" is the long one) instead of a fixed
+     column that clipped it into the bar. */
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+.edge-dock-quota-tag {
+  /* A fixed column, not one sized by the word: "5h" and "Monthly" must start
+     their bar at the same place, so the bars line up down the card instead of
+     stepping right whenever a label is longer. */
+  width: 34px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.6875rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.edge-dock-quota-stack {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.edge-dock-quota-bar {
+  display: flex;
+  gap: 4px;
+  height: 22px;
+  min-width: 0;
+}
+.edge-dock-quota-segment {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 11px;
+}
+/* The spent part of a window is hatching rather than a grey block: it reads as
+   "this is gone" without competing with the filled part for attention. */
+.edge-dock-quota-segment::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background-image: repeating-linear-gradient(
+    115deg,
+    rgba(var(--overlay-rgb), 0.17) 0 1.5px,
+    rgba(var(--overlay-rgb), 0.02) 1.5px 5px
+  );
+}
+.edge-dock-quota-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: 11px;
+  transform-origin: left center;
+  transition: transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+/* The pace maker: a thin tick where a steady spend would put the fill today. Fill
+   to its right means the window is being spent slower than its reset allows. */
+.edge-dock-quota-pace {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1.5px;
+  background: rgba(var(--overlay-rgb), 0.9);
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.45);
+  z-index: 2;
+}
+.edge-dock-quota-resets {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.625rem;
+  font-variant-numeric: tabular-nums;
+}
+/* Many accounts: one size down and a tighter gap, so "4h 35m" still fits under a
+   45px segment instead of ellipsizing the minutes away. */
+.edge-dock-quota-resets.is-dense {
+  gap: 2px;
+  font-size: 0.53125rem;
+}
+.edge-dock-quota-resets.is-dense .edge-dock-quota-glyph {
+  width: 7px;
+  height: 7px;
+}
+.edge-dock-quota-reset {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.edge-dock-quota-reset-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.edge-dock-quota-glyph {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+  opacity: 0.85;
+}
+/* Banked resets: one compact pill at the end of a plan's summary line. */
+.edge-dock-quota-tail {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+}
+.edge-dock-quota-banked {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: rgba(var(--overlay-rgb), 0.12);
+  color: var(--text);
+  font-size: 0.625rem;
+  font-variant-numeric: tabular-nums;
+}
+.edge-dock-quota-reading {
+  position: relative;
+  color: var(--text);
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
 
 .edge-dock-card-head {
   display: flex;
@@ -949,11 +1136,14 @@ html.edge-dock-reduced-motion .edge-dock-session-context-fill { transition: none
 .edge-dock-root[data-side="left"] { --edge-dock-rail-shift: -14px; }
 .edge-dock-root.is-revealing { animation: edge-dock-rail-in 150ms cubic-bezier(0.33, 1, 0.68, 1) both; }
 
+/* Pointing at another ring replaces the card's content in a single frame; a fade
+   up from the slab softens that swap. It starts at a visible opacity rather than
+   from nothing — a full dip reads as the card blinking out on every switch. */
 @keyframes edge-dock-card-in {
-  from { opacity: 0; transform: translateY(var(--edge-dock-card-enter-shift)); }
-  to { opacity: 1; transform: none; }
+  from { opacity: 0.35; }
+  to { opacity: 1; }
 }
-.edge-dock-root.is-card-changed .edge-dock-card { animation: edge-dock-card-in 160ms ease-out both; }
+.edge-dock-card.is-card-switching { animation: edge-dock-card-in 200ms ease-out both; }
 
 /* The root is named beside its descendants because the rail's entrance animates
    the root itself, and `*` does not match the element it hangs off — leaving the
@@ -1060,3 +1250,47 @@ html.edge-dock-reduced-motion .edge-dock-session-dot[data-state="running"] .edge
 
 /* Like built-in readouts, rolling glyphs need room for their outgoing ink. */
 .edge-dock-plugin-cell .pv-compact-value[data-token-number-animation="roll"] { overflow: visible; }
+/* The rail is always a black slab, whatever the app theme is. The surface is
+   forced black, and the ink inside it is pinned to the dark-mode values so the
+   masked marks stay visible on it. The ring keeps its own --ring-color, which
+   is what its glow is drawn from. */
+body.edge-dock {
+  --glass: #000;
+  --glass-strong: #000;
+  color-scheme: dark;
+}
+/* readableColor() measures a brand colour against `--glass-rgb` to decide
+   whether it survives as a ring, and it reads that from the document element.
+   applyAppearance() writes the theme's own tint there as an inline property, so
+   this has to outrank it: with a light theme the slab claimed to be light, a
+   near-black brand (OpenCode) kept its colour, and its ring vanished into the
+   black — at a full quota and, having no track of its own, when empty too. */
+:root {
+  --glass-rgb: 0, 0, 0 !important;
+}
+.edge-dock-root {
+  --text: #f2f5f9;
+  --number: #ffffff;
+  --muted: #9aa3b2;
+  --readable-muted: #bcc5d2;
+  /* The ring's unfilled track is drawn from this: on the black slab a dark-theme
+     overlay would be invisible, so it stays a faint light ring. */
+  --overlay-rgb: 255, 255, 255;
+}
+/* Every ring carries a little of its own halo so it reads as lit, but the
+   focused ring has to be unmistakably brighter than that: this used to glow
+   harder than the hover state, so pointing at a ring dimmed it. */
+.edge-dock-ring-fill {
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--ring-color, var(--accent)) 35%, transparent));
+}
+/* The bubble's SVG edge is filled edge-to-edge: a 1px stroke in the fill colour
+   covers the antialiased fringe that made the outline look frayed. */
+.edge-dock-shape,
+.edge-dock-shape-fill {
+  shape-rendering: geometricPrecision;
+}
+.edge-dock-shape-line {
+  shape-rendering: geometricPrecision;
+  stroke-width: 1;
+  stroke: #000;
+}

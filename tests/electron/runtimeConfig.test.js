@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 const test = require('node:test');
 
 const {
@@ -18,6 +19,15 @@ const {
 } = require('../../src/electron/runtimeConfig');
 const { alibabaVariant } = require('../../src/shared/providers/alibaba/limits');
 const { clineApiKey } = require('../../src/shared/providers/cline/limits');
+
+test('legacy iCloud hub mode settings fall back to local', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../../src/electron/main.js'), 'utf8');
+  const body = source.match(/function normalizeHubMode\([^]*?\n\}/)?.[0];
+  assert.ok(body);
+  const normalizeHubMode = vm.runInNewContext(`(${body})`, { HUB_MODE_VALUES: new Set(['local', 'client', 'host']) });
+  assert.equal(normalizeHubMode('icloud', 'local'), 'local');
+  assert.equal(normalizeHubMode('local', 'local'), 'local');
+});
 
 const BASE_USAGE_SETTINGS = Object.freeze({
   clients: 'claude',

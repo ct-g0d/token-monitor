@@ -5,8 +5,7 @@ const crypto = require('node:crypto');
 const os = require('node:os');
 const path = require('node:path');
 const { contentSecurityPolicyForRequest } = require('./contentSecurityPolicy');
-const { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, nativeImage, nativeTheme, net, Notification, powerMonitor, protocol, screen, session, shell, systemPreferences } = require('electron');
-const { autoUpdater } = require('electron-updater');
+const { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, nativeImage, nativeTheme, net, Notification, powerMonitor, screen, session, shell, systemPreferences } = require('electron');
 const { defaultDeviceId, generateHubSecret, lanIpv4Addresses, loadDotEnv, pidFilePath, readJson, sharedDataDir } = require('../shared/config');
 const {
   CredentialStore,
@@ -19,7 +18,6 @@ const {
 } = require('../shared/credentialStore');
 const { installSafeStdout } = require('../shared/safeStdio');
 const { appVersion } = require('../shared/appVersion');
-const { macWidgetRuntimeSupport } = require('../shared/macSystemRequirements');
 const { exportFileSet, exportSignature, EXPORT_FILENAMES } = require('../shared/exporter');
 const { createDefaultTrayLayout, normalizeTrayLayout } = require('../shared/trayLayout');
 const fontSettingsApi = require('../shared/fontSettings');
@@ -146,8 +144,6 @@ const { applyActivityPatch, materializeActivity } = require('../shared/sessionAc
 const { createDeviceRuntime } = require('../shared/usage/deviceRuntime');
 const { externalAgentActive } = require('../shared/usage/agentPid');
 const { createDiagnosticJournal } = require('../shared/diagnosticJournal');
-const { createDiagnosticReportGenerator } = require('./diagnostics');
-const { createDiagnosticSnapshotBuilder, diagnosticStreamDetailCode, selectLocalDeviceRecord } = require('./diagnosticSnapshot');
 const { customPricingPath } = require('../shared/tokscaleConfig');
 const { normalizeSharedSyncValue } = require('../shared/syncContent');
 const { createSyncContentRuntime, normalizeSyncContentState, sameDestination } = require('./syncContentRuntime');
@@ -225,24 +221,6 @@ const {
   normalizeHomeModuleCounts,
   normalizeHomeModuleOrder
 } = require('./renderer/homeModulePreferences');
-const {
-  APP_UPDATE_STARTUP_DELAY_MS,
-  appUpdateInstallSupport,
-  classifyAppUpdateError,
-  checkLatestRelease,
-  deriveAppUpdateAvailability,
-  downloadedAppUpdateMatchesLatest,
-  installFailureErrorKind,
-  latestForCurrentVersion,
-  latestFromUpdaterInfo,
-  mergeLatestReleaseMetadata,
-  providerUpdateCheckAvailability,
-  RELEASES_URL,
-  resolveAppUpdateCheckError,
-  shouldDownloadAutomaticAppUpdate,
-  shouldSkipAppUpdateCheck,
-  updateInstallQuitPolicy
-} = require('../shared/appUpdater');
 const cursorAuth = require('../shared/providers/cursor/auth');
 const cursorProbe = require('../shared/providers/cursor/probe');
 const { stepfunToken } = require('../shared/providers/stepfun/limits');
@@ -289,7 +267,7 @@ async function probeOpenCodeApiKey(apiKey) {
 const openrouterLimits = require('../shared/providers/openrouter/limits');
 const thirdPartyLimits = require('../shared/providers/thirdparty/limits');
 const subscriptionDisplay = require('../shared/subscriptionDisplay');
-const { CURRENCY_CODES, normalizeCurrency, resolveEffectiveRates, configureRates } = require('../shared/currency');
+const { normalizeCurrency, resolveEffectiveRates, configureRates } = require('../shared/currency');
 const { normalizeCompactTokenUnits } = require('../shared/compactTokens');
 const { fetchRates, isCacheStale } = require('../shared/exchangeRates');
 const {
@@ -299,8 +277,7 @@ const {
 } = require('../shared/usage/clientUsageArchive');
 const { sessionUsageArchiveDate } = require('../shared/usage/sessionUsageArchive');
 const {
-  createSessionUsageArchiveStore,
-  sessionUsageArchiveDatabasePath
+  createSessionUsageArchiveStore
 } = require('../shared/usage/sessionUsageArchiveStore');
 const { createUsageTransform, usageTransformSettings } = require('../shared/usage/usageTransform');
 const { createUsageHost, terminateUsageHostSubprocesses, whenUsageHostsIdle } = require('../shared/usage/usageHost');
@@ -327,25 +304,7 @@ const { deviceHistoryRevision, historyPreview, historyRevision } = require('../s
 const { completeHistorySource, resolveCompleteHistory, resolveCompleteHistoryWithDevices } = require('./historySource');
 const { fixedPeriodHistoryMeta } = require('./fixedPeriodHistory');
 const { readSessionDetailForPlatform } = require('../shared/sessionDetailResolver');
-const { startDiscordRpc, stopDiscordRpc, updateDiscordRpc } = require('./discordRpc');
-const {
-  commitMacWidgetSnapshot,
-  discardMacWidgetSnapshot,
-  prepareMacWidgetSnapshotUpdate,
-  resolveMacWidgetSnapshotPath,
-  syncMacWidgetSnapshotDirectory
-} = require('./macWidget/bridge');
-const { createMacWidgetSnapshotController } = require('./macWidget/snapshotController');
-const { macWidgetHistorySourceKey, resolveMacWidgetHistory } = require('./macWidget/history');
-const {
-  macWidgetHistoryCachePath,
-  readMacWidgetHistoryCache,
-  writeMacWidgetHistoryCache
-} = require('./macWidget/historyStore');
-const { createMacWidgetLaunchServicesRecovery } = require('./macWidget/launchServicesRecovery');
 const { projectLimitStatsForDisplay } = require('./limits/statsPresentation');
-const { DEFAULT_WIDGET_KIND, requestMacWidgetReload, resetMacWidgetReloadThrottle } = require('./macWidget/reloader');
-const { WIDGET_DEMAND_MARKER, WIDGET_DEMAND_PROVISIONAL_MARKER, createMacWidgetDemandState } = require('./macWidget/demand');
 const linuxAutostart = require('./linuxAutostart');
 const { codexAccountIdForProvider, localLiveCodexProvider } = require('./renderer/accountIdentity');
 const {
@@ -376,7 +335,6 @@ const {
 } = require('./trayModeSettings');
 const { SERVICE_STATUS_PROVIDERS, createServiceStatusClient } = require('./serviceStatus');
 const { createCodexResetForecastClient } = require('./providers/codex/resetForecast');
-const { createUpdateInstallQuitGuard, observeUpdateInstallHandoff } = require('./updateInstallQuit');
 const { classifyStreamFailure } = require('./syncConnection');
 const {
   attachLocalNativeViews,
@@ -397,11 +355,8 @@ const { withoutSessionTitleStats, withoutSessionTitles } = require('./sessionTit
 const { createSseBlockReader, parseSseBlock } = require('./sseEventReader');
 const { createSyncUploadScheduler, normalizeSyncUploadIntervalMs } = require('./syncUploadScheduler');
 const { createLatestWinsReconciler } = require('./latestWinsReconciler');
-const { createIcloudSyncStore } = require('./icloudSync');
-const { createIcloudSyncRuntime } = require('./icloudSyncRuntime');
 const {
   classifySettingsChange,
-  diagnosticConfigurationFromSettings,
   envelopeFromSettings,
   limitsConfigFromSettings,
   normalizeCursorAccountIds,
@@ -457,11 +412,6 @@ const { applyWindowsChrome } = require('./windowsChrome');
 const { installWindowsNonActivatingInput } = require('./windowsNonActivatingInput');
 const { canUseEdgeDock, createEdgeDockController, edgeDockSupported } = require('./edgeDock/controller');
 const { createWindowsDockBackdrop } = require('./edgeDock/windowsBackdrop');
-const { createNotchController, normalizeNotchStyle, normalizeNotchShape, normalizeNotchHoverAction, normalizeNotchHoverDelay } = require('./notch/controller');
-const { buildNotchData, notchSummaryMode, summaryLayout: notchSummaryLayout } = require('./notch/data');
-const { NOTCH_PANEL_STAT_ITEMS, notchLimitItems, notchPanelItems, notchWeek } = require('./notch/panel');
-const { createNotchHistory } = require('./notch/history');
-const trayLayoutApi = require('../shared/trayLayout');
 const { createFullScreenProbe } = require('./edgeDock/fullScreenProbe');
 const {
   normalizeEdgeDockCustomScale,
@@ -472,24 +422,14 @@ const {
   normalizeEdgeDockSize
 } = require('./edgeDock/geometry');
 const { buildEdgeDockCells } = require('./renderer/edgeDock/presentation');
-const edgeDockPresentationApi = require('./renderer/edgeDock/presentation');
-const { createPluginRuntime, registerPluginScheme, normalizePluginAuthorSkin } = require('./plugins/runtime');
-const { prepareSkinSettings } = require('./plugins/skinSettings');
-const { normalizePluginStates } = require('./plugins/manager');
-const pluginPlacements = require('../shared/plugins/placements');
 // Created after 'ready' by startPluginRuntime(); null in safe paths and tests.
-let pluginRuntime = null;
-const { createWindowVisibilityActions } = require('./plugins/windowVisibility');
-const pluginWindowActions = createWindowVisibilityActions(syncPluginWindowVisibility);
+const pluginWindowActions = { hide: win => { if (win && !win.isDestroyed()) win.hide(); }, minimize: win => { if (win && !win.isDestroyed()) win.minimize(); } };
 const { DERIVED_PERIODS: EDGE_DOCK_DERIVED_PERIODS, normalizeEdgeDockItems } = require('./renderer/edgeDock/items');
 const fixedPeriodRangesApi = require('./renderer/fixedPeriodRanges');
 const { normalizeBackgroundImageOpacity } = require('./renderer/glassRendering');
 const tokenRateApi = require('./renderer/tokenRatePresentation');
 const { toPolygons } = require('./renderer/edgeDock/shapes');
 const { rasterizeMask } = require('./edgeDock/mask');
-const { NOTCH_BLUR_ALPHA, NOTCH_BLUR_RADIUS, NOTCH_BLUR_STRENGTH, notchBlurMask } = require('./notch/blur');
-const { applyProgressiveBlur } = require('./notch/macProgressiveBlur');
-const { monitorMacScrollGesture } = require('./notch/macScrollGesture');
 const { applyVibrancyMask } = require('./edgeDock/macVibrancyMask');
 const { performMacHaptic } = require('./edgeDock/macHaptics');
 const { primaryButtonDown } = require('./edgeDock/pointerButtons');
@@ -542,7 +482,7 @@ const DEFAULT_WINDOW = { width: 340, height: 650 };
 const WINDOW_LIMITS = { minWidth: 240, minHeight: 140, maxWidth: 1200, maxHeight: 1400 };
 const ZOOM_LIMITS = { min: 0.7, max: 1.6, step: 0.1 };
 const TRAY_CONTENT_VALUES = new Set(['tokens', 'cost', 'both', 'tokensAll', 'costAll', 'bothAll', 'limitsAllSessions', 'liveTokenRate', 'bars', 'barsSession', 'barsWeekly', 'barsAllSessions', 'icon', 'custom']);
-const HUB_MODE_VALUES = new Set(['local', 'client', 'host', 'icloud']);
+const HUB_MODE_VALUES = new Set(['local', 'client', 'host']);
 const LANGUAGE_VALUES = new Set(LANGUAGE_OPTIONS.map((option) => option.value));
 const COLLECTION_MODE_VALUES = new Set(['live', 'smart', 'interval']);
 const COLLECTION_INTERVAL_OPTIONS = [5 * 60 * 1000, 15 * 60 * 1000, 30 * 60 * 1000];
@@ -581,7 +521,6 @@ const codexResetForecastClient = createCodexResetForecastClient({
 });
 const STATUS_PAGE_HOSTS = new Set(SERVICE_STATUS_PROVIDERS.map((provider) => new URL(provider.pageUrl).hostname));
 const diagnosticJournal = createDiagnosticJournal();
-const recoverMacWidgetLaunchServicesRegistration = createMacWidgetLaunchServicesRecovery();
 
 app.setName(APP_NAME);
 if (process.platform === 'win32') app.setAppUserModelId('com.javis.tokenmonitor');
@@ -664,25 +603,6 @@ function defaultSettings() {
     floatingBubbleContent: 'icon',
     floatingBubbleCustomLayout: createDefaultTrayLayout(),
     floatingBubbleBounds: null,
-    notchEnabled: false,
-    notchStyle: 'inherit',
-    notchShape: 'auto',
-    notchSummaryMode: 'sessions',
-    notchSummaryEnabled: true,
-    notchCustomLayout: createDefaultTrayLayout(),
-    notchDisplayId: null,
-    notchItems: null,
-    notchRunningIndicatorEnabled: false,
-    notchWarnColors: false,
-    notchHoverAction: 'peek',
-    notchHoverDelay: 0,
-    notchSwipeGestures: true,
-    notchHaptic: true,
-    notchProgressiveBlur: true,
-    notchHideSummaryInFullScreen: true,
-    notchRefreshEnabled: false,
-    notchSize: 'medium',
-    notchCustomScale: 1,
     edgeDockEnabled: false,
     edgeDockRefreshEnabled: false,
     edgeDockRunningIndicatorEnabled: true,
@@ -697,20 +617,8 @@ function defaultSettings() {
     edgeDockOffset: null,
     edgeDockDisplayId: null,
     edgeDockItems: null,
-    pluginsEnabled: true,
-    pluginStates: {},
-    pluginInitialSetup: {},
-    pluginAuthorSkin: null,
-    notchPluginPages: [],
-    notchPageOrder: [],
-    notchBuiltinPages: [...pluginPlacements.NOTCH_BUILTIN_PAGES],
-    pluginMainPages: [],
-    pluginContentSelections: {},
-    pluginContentOrder: {},
     lastViewState: { period: 'today', breakdown: 'home' },
-    discordRpcEnabled: false,
     deviceId: process.env.TOKEN_MONITOR_DEVICE_ID || defaultDeviceId(),
-    icloudWriterId: '',
     lastPostedDeviceId: '',
     clients: clientsCsvForSetting(process.env.TOKEN_MONITOR_CLIENTS),
     codexDotsEnabled: process.env.TOKEN_MONITOR_CODEX_LOCAL_USAGE === '1',
@@ -2188,11 +2096,8 @@ function normalizeTrayContent(value, fallback = 'tokens', allowedValues = TRAY_C
   return allowedValues.has(v) ? v : fallback;
 }
 
-function normalizeHubMode(value, fallback = 'local', platform = process.platform) {
+function normalizeHubMode(value, fallback = 'local') {
   const v = String(value || '').trim();
-  if (v === 'icloud' && platform !== 'darwin') {
-    return fallback === 'icloud' ? 'local' : fallback;
-  }
   return HUB_MODE_VALUES.has(v) ? v : fallback;
 }
 
@@ -2309,7 +2214,6 @@ function sendFloatingBubbleState() {
 }
 
 function syncPluginWindowVisibility(win) {
-  pluginRuntime?.refreshWindowVisibility(win);
   sendMainWindowVisibility(win);
 }
 
@@ -2550,7 +2454,6 @@ function setZoomFactor(value) {
   settings.zoomFactor = next;
   saveSettings();
   applyZoomFactor();
-  if (notchController?.isRunning()) syncNotch(settingsForRenderer());
 }
 
 function adjustZoom(delta) {
@@ -2657,6 +2560,14 @@ function readSettings() {
     const storedCredentials = loadCredentialSettings(saved);
     if (!saved.secret && defaults.secret) delete saved.secret;
     const merged = { ...defaults, ...saved, ...storedCredentials };
+    for (const key of [
+      'notchEnabled', 'notchStyle', 'notchShape', 'notchSummaryMode', 'notchSummaryEnabled',
+      'notchCustomLayout', 'notchDisplayId', 'notchItems', 'notchRunningIndicatorEnabled',
+      'notchWarnColors', 'notchHoverAction', 'notchHoverDelay', 'notchSwipeGestures',
+      'notchHaptic', 'notchProgressiveBlur', 'notchHideSummaryInFullScreen', 'notchRefreshEnabled',
+      'notchSize', 'notchCustomScale', 'notchPluginPages', 'notchPageOrder', 'notchBuiltinPages',
+      'icloudWriterId', 'icloudRetiredDeviceIds'
+    ]) delete merged[key];
     merged.clients = clientsCsvForSetting(merged.clients);
     // A client identity split (see clientIdentitySplits.js) is not a new tool:
     // the user tracking its parent was already counting it, so the split has to
@@ -2820,25 +2731,6 @@ function readSettings() {
     merged.floatingBubbleTrigger = merged.floatingBubbleTrigger === 'hover' ? 'hover' : 'click';
     merged.floatingBubbleContent = normalizeTrayContent(merged.floatingBubbleContent, 'icon');
     merged.floatingBubbleCustomLayout = normalizeTrayLayout(merged.floatingBubbleCustomLayout);
-    merged.notchEnabled = parseBoolean(merged.notchEnabled, false);
-    merged.notchStyle = normalizeNotchStyle(merged.notchStyle);
-    merged.notchShape = normalizeNotchShape(merged.notchShape);
-    merged.notchSize = normalizeEdgeDockSize(merged.notchSize);
-    merged.notchCustomScale = normalizeEdgeDockCustomScale(merged.notchCustomScale);
-    merged.notchItems = normalizeEdgeDockItems(merged.notchItems);
-    merged.notchRunningIndicatorEnabled = parseBoolean(merged.notchRunningIndicatorEnabled, false);
-    merged.notchWarnColors = parseBoolean(merged.notchWarnColors, false);
-    merged.notchHoverAction = normalizeNotchHoverAction(merged.notchHoverAction);
-    merged.notchHoverDelay = normalizeNotchHoverDelay(merged.notchHoverDelay);
-    merged.notchSwipeGestures = parseBoolean(merged.notchSwipeGestures, true);
-    merged.notchHaptic = parseBoolean(merged.notchHaptic, true);
-    merged.notchProgressiveBlur = parseBoolean(merged.notchProgressiveBlur, true);
-    merged.notchHideSummaryInFullScreen = parseBoolean(merged.notchHideSummaryInFullScreen, true);
-    merged.notchRefreshEnabled = parseBoolean(merged.notchRefreshEnabled, false);
-    merged.notchSummaryMode = notchSummaryMode(merged);
-    merged.notchSummaryEnabled = parseBoolean(merged.notchSummaryEnabled, true);
-    merged.notchCustomLayout = normalizeTrayLayout(merged.notchCustomLayout);
-    merged.notchDisplayId = normalizeEdgeDockDisplayId(merged.notchDisplayId);
     merged.edgeDockEnabled = parseBoolean(merged.edgeDockEnabled, false);
     merged.edgeDockRefreshEnabled = parseBoolean(merged.edgeDockRefreshEnabled, false);
     merged.edgeDockRunningIndicatorEnabled = parseBoolean(merged.edgeDockRunningIndicatorEnabled, true);
@@ -2853,17 +2745,6 @@ function readSettings() {
     merged.edgeDockSize = normalizeEdgeDockSize(merged.edgeDockSize);
     merged.edgeDockCustomScale = normalizeEdgeDockCustomScale(merged.edgeDockCustomScale);
     merged.edgeDockItems = normalizeEdgeDockItems(merged.edgeDockItems);
-    merged.pluginsEnabled = parseBoolean(merged.pluginsEnabled, true);
-    merged.pluginStates = normalizePluginStates(merged.pluginStates);
-    merged.pluginInitialSetup = require('./plugins/initialSetup').normalizeInitialSetup(merged.pluginInitialSetup);
-    merged.pluginContentOrder = pluginPlacements.normalizeContentOrder(merged.pluginContentOrder);
-    merged.pluginContentSelections = pluginPlacements.normalizeContentSelections(merged.pluginContentSelections);
-    merged.pluginAuthorSkin = normalizePluginAuthorSkin(merged.pluginAuthorSkin);
-    delete merged.pluginSkinRef;
-    merged.pluginMainPages = pluginPlacements.normalizeRefList(merged.pluginMainPages, 32);
-    merged.notchPageOrder = pluginPlacements.normalizeNotchPageOrder(merged.notchPageOrder);
-    merged.notchBuiltinPages = pluginPlacements.normalizeNotchBuiltinPages(merged.notchBuiltinPages);
-    merged.notchPluginPages = pluginPlacements.normalizeNotchPluginPages(merged.notchPluginPages);
     merged.trayCustomLayout = normalizeTrayLayout(merged.trayCustomLayout);
     merged.showTrayProviderBadge = parseBoolean(merged.showTrayProviderBadge, false);
     merged.windowToggleShortcut = normalizeWindowToggleShortcut(merged.windowToggleShortcut);
@@ -2967,6 +2848,56 @@ function removedTrackedClients(previousClients, nextClients) {
   const previous = trackedClientSet(previousClients);
   const next = trackedClientSet(nextClients);
   return Array.from(previous).filter((client) => !next.has(client));
+}
+
+
+function recordFreshnessMs(record) {
+  const raw = record?.receivedAt || record?.updatedAt;
+  const time = raw ? Date.parse(raw) : NaN;
+  return Number.isFinite(time) ? time : null;
+}
+
+function selectLocalDeviceRecord(options = {}) {
+  const deviceId = String(options.deviceId || '').trim();
+  if (!deviceId) return null;
+  const rawHubRecord = (Array.isArray(options.latestHubStats?.devices) ? options.latestHubStats.devices : [])
+    .find((device) => device?.deviceId === deviceId) || null;
+  const displayHubRecord = (Array.isArray(options.latestStats?.devices) ? options.latestStats.devices : [])
+    .find((device) => device?.deviceId === deviceId) || null;
+  if (options.externalAgentActive === true) return rawHubRecord;
+
+  const candidates = [options.lastCollectedDevice, options.localDevice, displayHubRecord, rawHubRecord]
+    .filter((device) => device?.deviceId === deviceId);
+  let selected = null;
+  let selectedAt = null;
+  for (const candidate of candidates) {
+    const candidateAt = recordFreshnessMs(candidate);
+    if (!selected || (candidateAt !== null && (selectedAt === null || candidateAt > selectedAt))) {
+      selected = candidate;
+      selectedAt = candidateAt;
+    }
+  }
+  return selected;
+}
+
+function diagnosticStreamDetailCode(failure = {}) {
+  const reason = String(failure.reason || '').trim().toLowerCase();
+  if (reason === 'refused') return 'connection-refused';
+  if (reason === 'timeout') return 'timeout';
+  if (reason === 'dns') return 'dns-failed';
+  if (reason === 'unauthorized') return 'unauthorized';
+  if (reason === 'disconnected') return 'eof';
+  if (reason === 'unreachable') return 'unreachable';
+  if (reason === 'server_error') return 'http-error';
+  if (reason === 'network') {
+    const detail = String(failure.detail || '').trim().toUpperCase();
+    if (detail === 'ECONNREFUSED') return 'connection-refused';
+    if (detail === 'ETIMEDOUT') return 'timeout';
+    if (detail === 'ENOTFOUND' || detail === 'EAI_AGAIN') return 'dns-failed';
+    if (detail === 'EHOSTUNREACH' || detail === 'ENETUNREACH') return 'unreachable';
+    if (detail === 'ECONNRESET') return 'connection-reset';
+  }
+  return 'unknown';
 }
 
 function localArchiveSourceDevice() {
@@ -3168,9 +3099,7 @@ function withHistoryPreview(stats, devices) {
 
 let mode = 'idle';
 let deviceRuntimeHandle = null;
-let icloudRuntimeHandle = null;
-let icloudRuntimeEpoch = 0;
-let icloudRuntimeStopPromise = Promise.resolve();
+const icloudRuntimeHandle = null;
 const USAGE_RECONFIGURE_SETTLE_MS = 750;
 const USAGE_RECONFIGURE_RETRY_DELAYS_MS = Object.freeze([1000, 3000, 10_000]);
 const usageRuntimeReconciler = createLatestWinsReconciler({
@@ -3192,7 +3121,7 @@ let streamConnected = false;
 let streamFailure = null;
 let lastCollectedDevice = null;
 let latestHubStats = null;
-let latestHubStatsReceivedAt = null;
+let _latestHubStatsReceivedAt = null;
 let latestHubStatsSource = 'none';
 let latestHubStatsGeneration = null;
 let latestHubStatsIdentity = null;
@@ -3201,10 +3130,6 @@ let tray = null;
 let latestStats = null;
 let statsPushSource = null;
 let statsPushRevision = 0;
-let macWidgetSnapshotController = null;
-let macWidgetDemand = null;
-let macWidgetPublicationReady = false;
-let cachedMacWidgetConfiguration;
 let trayRefreshInFlight = false;
 let codexPresentationActiveAccountId = '';
 let codexPresentationPendingAccountId = '';
@@ -3322,7 +3247,7 @@ function currentHubStatsCache() {
 
 function clearLatestHubStatsCache() {
   latestHubStats = null;
-  latestHubStatsReceivedAt = null;
+  _latestHubStatsReceivedAt = null;
   latestHubStatsSource = 'none';
   latestHubStatsGeneration = null;
   latestHubStatsIdentity = null;
@@ -3330,84 +3255,12 @@ function clearLatestHubStatsCache() {
 
 function setLatestHubStatsCache(stats, source, generation, identity) {
   latestHubStats = stats;
-  latestHubStatsReceivedAt = new Date().toISOString();
+  _latestHubStatsReceivedAt = new Date().toISOString();
   latestHubStatsSource = source;
   latestHubStatsGeneration = generation;
   latestHubStatsIdentity = identity;
 }
 
-const diagnosticSnapshotBuilder = createDiagnosticSnapshotBuilder({
-  getSettings: () => settings,
-  getMode: () => mode,
-  getEffectiveHubConfig: effectiveHubConfig,
-  getExternalAgentActive: isExternalAgentActive,
-  getDeviceRuntime: () => deviceRuntimeHandle,
-  getEmbeddedHub: () => embeddedHub,
-  getIcloudSync: () => icloudRuntimeHandle?.getStatus?.() || null,
-  getStreamState: () => ({ connected: streamConnected, failure: streamFailure }),
-  getLatestHubStats: () => latestHubStats,
-  getLatestHubStatsReceivedAt: () => latestHubStatsReceivedAt,
-  getLatestHubStatsSource: () => latestHubStatsSource,
-  getLatestHubStatsGeneration: () => latestHubStatsGeneration,
-  getLatestHubStatsIdentity: () => latestHubStatsIdentity,
-  getHubModeGeneration: () => hubModeGeneration,
-  getCurrentHubStatsIdentity: (hubMode) => currentHubStatsIdentity(hubMode),
-  getLocalRecord: localArchiveSourceDevice,
-  getTokscaleStatus,
-  getConfiguration: () => diagnosticConfigurationFromSettings(settings || {}, {
-    usage: {
-      agentVersion: appVersion(),
-      agentRuntime: 'electron-widget',
-      commandTimeoutMs: 120 * 1000,
-      defaultDeviceId: defaultDeviceId(),
-      intervalMs: collectorIntervalMs(),
-      historyIntervalMs: normalizeHistoryIntervalMs(settings?.historyIntervalMs)
-    },
-    limits: {
-      env: process.env,
-      defaultLimitProviders: defaultLimitProviders()
-    },
-    syncUploadIntervalMs: syncUploadIntervalMs()
-  }),
-  getJournalSnapshot: () => diagnosticJournal.getSnapshot(),
-  getArchiveState: () => {
-    const enabled = settings?.sessionUsageArchiveEnabled !== false;
-    const { loaded, sessionCount, lastUpdate } = latestUsageHost?.getArchiveState?.() || usageTransform.getState();
-    return {
-      enabled,
-      loaded,
-      sessionCount,
-      countSource: loaded ? 'loaded-memory' : enabled ? 'not-loaded' : 'not-enabled',
-      lastUpdate
-    };
-  },
-  getAppVersion: appVersion,
-  getDefaultDeviceId: defaultDeviceId,
-  canRefreshUsageRuntime,
-  getAppState: () => ({
-    packaged: app.isPackaged,
-    preferredLanguages: typeof app.getPreferredSystemLanguages === 'function'
-      ? app.getPreferredSystemLanguages()
-      : [app.getLocale?.() || 'en'],
-    locale: app.getLocale?.() || 'en'
-  })
-});
-
-const diagnosticReportGenerator = createDiagnosticReportGenerator({
-  getAppMetrics: () => app.getAppMetrics(),
-  getSystemMemory: () => ({ total: os.totalmem(), free: os.freemem() }),
-  privateMemorySupported: process.platform === 'win32',
-  getSnapshot: ({ generatedAt }) => diagnosticSnapshotBuilder.build(generatedAt),
-  getArchiveFileStat: async () => {
-    if (settings?.sessionUsageArchiveEnabled === false) return { ok: false, code: 'archive-not-enabled' };
-    try {
-      const stat = await fs.promises.stat(sessionUsageArchiveDatabasePath());
-      return { ok: true, stat };
-    } catch (error) {
-      return { ok: false, code: error?.code === 'ENOENT' ? 'archive-not-present' : 'archive-stat-failed' };
-    }
-  }
-});
 
 function limitInvalidationKey(scope) {
   const provider = String(scope?.provider || '').trim().toLowerCase();
@@ -3872,7 +3725,7 @@ function cacheSharedSubscriptions(doc, hub) {
   }
   // Cache ownership commits in memory even when disk persistence fails. Only
   // the currently selected backend may invalidate its captured business data.
-  if (hub === currentHubIdentity()) pluginRuntime?.refreshBusinessData();
+  
   return changed;
 }
 
@@ -4355,7 +4208,7 @@ async function saveSubscriptions(list, base) {
       error.code = 'write_failed';
       throw error;
     }
-    pluginRuntime?.refreshBusinessData();
+    
     return settingsForRenderer();
   }
   // The hub is checked at all — rather than left to the version — because a
@@ -4394,195 +4247,6 @@ function stopSyncCollector(options = {}) {
   deviceRuntimeHandle = null;
 }
 
-async function stopIcloudRuntime() {
-  // The hub-mode generation changes for mode switches, but a sink-only restart
-  // (for example, changing the upload cadence) keeps that generation. This
-  // separate epoch fences callbacks from the replaced filesystem runtime too.
-  icloudRuntimeEpoch += 1;
-  const oldRuntime = icloudRuntimeHandle;
-  icloudRuntimeHandle = null;
-  if (!oldRuntime) return icloudRuntimeStopPromise;
-  icloudRuntimeStopPromise = icloudRuntimeStopPromise.then(async () => {
-    try {
-      await oldRuntime.stop();
-    } catch (error) {
-      // A failed watcher close or store cleanup must not prevent the next mode
-      // from starting. The runtime has fenced its callbacks; keep the error
-      // visible and let the replacement proceed.
-      console.log(`[icloud] runtime teardown failed: ${error?.message || error}`);
-    }
-  });
-  return icloudRuntimeStopPromise;
-}
-
-function retainIcloudDeviceIdentity(previous, next) {
-  const retired = new Set(previous.icloudRetiredDeviceIds || []);
-  if (previous.hubMode === 'icloud'
-    && (previous.deviceId !== next.deviceId || next.hubMode !== 'icloud')) {
-    retired.add(previous.deviceId);
-  }
-  next.icloudRetiredDeviceIds = [...retired].filter(Boolean);
-}
-
-// iCloud mode keeps the normal Electron collector and limits runtime, but its
-// sink is a local, atomic file write rather than an HTTP upload.  The runtime
-// below owns reconciliation and aggregation, so a temporarily absent iCloud
-// Drive never turns a last-good multi-device snapshot into zeroes.
-async function startIcloudCollector() {
-  await stopIcloudRuntime();
-  stopSyncCollector();
-  if (process.platform !== 'darwin') return;
-  const generation = hubModeGeneration;
-  const runtimeEpoch = ++icloudRuntimeEpoch;
-  const icloudRequestIsCurrent = () => hubModeRequestIsCurrent(
-    generation,
-    'icloud',
-    currentHubStatsIdentity('icloud')
-  ) && runtimeEpoch === icloudRuntimeEpoch;
-  const widgetProducerOwner = captureMacWidgetProducerOwner();
-  let lastIcloudStatusState = '';
-  // The writer owns subscription and deletion snapshots across Device ID edits.
-  // Persist its identity before publishing anything under it.
-  if (!settings.icloudWriterId) {
-    settings.icloudWriterId = settings.deviceId;
-    if (!saveSettings()) throw new Error('Could not persist iCloud writer identity');
-  }
-  const store = createIcloudSyncStore({
-    platform: process.platform,
-    home: app.getPath('home'),
-    deviceId: settings.deviceId,
-    writerId: settings.icloudWriterId,
-    revisionLedgerPath: path.join(app.getPath('userData'), 'icloud-revisions.json'),
-    staleAfterMs: 10 * 60 * 1000
-  });
-  const runtime = createIcloudSyncRuntime({
-    store,
-    deviceId: settings.deviceId,
-    retiredDeviceIds: settings.icloudRetiredDeviceIds || [],
-    historyEnabled: () => settings?.historyEnabled !== false,
-    staleAfterMs: 10 * 60 * 1000,
-    onStats: (stats) => {
-      if (!icloudRequestIsCurrent()) return;
-      const identity = currentHubStatsIdentity('icloud');
-      setLatestHubStatsCache(stats, 'icloud', generation, identity);
-      updateDiscordRpcDisplay(stats);
-      sendPush({ event: 'stats', data: { type: 'stats', reason: 'local', stats, at: new Date().toISOString() } }, { widgetProducerOwner });
-    },
-    onStatus: (status) => {
-      if (!icloudRequestIsCurrent()) return;
-      const connected = status.state === 'available';
-      sendStatus(connected, {
-        provider: 'icloud',
-        reason: status.reason || (connected ? 'icloud-ready' : 'icloud-waiting'),
-        icloud: status
-      });
-      const stateChanged = status.state !== lastIcloudStatusState;
-      lastIcloudStatusState = status.state;
-      if (connected && stateChanged && status.lastSuccessfulReconciliation && !subscriptionsDocumentFor('icloud')) {
-        void reconcileSharedSubscriptions();
-      }
-      sendHubPush({ type: 'icloud', info: getHubInfo() });
-    },
-    onSubscriptions: (document) => {
-      if (!icloudRequestIsCurrent()) return;
-      // On the first switch from Local, settings.subscriptions is still this
-      // device's owned list. The runtime may finish its initial discovery before
-      // the mode queue reaches reconcileSharedSubscriptions(seedFromLocal), so
-      // do not let that callback turn a remote winner (or an authoritative empty
-      // directory) into a cache and erase the list before the adoption decision.
-      // Once the reconcile has cached the iCloud document, later callbacks are
-      // ordinary cross-device updates and must be applied normally.
-      const localOwnedSubscriptions = !settings.subscriptionsCacheHub
-        && Array.isArray(settings.subscriptions)
-        && settings.subscriptions.length > 0
-        && !subscriptionsDocumentFor('icloud');
-      if (localOwnedSubscriptions) return;
-      if (!document) {
-        const changed = cacheSharedSubscriptions({
-          version: 1,
-          updatedAt: '',
-          subscriptions: [],
-          revisionToken: ''
-        }, 'icloud');
-        if (changed) pushSettingsToRenderer();
-        return;
-      }
-      const changed = cacheSharedSubscriptions({
-        version: 1,
-        updatedAt: document.updatedAt || '',
-        subscriptions: document.subscriptions || [],
-        revisionToken: document.revisionToken || ''
-      }, 'icloud');
-      if (changed) pushSettingsToRenderer();
-    },
-    onError: ({ category }) => {
-      if (icloudRequestIsCurrent()) {
-        recordDiagnosticEvent({ subsystem: 'icloud', code: category || 'icloud-sync-error' });
-      }
-    }
-  });
-  icloudRuntimeHandle = runtime;
-  let createdDeviceRuntime = null;
-  try {
-    mode = 'sync';
-    sendStatus(false, { provider: 'icloud', reason: 'icloud-initializing', icloud: runtime.getStatus() });
-    await runtime.start();
-    if (!icloudRequestIsCurrent()) {
-      await runtime.stop();
-      if (icloudRuntimeHandle === runtime) icloudRuntimeHandle = null;
-      return;
-    }
-    const sink = {
-      async enqueue(summary) {
-        seedInitialLimitProviders(summary);
-        // The headless agent has no iCloud sink. The widget still publishes
-        // this device's record while the agent owns the local history archive.
-        const visibleSummary = {
-          ...summary,
-          syncUploadIntervalMs: 0
-        };
-        lastCollectedDevice = { ...visibleSummary, receivedAt: new Date().toISOString() };
-        const retiredDeviceIds = settings.icloudRetiredDeviceIds || [];
-        const written = await runtime.writeDevice(visibleSummary, { retiredDeviceIds });
-        if (written && icloudRequestIsCurrent() && settings.deviceId === visibleSummary.deviceId) {
-          settings.icloudRetiredDeviceIds = (settings.icloudRetiredDeviceIds || [])
-            .filter((id) => !retiredDeviceIds.includes(id));
-          if (retiredDeviceIds.length) saveSettings();
-        }
-      },
-      flush: () => runtime.flush(),
-      stop: () => runtime.stop()
-    };
-    const usageOptions = electronUsageConfig('icloud-collector');
-    createdDeviceRuntime = createDeviceRuntime({
-      envelope: electronDeviceEnvelope(),
-      initialLimits: lastCollectedDevice?.limits,
-      limitsOptions: electronLimitsConfig(),
-      transformUsage: usageTransform.transform,
-      usageOptions,
-      sink,
-      onSessionActivity: publishLocalSessionActivity,
-      onDiagnosticEvent: recordDiagnosticEvent,
-      onError: (error, reason) => console.log(`[icloud-collector] ${reason}: ${error.message}`)
-    }, {
-      createUsageRuntime: createElectronUsageRuntime,
-      limitsDeps: electronLimitsDeps()
-    });
-    deviceRuntimeHandle = createdDeviceRuntime;
-    usageRuntimeReconciler.setActiveKey(usageConfigFingerprint(usageOptions));
-    drainPendingRuntimeActions(createdDeviceRuntime);
-  } catch (error) {
-    if (icloudRuntimeHandle === runtime) {
-      if (createdDeviceRuntime && deviceRuntimeHandle === createdDeviceRuntime) stopSyncCollector();
-      icloudRuntimeHandle = null;
-    }
-    try { await runtime.stop(); } catch (stopError) {
-      console.log(`[icloud] failed-start teardown failed: ${stopError?.message || stopError}`);
-    }
-    throw error;
-  }
-}
-
 // Well inside the 3–5 s update promise: a watch tick already waits out its own
 // debounce and scan before it gets here.
 const SYNC_STATS_PUBLISH_WINDOW_MS = 1000;
@@ -4598,18 +4262,16 @@ function requestSyncDisplayStats(request) {
   syncStatsPublication.request(request);
 }
 
-function publishSyncDisplayStats({ reason, at, generation, widgetProducerOwner }) {
+function publishSyncDisplayStats({ reason, at, generation }) {
   if (!hubModeRequestIsCurrent(generation, 'client')) return;
   const displayStats = composeLocalSyncSummary(latestHubStats, lastCollectedDevice);
   if (!displayStats) return;
-  updateDiscordRpcDisplay(displayStats);
-  sendPush({ event: 'stats', data: { type: 'stats', reason, stats: displayStats, at } }, { widgetProducerOwner });
+    sendPush({ event: 'stats', data: { type: 'stats', reason, stats: displayStats, at } }, {});
 }
 
 function startSyncCollector() {
   stopSyncCollector();
   if (!effectiveHubConfig().url) return;
-  const widgetProducerOwner = captureMacWidgetProducerOwner();
   const syncUploadScheduler = createSyncUploadScheduler({
     intervalMs: syncUploadIntervalMs(),
     upload: postToHub,
@@ -4627,8 +4289,7 @@ function startSyncCollector() {
       requestSyncDisplayStats({
         reason: 'local',
         at: new Date().toISOString(),
-        generation: hubModeGeneration,
-        widgetProducerOwner
+        generation: hubModeGeneration
       });
       await syncUploadScheduler.enqueue(visibleSummary, revision);
     },
@@ -4721,7 +4382,6 @@ function startHostStats() {
   stopHostStats();
   if (!embeddedHub) return;
   const generation = hubModeGeneration;
-  const widgetProducerOwner = captureMacWidgetProducerOwner();
   const cacheIdentity = currentHubStatsIdentity('host');
   // Host mode presents the same multi-device hub aggregate as connecting to a
   // remote hub, so it reuses the renderer's 'sync' status path (Live / synced
@@ -4731,8 +4391,7 @@ function startHostStats() {
   const emit = (stats, reason = 'hub') => {
     if (!hubModeRequestIsCurrent(generation, 'host', cacheIdentity)) return;
     setLatestHubStatsCache(stats, 'host', generation, cacheIdentity);
-    updateDiscordRpcDisplay(stats);
-    sendPush({ event: 'stats', data: { type: 'stats', reason, stats, at: new Date().toISOString() } }, { widgetProducerOwner });
+        sendPush({ event: 'stats', data: { type: 'stats', reason, stats, at: new Date().toISOString() } }, {});
   };
   embeddedHubUnsub = embeddedHub.hub.onStats((stats, reason) => emit(stats, reason || 'hub'));
   // Prime the renderer with the current snapshot so it isn't blank until the
@@ -4766,52 +4425,6 @@ function injectLocalDeviceStatus(stats) {
   return stats;
 }
 
-function macWidgetConfiguration() {
-  if (!macWidgetRuntimeSupported()) return null;
-  if (cachedMacWidgetConfiguration !== undefined) return cachedMacWidgetConfiguration;
-
-  let appGroup = String(process.env.TOKEN_MONITOR_APP_GROUP || '').trim();
-  let snapshotFileName = 'snapshot.json';
-  let widgetKind = DEFAULT_WIDGET_KIND;
-  const configCandidates = [
-    path.join(process.resourcesPath, 'token-monitor-widget.json'),
-    path.resolve(__dirname, '..', '..', 'build', 'macos-widget', 'widget-config.json')
-  ];
-  if (!appGroup) {
-    for (const configPath of configCandidates) {
-      try {
-        const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-        appGroup = String(config.appGroup || '').trim();
-        widgetKind = String(config.widgetKind || widgetKind).trim();
-        snapshotFileName = String(config.snapshotFileName || snapshotFileName).trim();
-        if (appGroup) break;
-      } catch (_) {}
-    }
-  }
-  const snapshotPath = resolveMacWidgetSnapshotPath({
-    appGroup,
-    snapshotFileName,
-    logger: (message) => console.warn(message)
-  });
-  if (!snapshotPath) {
-    cachedMacWidgetConfiguration = null;
-    return cachedMacWidgetConfiguration;
-  }
-  cachedMacWidgetConfiguration = {
-    appGroup,
-    snapshotPath,
-    widgetKind
-  };
-  return cachedMacWidgetConfiguration;
-}
-
-function macWidgetRuntimeSupported(
-  platform = process.platform,
-  osRelease = platform === 'darwin' ? os.release() : ''
-) {
-  return macWidgetRuntimeSupport({ platform, osRelease }).supported;
-}
-
 function historyResolverOptions() {
   const { url: hubUrl, secret } = effectiveHubConfig();
   return {
@@ -4820,10 +4433,6 @@ function historyResolverOptions() {
     historyEnabled: settings?.historyEnabled !== false,
     hubMode: settings?.hubMode,
     hubUrl,
-    icloudSync: settings?.hubMode === 'icloud' ? icloudRuntimeHandle : null,
-    // In sync/host mode the headless agent owns this machine's producer while its
-    // PID is live. Do not let the widget's last pre-handoff snapshot compete with
-    // the newer Hub record; local mode always owns its collector by contract.
     localDevice: ownsUsageRuntime() ? (lastCollectedDevice || localDevice) : null,
     mode,
     secret
@@ -4832,161 +4441,6 @@ function historyResolverOptions() {
 
 function getCompleteHistory() {
   return resolveCompleteHistory(historyResolverOptions());
-}
-
-function macWidgetPresentation() {
-  return Object.freeze({
-    currencyCode: settings?.currency,
-    currencyRate: effectiveRates?.[normalizeCurrency(settings?.currency)] || 1,
-    compactNumbers: settings?.showCompactTotalTokens !== false,
-    compactTokenUnits: settings?.compactTokenUnits,
-    showCost: true,
-    locale: settings?.language,
-    theme: Object.keys(settings?.themeColors || {}).length ? 'custom' : 'system'
-  });
-}
-
-function macWidgetActiveCodexAccount() {
-  const provider = localLiveCodexProvider(latestStats, settings?.deviceId || '');
-  if (!provider) return null;
-  return Object.freeze({
-    accountKey: String(provider.accountKey || '').trim(),
-    accountEmail: String(provider.accountEmail || '').trim()
-  });
-}
-
-function ensureMacWidgetDemand() {
-  if (process.platform !== 'darwin') return null;
-  if (macWidgetDemand) return macWidgetDemand;
-  const widget = macWidgetConfiguration();
-  if (!widget) return null;
-  // The demand leases live beside the snapshot in the app group container. The
-  // widget extension touches the full marker on every timeline() request and
-  // the short provisional marker on a non-gallery snapshot() (the add flow),
-  // so a fresh marker here means "a Widget is on screen or being placed". The
-  // watcher arms immediately so a first placement primes the initial snapshot
-  // within moments; the reconcile poll catches anything the watcher missed.
-  const markerDirectory = path.dirname(widget.snapshotPath);
-  macWidgetDemand = createMacWidgetDemandState({
-    markerPath: path.join(markerDirectory, WIDGET_DEMAND_MARKER),
-    provisionalMarkerPath: path.join(markerDirectory, WIDGET_DEMAND_PROVISIONAL_MARKER),
-    onActivation: () => {
-      const visibleStats = electronPresentationStats(latestStats);
-      scheduleMacWidgetSnapshot(visibleStats, captureMacWidgetProducerOwner());
-    },
-    logger: (message) => console.warn(message)
-  });
-  macWidgetDemand.start();
-  return macWidgetDemand;
-}
-
-function captureMacWidgetWork({ stats, owner }) {
-  const widget = macWidgetConfiguration();
-  if (!widget) return null;
-  // No Widget on screen means no WidgetKit render loop is asking for data, so
-  // the whole snapshot pipeline (history resolution, serialization, fsync and
-  // the reload helper spawn) can be skipped. Only a confirmed missing or stale
-  // demand marker closes this gate; an unarmed state must not starve someone
-  // who does have a Widget.
-  if (macWidgetDemand && !macWidgetDemand.isInstalled()) return null;
-  const resolverConfig = Object.freeze({ ...historyResolverOptions() });
-  const sourceKey = macWidgetHistorySourceKey(resolverConfig);
-  return {
-    stats,
-    owner: Object.freeze({
-      epoch: owner.epoch,
-      sourceKey
-    }),
-    resolverConfig,
-    historyCachePath: completeHistorySource(resolverConfig) === 'remote'
-      ? macWidgetHistoryCachePath(app.getPath('userData'), sourceKey)
-      : null,
-    activeCodexAccount: macWidgetActiveCodexAccount(),
-    presentation: macWidgetPresentation(),
-    modelAliases: Object.freeze(normalizeModelAliases(settings?.modelAliases)),
-    modelAliasGrouping: normalizeModelAliasGrouping(settings?.modelAliasGrouping),
-    snapshotPath: widget.snapshotPath,
-    widgetKind: widget.widgetKind
-  };
-}
-
-function ensureMacWidgetSnapshotController() {
-  if (!macWidgetRuntimeSupported()) return null;
-  if (macWidgetSnapshotController) return macWidgetSnapshotController;
-  macWidgetSnapshotController = createMacWidgetSnapshotController({
-    startPaused: !macWidgetPublicationReady,
-    captureWork: captureMacWidgetWork,
-    resolveHistory: (work) => resolveMacWidgetHistory({
-      generation: work.owner.epoch,
-      sourceKey: work.owner.sourceKey,
-      revision: work.stats?.historyRevision,
-      fetchHistory: () => resolveCompleteHistory(work.resolverConfig),
-      ...(work.historyCachePath ? {
-        loadCachedHistory: () => readMacWidgetHistoryCache(
-          work.historyCachePath,
-          work.owner.sourceKey,
-          { logger: (message) => console.warn(message) }
-        ),
-        saveCachedHistory: (history) => writeMacWidgetHistoryCache(
-          work.historyCachePath,
-          work.owner.sourceKey,
-          history,
-          { logger: (message) => console.warn(message) }
-        )
-      } : {}),
-      minIntervalMs: completeHistorySource(work.resolverConfig) === 'remote' ? undefined : 0,
-      logger: (message) => console.warn(message)
-    }),
-    prepareSnapshot: (work, history) => prepareMacWidgetSnapshotUpdate(work.stats, {
-      snapshotPath: work.snapshotPath,
-      snapshotOptions: {
-        activeCodexAccount: work.activeCodexAccount,
-        presentation: work.presentation,
-        history: projectModelAliasHistory(history, work.modelAliases, { grouping: work.modelAliasGrouping })
-      },
-      logger: (message) => console.warn(message)
-    }),
-    commitSnapshot: (prepared, options) => commitMacWidgetSnapshot(prepared, {
-      isCurrent: options.isCurrent,
-      logger: (message) => console.warn(message)
-    }),
-    syncSnapshot: (_work, committed, prepared) => syncMacWidgetSnapshotDirectory({
-      ...committed,
-      fs: prepared?.fs
-    }),
-    discardSnapshot: discardMacWidgetSnapshot,
-    reloadSnapshot: (work, options) => requestMacWidgetReload({
-      widgetKind: work.widgetKind,
-      isCurrent: options.isCurrent,
-      runtimeSupported: macWidgetRuntimeSupported(),
-      logger: (message) => console.warn(message)
-    }),
-    logger: (message) => console.warn(message)
-  });
-  return macWidgetSnapshotController;
-}
-
-function captureMacWidgetProducerOwner() {
-  return ensureMacWidgetSnapshotController()?.captureProducerOwner() || null;
-}
-
-function advanceMacWidgetProducerAndSourceEpoch() {
-  ensureMacWidgetSnapshotController()?.advanceProducerAndSourceEpoch();
-}
-
-function advanceMacWidgetSourceEpoch() {
-  ensureMacWidgetSnapshotController()?.advanceSourceEpoch();
-}
-
-function refreshMacWidgetHistorySource() {
-  advanceMacWidgetSourceEpoch();
-  const visibleStats = electronPresentationStats(latestStats);
-  scheduleMacWidgetSnapshot(visibleStats, captureMacWidgetProducerOwner());
-}
-
-function scheduleMacWidgetSnapshot(stats, producerOwner) {
-  if (!macWidgetRuntimeSupported() || !stats) return false;
-  return ensureMacWidgetSnapshotController()?.enqueue({ stats, producerOwner }) || false;
 }
 
 function publishLocalSessionActivity(patch) {
@@ -5013,8 +4467,7 @@ function publishLocalSessionActivity(patch) {
     : displayPatch;
   presentationCache.updateActivity(previous, latestStats, (stats) => applyActivityPatch(stats, visiblePatch));
   const activityStats = electronPresentationStats(latestStats);
-  pluginRuntime?.publishStats(activityStats, latestStats);
-  updateEdgeDockCells(activityStats);
+    updateEdgeDockCells(activityStats);
   sendPush({ event: 'session-activity', data: { patch: visiblePatch, snapshot } });
 }
 
@@ -5045,8 +4498,7 @@ function sendPush(payload, options = {}) {
       ...payload,
       data: { ...payload.data, stats: rendererSnapshots.stamp(latestStats, rendererStats(visibleStats)) }
     };
-    scheduleMacWidgetSnapshot(visibleStats, options.widgetProducerOwner);
-    pluginRuntime?.publishStats(visibleStats, latestStats);
+    
     updateEdgeDockCells(visibleStats);
     syncCodexPresentationActiveAccount();
     updateTrayDisplay();
@@ -5101,10 +4553,9 @@ function writeRateCache(data) {
 
 function applyEffectiveRates() {
   const next = resolveEffectiveRates(rateCache?.rates || {}, settings?.currencyRates || {});
-  const changed = CURRENCY_CODES.some(code => effectiveRates?.[code] !== next[code]);
   effectiveRates = next;
   configureRates(effectiveRates);          // main process's own currency module
-  if (changed) pluginRuntime?.refreshBusinessData();
+  
   return effectiveRates;
 }
 
@@ -5119,8 +4570,7 @@ async function refreshExchangeRates({ force = false } = {}) {
   }
   applyEffectiveRates();
   updateTrayDisplay();
-  if (settings?.discordRpcEnabled && latestStats) updateDiscordRpcDisplay(latestStats);
-  pushSettingsToRenderer();
+    pushSettingsToRenderer();
 }
 
 function compactTokenDisplayOptions() {
@@ -5128,10 +4578,6 @@ function compactTokenDisplayOptions() {
     compactTokenUnits: settings?.compactTokenUnits,
     locale: trayMenuLocale()
   };
-}
-
-function updateDiscordRpcDisplay(stats) {
-  updateDiscordRpc(stats, settings?.currency, compactTokenDisplayOptions());
 }
 
 function refreshTrayContextMenu() {
@@ -5219,7 +4665,7 @@ function stopLocalCollector(options = {}) {
 // going, instead of zeros for the tens of seconds it takes. deviceRecordFromAnchor
 // owns the trust rules; anything it rejects leaves the renderer on its normal
 // wait-for-real-data path.
-function primeLocalStatsFromAnchor(usageOptions, widgetProducerOwner) {
+function primeLocalStatsFromAnchor(usageOptions) {
   // Cold start only. startMode() re-enters here on structural settings changes
   // as well, and there the numbers already collected are newer than any anchor.
   if (lastCollectedDevice) return;
@@ -5266,18 +4712,17 @@ function primeLocalStatsFromAnchor(usageOptions, widgetProducerOwner) {
   sendPush({
     event: 'stats',
     data: { type: 'stats', reason: 'anchor', stats: localStats, at: deviceRecord.receivedAt }
-  }, { skipExport: true, deferToRenderer: true, widgetProducerOwner });
+  }, { skipExport: true, deferToRenderer: true });
 }
 
 function startLocalCollector() {
   stopLocalCollector();
-  const widgetProducerOwner = captureMacWidgetProducerOwner();
   mode = 'local';
   sendStatus(false, { reason: 'collecting' });
   // One config object for both, so the fingerprint the seed validates against
   // cannot drift from the one the collector will compute.
   const usageOptions = electronUsageConfig('collector');
-  primeLocalStatsFromAnchor(usageOptions, widgetProducerOwner);
+  primeLocalStatsFromAnchor(usageOptions);
   deviceRuntimeHandle = createDeviceRuntime({
     envelope: electronDeviceEnvelope(),
     initialLimits: lastCollectedDevice?.limits,
@@ -5297,8 +4742,7 @@ function startLocalCollector() {
         attachLocalNativeViews(stats, localDevice);
         return stats;
       });
-      updateDiscordRpcDisplay(localStats);
-      sendPush({ event: 'stats', data: { type: 'stats', reason, stats: localStats, at: new Date().toISOString() } }, { widgetProducerOwner });
+            sendPush({ event: 'stats', data: { type: 'stats', reason, stats: localStats, at: new Date().toISOString() } }, {});
       sendStatus(true, { reason });
     },
     onDiagnosticEvent: recordDiagnosticEvent,
@@ -5325,7 +4769,6 @@ function stopStatsStream() {
 async function startStatsStream(options = {}) {
   stopStatsStream();
   const generation = hubModeGeneration;
-  const widgetProducerOwner = captureMacWidgetProducerOwner();
   if (settings?.hubMode !== 'client') return;
   const cacheIdentity = currentHubStatsIdentity('client');
   if (options.resetSnapshot) {
@@ -5372,9 +4815,9 @@ async function startStatsStream(options = {}) {
             // belongs to the connection, so keep those containers private.
             const displayCache = { ...refreshed, devices: refreshed.devices.map(device => ({ ...device })) };
             setLatestHubStatsCache(displayCache, 'client', generation, cacheIdentity);
-            requestSyncDisplayStats({ reason: parsed.data?.reason || 'ingest', at: parsed.data?.at, generation, widgetProducerOwner });
+            requestSyncDisplayStats({ reason: parsed.data?.reason || 'ingest', at: parsed.data?.at, generation });
           } else {
-            sendPush(parsed, { widgetProducerOwner });
+            sendPush(parsed, {});
           }
         }
       }
@@ -5539,30 +4982,9 @@ function thirdPartyProfileWithCanonicalIdentity(profile, provider) {
   });
 }
 
+
 // The command carries identity only. Resolve at commit time, after any IPC
 // awaits, and persist the host-declared palette and finite tokens together.
-function preparePluginSkinSettings(patch, current, runtime) {
-  if (Object.hasOwn(patch, 'pluginAuthorSkin')) throw new Error('author skin snapshots are host-owned');
-  if (!Object.hasOwn(patch, 'pluginSkinRef')) return { patch, authorSkin: normalizePluginAuthorSkin(current.pluginAuthorSkin) };
-  if (patch.pluginSkinRef === null && Object.keys(patch).every(key => ['pluginSkinRef', 'themeColors'].includes(key))) {
-    const { pluginSkinRef: _reset, ...colors } = patch;
-    return { patch: colors, authorSkin: null };
-  }
-  if (Object.keys(patch).length !== 1) throw new Error('plugin skin selection must be a standalone command');
-  const skin = runtime?.resolveSkin(patch.pluginSkinRef);
-  if (!skin) throw new Error('plugin skin is unavailable');
-  const authorSkin = normalizePluginAuthorSkin({ ref: skin.ref, appearance: skin.appearance || {} });
-  if (!authorSkin) throw new Error('invalid author skin');
-  return prepareSkinSettings(current, { ...skin, appearance: authorSkin.appearance });
-}
-
-function assertPluginSkinRequest(event, patch) {
-  if (Object.hasOwn(patch, 'pluginAuthorSkin')) throw new Error('author skin snapshots are host-owned');
-  if (!Object.hasOwn(patch, 'pluginSkinRef')) return;
-  if (Object.keys(patch).length !== 1 && !(patch.pluginSkinRef === null && Object.keys(patch).every(key => ['pluginSkinRef', 'themeColors'].includes(key)))) throw new Error('plugin skin selection must be a standalone command');
-  if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents
-    || !event.senderFrame || event.senderFrame !== event.sender.mainFrame) throw new Error('plugin skin selection requires the main window');
-}
 
 function settingsForRenderer() {
   // Default-deny every credential field added to the canonical store. The two
@@ -5575,8 +4997,6 @@ function settingsForRenderer() {
   delete rendererSettings.icloudRetiredDeviceIds;
   delete rendererSettings.icloudWriterId;
   delete rendererSettings.syncContentState;
-  delete rendererSettings.pluginSkinRef;
-  rendererSettings.pluginAuthorSkin = normalizePluginAuthorSkin(settings.pluginAuthorSkin);
   for (const key of rendererOmittedAccountKeys()) delete rendererSettings[key];
   return {
     ...rendererSettings,
@@ -5695,7 +5115,6 @@ function pushSettingsToRenderer() {
 }
 
 let edgeDockController = null;
-let notchController = null;
 let dockAppearancePreview = null;
 
 function dockAppearanceSettings() {
@@ -5716,55 +5135,9 @@ function previewDockAppearance(patch) {
   // Share glass controls with the floating surfaces, keeping their own styles
   // and saved settings intact until the ordinary settings sync replaces it.
   dockAppearancePreview = { ...dockAppearancePreview, ...preview };
-  for (const controller of [edgeDockController, notchController]) {
+  for (const controller of [edgeDockController]) {
     if (controller?.isRunning()) controller.setAppearance(dockAppearancePreview, { preview: true });
   }
-}
-
-let notchRateTimer = null;
-const notchRateTrackers = new Map();
-
-function notchDataFor(visibleStats, cells) {
-  clearTimeout(notchRateTimer);
-  notchRateTimer = null;
-  if (settings.notchSummaryEnabled === false) {
-    notchRateTrackers.clear();
-    return buildNotchData(visibleStats, cells, settings);
-  }
-  // Only an explicit tray or custom layout can request a rate.
-  const rateItems = ['tray', 'custom'].includes(notchSummaryMode(settings)) ? trayLayoutApi.liveTokenRateItems(notchSummaryLayout(settings)) : [];
-  const liveTokenRates = {};
-  let nextExpiry = 0;
-  const scopes = new Set(rateItems.map((item) => item.rateScope));
-  for (const scope of notchRateTrackers.keys()) {
-    if (!scopes.has(scope)) notchRateTrackers.delete(scope);
-  }
-  for (const scope of scopes) {
-    const selection = tokenRateApi.selectLiveTokenRatePeriods(visibleStats, settings.deviceId, settings.hubMode, scope);
-    const context = [mode, settings.hubMode, settings.hubUrl, settings.deviceId, selection.source].join('|');
-    let held = notchRateTrackers.get(scope);
-    if (!held || held.context !== context) {
-      held = { context, tracker: tokenRateApi.createLiveTokenRateGroupTracker({ now: Date.now }) };
-      held.tracker.reset(selection.entries);
-      notchRateTrackers.set(scope, held);
-    } else held.tracker.observe(selection.entries);
-    liveTokenRates[scope] = held.tracker.getSample();
-    const expiry = held.tracker.nextExpiryAt();
-    if (expiry && (!nextExpiry || expiry < nextExpiry)) nextExpiry = expiry;
-  }
-  if (nextExpiry && notchController?.isRunning()) {
-    notchRateTimer = setTimeout(() => {
-      notchRateTimer = null;
-      repaintDockSurfaces();
-    }, Math.max(1000, nextExpiry - Date.now() + 20));
-  }
-  const codexManagedAccounts = codexAccountsForRenderer();
-  const activeCodexAccountId = codexPresentationPendingAccountId || codexPresentationActiveAccountId;
-  return buildNotchData(visibleStats, cells, settings, {
-    ...compactTokenDisplayOptions(), currency: normalizeCurrency(settings.currency), liveTokenRates,
-    activeAccountKeys: { codex: codexManagedAccounts.find((account) => account.id === activeCodexAccountId)?.accountKey },
-    cellOptions: { codexManagedAccounts, activeCodexAccountId, localDeviceId: settings.deviceId, syncActive: syncProvenanceActive() }
-  });
 }
 
 function toggleDockRateMode() {
@@ -5773,74 +5146,6 @@ function toggleDockRateMode() {
   pushSettingsToRenderer();
 }
 
-let notchBlurMasks = null;
-
-function ensureNotchController() {
-  if (notchController) return notchController;
-  notchController = createNotchController({
-    BrowserWindow, ipcMain, screen, platform: process.platform,
-    rendererDir: path.join(__dirname, 'renderer'),
-    preloadPath: path.join(__dirname, 'notch', 'preload.js'),
-    getSettings: () => dockAppearanceSettings(),
-    onCapabilitiesChanged: (value) => sendMainWindowEvent('topNotch:capabilities', value, () => notchController?.getCapabilities() === value),
-    nativeGlass: () => nativeBlurEnabled(),
-    liquidGlass: () => {
-      const options = nativeMaterialOptions();
-      return !options.reducedTransparency && Number.parseInt(os.release(), 10) >= 25
-        ? { dark: options.dark } : null;
-    },
-    createGlass: (win) => createMacLiquidGlass(win, { shaped: true }),
-    applyShapeMask: (win, commands, width, height, display) => {
-      const { buffer, pixelWidth, pixelHeight } = rasterizeMask(toPolygons(commands), width, height, display?.scaleFactor || 2);
-      return applyVibrancyMask(win, { buffer, pixelWidth, pixelHeight }, width, height);
-    },
-    prefersReducedMotion: () => motionPreferenceApi.shouldReduceMotion(settings?.reduceMotion, systemPreferences.getAnimationSettings?.().prefersReducedMotion === true),
-    onToggleRateMode: toggleDockRateMode,
-    canRefreshLimits: () => canRefreshEdgeDockStats(),
-    onRefreshLimits: () => refreshStatsFromEdgeDock(),
-    onWebSurfaceChanged: () => pluginRuntime?.refreshSurfaces(),
-    installNonActivatingInput: (win) => preventAppActivation(win),
-    blurAvailable: () => nativeTheme.prefersReducedTransparency !== true,
-    applyBlurMask: (win, mask, display) => {
-      const scale = display?.scaleFactor || 2;
-      const key = JSON.stringify([mask, scale]);
-      if (notchBlurMasks?.key !== key) {
-        const png = (options) => {
-          const { buffer, pixelWidth, pixelHeight } = notchBlurMask({ ...mask, ...options });
-          return nativeImage.createFromBitmap(buffer, { width: pixelWidth, height: pixelHeight }).toPNG();
-        };
-        // The blur mask is sampled per point; the visible fade is drawn at device scale.
-        notchBlurMasks = { key, alphaPng: png({ scale, curve: NOTCH_BLUR_ALPHA }), blurPng: png({ scale: 1, curve: NOTCH_BLUR_STRENGTH }) };
-      }
-      return applyProgressiveBlur(win, { alphaPng: notchBlurMasks.alphaPng, blurPng: notchBlurMasks.blurPng,
-        width: mask.width, height: mask.height, radius: NOTCH_BLUR_RADIUS });
-    },
-    primaryButtonDown: () => primaryButtonDown(process.platform),
-    monitorScrollGesture: (onEvent, options) => monitorMacScrollGesture(onEvent, { ...options, logger: (message) => console.log(message) }),
-    // An absent key is the system default, natural scrolling on.
-    naturalScrolling: () => systemPreferences.getUserDefault?.('com.apple.swipescrolldirection', 'string') !== '0',
-    performHaptic: (pattern, performanceTime) => performMacHaptic({ pattern, performanceTime }),
-    isFullScreen: createFullScreenProbe({ platform: process.platform, screen, logger: (message) => console.log(message) }),
-    onSwitchCodexAccount: (accountId) => switchCodexAccountFromEdgeDock(accountId),
-    logger: (message) => console.log(message)
-  });
-  return notchController;
-}
-
-function syncNotch(rendererSettings) {
-  if (process.platform !== 'darwin' || settings?.notchEnabled !== true) {
-    notchController?.stop();
-    clearTimeout(notchRateTimer);
-    notchRateTimer = null;
-    notchRateTrackers.clear();
-    return;
-  }
-  const controller = ensureNotchController();
-  controller.setAppearance(edgeDockAppearance(rendererSettings));
-  controller.sync();
-  const stats = edgeDockStats();
-  if (stats) pushNotchCells(electronPresentationStats(stats));
-}
 
 // The dock renderer is a floating surface outside the widget, so it gets an
 // allowlisted appearance projection instead of the full renderer settings.
@@ -5896,9 +5201,7 @@ let edgeDockRateContext = '';
 let edgeDockRateTimer = null;
 
 function configuredDockItemLists() {
-  return [...(settings?.edgeDockEnabled !== false ? [settings?.edgeDockItems] : []),
-    // The notch panel's fixed readouts plus its limit selection (null: automatic).
-    ...(settings?.notchEnabled === true && process.platform === 'darwin' ? [notchLimitItems(settings), NOTCH_PANEL_STAT_ITEMS] : [])];
+  return settings?.edgeDockEnabled !== false ? [settings?.edgeDockItems] : [];
 }
 
 function edgeDockShowsLiveRate() {
@@ -6031,7 +5334,6 @@ let edgeDockForecastInFlight = false;
 
 function edgeDockForecastWanted() {
   if (settings?.codexResetForecastEnabled !== true || settings?.edgeDockEnabled === false) return false;
-  // The Notch's fixed readouts do not draw the dock card's forecast.
   const items = settings?.edgeDockItems;
   return !Array.isArray(items) || items.some((item) => item.type === 'limit' && item.provider === 'codex');
 }
@@ -6071,7 +5373,7 @@ function edgeDockCellsFor(visibleStats, items = settings?.edgeDockItems, options
   syncCodexPresentationActiveAccount();
   return buildEdgeDockCells(visibleStats, {
     includeUnavailableAccounts: options.includeUnavailableAccounts === true,
-    availablePluginRefs: (pluginRuntime?.manager.surfaceCatalog('edgeDock') || []).map(view => view.ref),
+    availablePluginRefs: [],
     derivedPeriods: edgeDockDerivedPeriods,
     codexResetForecast: edgeDockForecastWanted() ? edgeDockForecast : null,
     localDeviceId: settings?.deviceId,
@@ -6091,9 +5393,8 @@ function edgeDockCellsFor(visibleStats, items = settings?.edgeDockItems, options
 }
 
 function updateEdgeDockCells(visibleStats) {
-  if ((!edgeDockController?.isRunning() && !notchController?.isRunning()) || !visibleStats) return;
-  if (edgeDockController?.isRunning()) pushEdgeDockCells(edgeDockCellsFor(visibleStats));
-  if (notchController?.isRunning()) pushNotchCells(visibleStats);
+  if (!edgeDockController?.isRunning() || !visibleStats) return;
+  pushEdgeDockCells(edgeDockCellsFor(visibleStats));
 }
 
 // Hand cells to the controller and arm the expiry timer from them. Split out from
@@ -6118,36 +5419,6 @@ const EDGE_DOCK_EXPIRY_FLOOR_MS = 1_000;
 // The cells most recently handed to the controller, so the expiry timer can be
 // armed from what is actually on screen rather than re-projecting to find out.
 let edgeDockLastCells = [];
-let notchLastCells = [];
-// Remote History reloads are throttled: past days move at most once per collection.
-const NOTCH_REMOTE_HISTORY_INTERVAL_MS = 60 * 1000;
-const notchHistory = createNotchHistory({
-  load: async (stats) => {
-    const history = await getDashboardHistory({ includeDevices: true });
-    const sources = fixedPeriodRangesApi.joinDeviceHistorySources(history?.deviceHistories || [], stats?.devices || []);
-    return { ...history, devicesComplete: sources.every((source) => source.historyAvailable === true) };
-  },
-  minIntervalMs: () => completeHistorySource(historyResolverOptions()) === 'remote' ? NOTCH_REMOTE_HISTORY_INTERVAL_MS : 0,
-  changed: () => repaintDockSurfaces(),
-  onError: (error) => console.log(`[notch] history failed: ${error.message}`)
-});
-
-function pushNotchCells(visibleStats) {
-  notchLastCells = edgeDockCellsFor(visibleStats, notchPanelItems(visibleStats, settings), { includeUnavailableAccounts: true });
-  const data = notchDataFor(visibleStats, notchLastCells);
-  // Tab names and icons are metadata; opening a page alone requests its data.
-  if (pluginRuntime) data.panel.pluginCatalog = Object.fromEntries(pluginRuntime.manager.surfaceCatalog('notch')
-    .map(view => [view.ref, { title: view.title, icon: view.icon, identityIcon: view.identityIcon }]));
-  data.panel.pluginPages = data.panel.pluginPages.filter(ref => Object.hasOwn(data.panel.pluginCatalog || {}, ref));
-  const history = notchHistory.read(visibleStats, { enabled: settings.historyEnabled !== false, generation: hubModeGeneration });
-  if (history) data.panel.week = notchWeek(visibleStats, new Date(), history);
-  notchController.setData(data);
-  scheduleSessionExpiry();
-}
-
-// The soonest moment any sessions cell stops reading as running, or 0 when none
-// of them does. A quiet cell never becomes running on its own, so 0 means there
-// is nothing to wake for and the timer must not be armed.
 function edgeDockNextSessionExpiry(cells) {
   let soonest = 0;
   // A stale expiry is not a wake-up: taking one would clamp the delay to the floor
@@ -6165,9 +5436,8 @@ function edgeDockNextSessionExpiry(cells) {
 function scheduleSessionExpiry() {
   if (edgeDockSessionExpiryTimer) clearTimeout(edgeDockSessionExpiryTimer);
   edgeDockSessionExpiryTimer = null;
-  if (!edgeDockController?.isRunning() && !notchController?.isRunning()) return;
-  const cells = [...(edgeDockController?.isRunning() ? edgeDockLastCells : []),
-    ...(notchController?.isRunning() ? notchLastCells : [])];
+  if (!edgeDockController?.isRunning()) return;
+  const cells = edgeDockLastCells;
   const expiresAt = edgeDockNextSessionExpiry(cells);
   if (!expiresAt) return;
   const delay = Math.max(EDGE_DOCK_EXPIRY_FLOOR_MS, expiresAt - Date.now() + 50);
@@ -6218,7 +5488,7 @@ function ensureEdgeDockController() {
       return applyVibrancyMask(win, { buffer, pixelWidth, pixelHeight }, width, height);
     },
     primaryButtonDown: () => primaryButtonDown(process.platform),
-    onWebSurfaceChanged: () => pluginRuntime?.refreshSurfaces(),
+    onWebSurfaceChanged: () => {},
     installNonActivatingInput: (win) => process.platform === 'darwin' ? preventAppActivation(win)
       : installWindowsNonActivatingInput(win, { logger: (message) => console.log(message) }),
     performHaptic: (pattern, performanceTime) => performMacHaptic({ pattern, performanceTime }),
@@ -6248,14 +5518,10 @@ function ensureEdgeDockController() {
 function syncDockSurfaces(rendererSettings) {
   dockAppearancePreview = null;
   if (!settings) return;
-  syncNotch(rendererSettings);
   if (!canUseEdgeDock(settings)) {
     edgeDockController?.stop();
-    // The same sample feeds top-only rate and sessions items.
-    if (!notchController?.isRunning()) {
-      if (edgeDockRateTimer) clearTimeout(edgeDockRateTimer);
-      edgeDockRateTimer = null;
-    }
+    if (edgeDockRateTimer) clearTimeout(edgeDockRateTimer);
+    edgeDockRateTimer = null;
     return;
   }
   const controller = ensureEdgeDockController();
@@ -6277,7 +5543,6 @@ function refreshLimitStatsPresentation() {
   if (!latestStats) return;
   const visibleStats = electronPresentationStats(latestStats);
   migrateCodexAdditionalLimits(visibleStats);
-  scheduleMacWidgetSnapshot(visibleStats, captureMacWidgetProducerOwner());
   repaintDockSurfaces();
   updateTrayDisplay();
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -6348,7 +5613,6 @@ function sendMainWindowEvent(channel, payload, isStillCurrent) {
 
 async function refreshFromTray() {
   if (trayRefreshInFlight) return;
-  const widgetProducerOwner = captureMacWidgetProducerOwner();
   return runTrayMenuAction({
     setInFlight: (value) => { trayRefreshInFlight = value; },
     refreshContextMenu: refreshTrayContextMenu,
@@ -6359,7 +5623,7 @@ async function refreshFromTray() {
         // result when fetchStats returned a different object (for example, a remote hub
         // fetch while an external headless agent owns collection).
         if (stats && stats !== latestStats) {
-          sendPush({ event: 'stats', data: { stats, mode, reason: 'manual' } }, { widgetProducerOwner });
+          sendPush({ event: 'stats', data: { stats, mode, reason: 'manual' } }, {});
         }
       } catch (error) {
         console.warn(`[tray] refresh failed: ${error.message}`);
@@ -6384,20 +5648,6 @@ function setEdgeDockFromMenu(patch = {}) {
   if (patch.edgeDockSide !== undefined) settings.edgeDockSide = normalizeEdgeDockSide(patch.edgeDockSide);
   saveSettings();
   // Also re-syncs the dock itself (pushSettingsToRenderer → syncEdgeDock).
-  pushSettingsToRenderer();
-}
-
-function setNotchFromMenu(patch = {}) {
-  const normalizers = {
-    notchEnabled: value => parseBoolean(value, false),
-    notchHoverAction: normalizeNotchHoverAction,
-    notchSummaryEnabled: value => parseBoolean(value, true),
-    notchHideSummaryInFullScreen: value => parseBoolean(value, true),
-  };
-  for (const [key, normalize] of Object.entries(normalizers)) {
-    if (patch[key] !== undefined) settings[key] = normalize(patch[key]);
-  }
-  saveSettings();
   pushSettingsToRenderer();
 }
 
@@ -6426,9 +5676,9 @@ function setWindowPresentationFromMenu(value) {
   pushSettingsToRenderer();
 }
 
-function openSettingsFromTray(section) {
+function openSettingsFromTray(_section) {
   focusExistingWindow();
-  sendMainWindowEvent('settings:open', section === 'notch' ? 'notch' : undefined);
+  sendMainWindowEvent('settings:open', undefined);
 }
 
 function openViewFromTray(viewId) {
@@ -6535,16 +5785,13 @@ function ensureTray() {
   if (!shouldCreateTray(settings)) return false;
   if (tray && !tray.isDestroyed()) return;
   tray = createTray({
-    onPluginMenu: (id, action) => { void pluginRuntime?.trayAction(id, action).catch(error => console.warn(`[plugins] Tray action: ${error.message}`)); },
-    onRestartPluginsSafe: () => {
-      app.relaunch({ args: [...process.argv.slice(1).filter(arg => arg !== '--plugins-safe-mode'), '--plugins-safe-mode'] });
-      requestAppQuit();
-    },
+    
+    
     getMenuState: () => {
       const codex = trayCodexMenuState();
       return {
         appVersion: appVersion(),
-        pluginMenu: pluginRuntime?.trayMenu() || [],
+        pluginMenu: [],
         locale: trayMenuLocale(),
         refreshing: trayRefreshInFlight,
         trayContent: settings?.trayContent || 'tokens',
@@ -6555,11 +5802,6 @@ function ensureTray() {
         codexSwitching: codex.switching,
         maskAccountEmails: Boolean(settings?.maskLimitAccountEmails),
         edgeDockSupported: edgeDockSupported(process.platform),
-        notchSupported: process.platform === 'darwin',
-        notchEnabled: settings?.notchEnabled === true,
-        notchHoverAction: settings?.notchHoverAction,
-        notchSummaryEnabled: settings?.notchSummaryEnabled,
-        notchHideSummaryInFullScreen: settings?.notchHideSummaryInFullScreen,
         edgeDockEnabled: settings?.edgeDockEnabled === true,
         edgeDockMode: settings?.edgeDockMode,
         edgeDockSide: settings?.edgeDockSide,
@@ -6586,7 +5828,6 @@ function ensureTray() {
     onSetTrayContent: setTrayContentFromMenu,
     onSetWindowPresentation: setWindowPresentationFromMenu,
     onSetEdgeDock: setEdgeDockFromMenu,
-    onSetNotch: setNotchFromMenu,
     onSwitchCodexAccount: (accountId) => { void switchCodexAccountFromTray(accountId); },
     onOpenSettings: openSettingsFromTray,
     onQuit: requestAppQuit,
@@ -6645,10 +5886,8 @@ function exitTrayMode() {
 function startMode() {
   getSyncContentRuntime().invalidate();
   hubModeGeneration += 1;
-  advanceMacWidgetProducerAndSourceEpoch();
   clearLatestHubStatsCache();
   edgeDockManualStats = null;
-  const icloudStop = stopIcloudRuntime();
   // Tear down collectors synchronously so they can't double-run while the
   // async reconciliation below is queued. iCloud's filesystem teardown is
   // awaited by the mode lane before any replacement runtime is created.
@@ -6662,10 +5901,8 @@ function startMode() {
   // than racing — otherwise an in-flight start could finish with the old
   // port/secret after the UI already advertises the new ones.
   modeQueue = modeQueue.then(async () => {
-    await icloudStop;
     // A prior queued mode may have created an iCloud runtime after this call's
     // initial stop. Drain that runtime as well before applying the latest mode.
-    await stopIcloudRuntime();
     if (settings.hubMode === 'host') {
       await stopEmbeddedHub();
       const handle = await startEmbeddedHub();
@@ -6687,11 +5924,6 @@ function startMode() {
       return;
     }
     await stopEmbeddedHub();
-    if (settings.hubMode === 'icloud') {
-      await startIcloudCollector();
-      if (settings.hubMode === 'icloud') void reconcileSharedSubscriptions();
-      return;
-    }
     if (effectiveHubConfig().url) {
       startStatsStream({ resetSnapshot: true });
       startSyncCollector();
@@ -6736,12 +5968,6 @@ function restartDeviceRuntimeForMode() {
     startHostCollector();
     return;
   }
-  if (settings.hubMode === 'icloud') {
-    return startIcloudCollector().catch((error) => {
-      console.log(`[icloud] collector restart failed: ${error?.message || error}`);
-      recordDiagnosticEvent({ subsystem: 'icloud', code: 'icloud-start-failed' });
-    });
-  }
   if (effectiveHubConfig().url) startSyncCollector();
   else startLocalCollector();
 }
@@ -6751,7 +5977,7 @@ function usageCollectorNameForMode() {
     ? 'collector'
     : (settings.hubMode === 'host' && embeddedHub
       ? 'host-collector'
-      : settings.hubMode === 'icloud' ? 'icloud-collector' : 'sync-collector');
+      : 'sync-collector');
 }
 
 function usageConfigForMode() {
@@ -6780,84 +6006,30 @@ function reconfigureUsageRuntimeForMode() {
 // stopLocalCollector() / stopSyncCollector() behaviour so the old watcher is
 // really gone before a new one starts on the same paths.
 function stopAll() {
-  disposePluginRuntime();
-  stopPersistBoundsTimer();
+    stopPersistBoundsTimer();
   stopLocalCollector({ skipCloseWatchers: true });
   stopStatsStream();
   stopHostStats();
   stopSyncCollector({ skipCloseWatchers: true });
-  stopIcloudRuntime();
   // A collector on the usage worker stops by message, which nothing guarantees
   // the worker handles before the exit below; its tokscale subprocesses would
   // outlive us.
   terminateUsageHostSubprocesses();
   syncStatsPublication.cancel();
-  macWidgetSnapshotController?.stop();
-  if (macWidgetDemand) {
-    macWidgetDemand.stop();
-    macWidgetDemand = null;
-  }
   // Fire-and-forget on purpose. server.close() does not complete until every
   // in-flight request does, so awaiting it hands a remote device on the embedded
   // hub the power to hold our own exit open. The listening socket closes with
   // the process, and a graceful hub close buys nothing on the way out.
   void stopEmbeddedHub();
-  stopDiscordRpc();
-  try { sessionUsageArchiveStore.close(); } catch (error) {
+    try { sessionUsageArchiveStore.close(); } catch (error) {
     console.log(`[session-archive] close failed: ${error?.message || error}`);
   }
   if (tray && !tray.isDestroyed()) tray.destroy();
   tray = null;
 }
 
-// Plugin teardown must never skip the host's own collector and stream shutdown.
-function disposePluginRuntime() {
-  try {
-    const pending = pluginRuntime?.dispose();
-    pending?.catch(error => console.warn(`[plugins] dispose failed: ${error.message}`));
-  } catch (error) { console.warn(`[plugins] dispose failed: ${error.message}`); }
-}
-
 let quitRequested = false;
 let quitInProgress = false;
-// Owned by the update-install guard below and by nothing else: electron-updater
-// restarts the process itself, so the exit has to stand down or the install
-// never runs.
-let skipForcedQuit = false;
-
-// An install request stands the forced exit down, and quitAndInstall() never
-// reports back whether the installer actually took over. The guard owns that
-// unconfirmed window; these two flags are all it touches here. See
-// updateInstallQuit.js for why the claim expires and what promotes it.
-// Set once the hand-off listener is actually attached; see the guard's watchdog.
-let updateHandoffObserved = false;
-
-const updateInstallQuit = createUpdateInstallQuitGuard({
-  ...updateInstallQuitPolicy(),
-  watchdogEnabled: () => updateHandoffObserved,
-  claim: () => { quitRequested = true; skipForcedQuit = true; },
-  release: () => { quitRequested = false; skipForcedQuit = false; },
-  onStalled: () => {
-    // The bound is far enough out that reaching it means the install genuinely
-    // stalled, which is exactly what the user is looking at: they pressed Install
-    // and the app neither restarted nor complained. What to do about it depends on
-    // whether the attempt survived: where the guard handed it back the update is
-    // still one press away, and only where it did not is a restart the way out.
-    setNativeAppUpdateState({
-      phase: 'error',
-      progress: null,
-      error: 'Update installer did not start',
-      errorKind: installFailureErrorKind({ spent: updateInstallQuit.isSpent(), stalled: true })
-    });
-  },
-  onHandoff: (afterStalledReport) => {
-    // The bound is a decision to stop waiting, not proof the installer is dead, so
-    // a hand-off that turns up later withdraws the report rather than leaving the
-    // app advising a restart it is about to perform itself.
-    if (!afterStalledReport) return;
-    setNativeAppUpdateState({ phase: 'downloaded', progress: 100, error: null });
-  }
-});
 
 // The single quit path. Teardown above is what used to hang, so it runs
 // synchronously and cheaply, and then app.exit() ends the process without
@@ -6956,7 +6128,7 @@ function refreshManualStats() {
 
 async function fetchStats(options = {}) {
   const requestGeneration = hubModeGeneration;
-  const requestHubIdentity = currentHubStatsIdentity(settings?.hubMode === 'icloud' ? 'icloud' : 'client');
+  const requestHubIdentity = currentHubStatsIdentity('client');
   const force = Boolean(options?.force);
   // Generic `{ force: true }` calls from settings and account forms only need
   // fresh limits. A full usage tick reads every tracked source and can take
@@ -6980,12 +6152,6 @@ async function fetchStats(options = {}) {
   }
   if (settings.hubMode === 'host' && embeddedHub) {
     return injectLocalDeviceStatus(embeddedHub.hub.getStats());
-  }
-  if (settings.hubMode === 'icloud') {
-    const stats = icloudRuntimeHandle?.getStats?.()
-      || currentHubStatsCache()
-      || withHistoryPreview(aggregateDevices([], 0), []);
-    return injectLocalDeviceStatus(stats);
   }
   const { url: hubUrl, secret } = effectiveHubConfig();
   if (!hubUrl) return withHistoryPreview(aggregateDevices([], 0), []);
@@ -7033,434 +6199,6 @@ async function refreshAfterPricingChange() {
   } catch (error) {
     console.warn(`[pricing] refresh after pricing change failed: ${error.message}`);
   }
-}
-
-let appUpdateCheckInFlight = false;
-let appUpdateCheckPromise = null;
-let appUpdateLastError = null;
-let appUpdateLastAttemptAt = null;
-let appUpdateBackgroundTimer = null;
-let appUpdateNativeBusy = false;
-let appUpdateNativeConfigured = false;
-let appUpdateNativeState = {
-  phase: 'idle',
-  version: null,
-  progress: null,
-  error: null,
-  errorKind: null
-};
-
-function rememberSuccessfulAppUpdateCheck(latest, checkedAt = new Date().toISOString(), { clearLatest = false } = {}) {
-  if (!latest && !clearLatest) return null;
-  const remembered = latest
-    ? mergeLatestReleaseMetadata(settings?.appUpdate?.lastKnownLatest, latest)
-    : null;
-  settings.appUpdate = {
-    ...(settings.appUpdate || {}),
-    lastCheckedAt: checkedAt,
-    lastKnownLatest: remembered
-  };
-  saveSettings();
-  appUpdateLastAttemptAt = checkedAt;
-  appUpdateLastError = null;
-  return remembered;
-}
-
-function setNativeAppUpdateState(patch = {}) {
-  const next = { ...appUpdateNativeState, ...patch };
-  // A kind belongs to the error it arrived with and must never outlive it, so any
-  // patch that touches `error` without naming one clears it. That keeps the
-  // ordinary updater failures generic without every call site restating it.
-  if ('error' in patch && !('errorKind' in patch)) next.errorKind = null;
-  appUpdateNativeState = next;
-  sendAppUpdatePush();
-}
-
-function configureNativeAppUpdater() {
-  if (appUpdateNativeConfigured) return;
-  appUpdateNativeConfigured = true;
-  autoUpdater.autoDownload = false;
-  autoUpdater.autoInstallOnAppQuit = false;
-  // Notes for every release between this version and the latest, not only the
-  // latest's, so the update card covers everything the user is about to receive.
-  autoUpdater.fullChangelog = true;
-  autoUpdater.logger = console;
-  autoUpdater.on('download-progress', (progress) => {
-    setNativeAppUpdateState({
-      phase: 'downloading',
-      progress: Number.isFinite(progress?.percent) ? Math.max(0, Math.min(100, progress.percent)) : null,
-      error: null
-    });
-  });
-  autoUpdater.on('update-downloaded', (info) => {
-    appUpdateNativeBusy = false;
-    const latest = latestFromUpdaterInfo(info);
-    setNativeAppUpdateState({ phase: 'downloaded', version: latest?.version || info?.version || appUpdateNativeState.version || null, progress: 100, error: null });
-  });
-  // The hand-off is emitted on Electron's own autoUpdater, not electron-updater's:
-  // BaseUpdater re-emits it there to mimic what Squirrel does natively. Losing it
-  // is not merely losing a confirmation, so the flag records a verified
-  // registration and nothing weaker: without the listener nothing could re-claim
-  // the flags after the grace period, and the guard would expire into a state a
-  // late hand-off could not recover from. It stops arming the watchdog instead.
-  try {
-    updateHandoffObserved = observeUpdateInstallHandoff(
-      require('electron').autoUpdater,
-      () => updateInstallQuit.noteHandoff()
-    );
-  } catch (error) {
-    updateHandoffObserved = false;
-    console.log(`[update] cannot observe the install hand-off: ${error?.message || error}`);
-  }
-  if (!updateHandoffObserved) console.log('[update] no install hand-off signal; quit recovery disabled');
-  autoUpdater.on('error', (error) => {
-    // Released before the busy guard below, deliberately: update-downloaded has
-    // already cleared appUpdateNativeBusy by the time an install can fail, so a
-    // rollback behind that guard would never run and the quit flags would stay
-    // stuck for the rest of the session.
-    const wasInstalling = updateInstallQuit.abort();
-    // Availability checks use the same provider but report through
-    // appUpdateLastError. Only a real download or install attempt owns installError.
-    if (!appUpdateNativeBusy && !wasInstalling) return;
-    appUpdateNativeBusy = false;
-    setNativeAppUpdateState({
-      phase: 'error',
-      progress: null,
-      error: error?.message || String(error || 'Update failed'),
-      // Where the attempt was single-use, a failed install also closed the in-app
-      // path: the controls below now offer the release page instead of a retry, and
-      // a generic "couldn't install" leaves that looking like the end of the road.
-      // A restart is what brings the retry back, so the message has to say so.
-      // `wasInstalling` is the part the helper cannot know: without it a check
-      // failure arriving after an earlier spent attempt borrows its explanation.
-      errorKind: wasInstalling
-        ? installFailureErrorKind({ spent: updateInstallQuit.isSpent() })
-        : null
-    });
-  });
-}
-
-async function checkAppUpdateProvider() {
-  if (!app.isPackaged) return checkLatestRelease(app.getVersion());
-  const checkedAt = new Date().toISOString();
-  configureNativeAppUpdater();
-  const result = await autoUpdater.checkForUpdates();
-  const availability = providerUpdateCheckAvailability(result, app.getVersion());
-  if (!availability.valid) {
-    return {
-      ok: false,
-      newer: false,
-      latest: null,
-      error: 'Update metadata missing or invalid',
-      errorKind: 'metadata',
-      checkedAt
-    };
-  }
-  return {
-    ok: true,
-    newer: availability.newer,
-    latest: availability.latest,
-    clearLatest: availability.clearLatest,
-    error: null,
-    errorKind: null,
-    checkedAt
-  };
-}
-
-function deriveAppUpdateState() {
-  const block = settings?.appUpdate || {};
-  const currentVersion = app.getVersion();
-  const latest = latestForCurrentVersion(block.lastKnownLatest || null, currentVersion);
-  const dismissedVersion = block.dismissedVersion || null;
-  const installSupport = appUpdateInstallSupport({ isPackaged: app.isPackaged, platform: process.platform, env: process.env });
-  const availability = deriveAppUpdateAvailability({
-    currentVersion,
-    latest,
-    dismissedVersion,
-    phase: appUpdateNativeState.phase,
-    downloadedVersion: appUpdateNativeState.version
-  });
-  return {
-    currentVersion,
-    latest,
-    releasesUrl: RELEASES_URL,
-    hasUpdate: availability.hasUpdate,
-    showUpdateNotice: availability.showUpdateNotice,
-    dismissedVersion,
-    lastCheckedAt: block.lastCheckedAt || null,
-    lastAttemptAt: appUpdateLastAttemptAt,
-    checking: appUpdateCheckInFlight,
-    lastError: appUpdateLastError?.message || null,
-    lastErrorKind: appUpdateLastError?.kind || null,
-    installSupported: installSupport.supported,
-    installSupportReason: installSupport.reason,
-    installPhase: appUpdateNativeState.phase,
-    installProgress: appUpdateNativeState.progress,
-    installVersion: appUpdateNativeState.version,
-    installError: appUpdateNativeState.error,
-    installErrorKind: appUpdateNativeState.errorKind || null,
-    downloaded: availability.downloaded,
-    // The hand-off window, straight from the state machine rather than inferred
-    // from a pair of booleans downstream: between the press and the installer
-    // taking over there is nothing else to tell the user.
-    installStarting: updateInstallQuit.isInstalling(),
-    // No further attempt is possible until a restart, so the action policy and the
-    // automatic downloader both have to stop offering one.
-    installRetryBlocked: updateInstallQuit.isSpent(),
-    // An install the guard is still trying to complete counts as busy: on macOS
-    // Squirrel can take tens of seconds, and leaving the control live for that long
-    // invites a second press the guard can only refuse.
-    installBusy: appUpdateNativeBusy
-      || updateInstallQuit.isInstalling()
-      || appUpdateNativeState.phase === 'checking'
-      || appUpdateNativeState.phase === 'downloading'
-  };
-}
-
-function restoreDismissedAppUpdate(version) {
-  const block = settings?.appUpdate || {};
-  if (!version || block.dismissedVersion !== version) return false;
-  settings.appUpdate = {
-    ...block,
-    dismissedVersion: null
-  };
-  saveSettings();
-  return true;
-}
-
-function sendAppUpdatePush() {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
-  mainWindow.webContents.send('appUpdate:push', deriveAppUpdateState());
-}
-
-async function runAppUpdateCheck({ force = false, bypassCooldown = false } = {}) {
-  // An outstanding install owns the updater until the guard is idle again.
-  // electron-updater reports a failed check by emitting on the same global 'error'
-  // event an install failure arrives on -- checkForUpdates() emits there and
-  // rethrows -- and the handler below has nothing to tell them apart. Treating a
-  // check's failure as the install's would tear down the install, which is what the
-  // hourly check made an ordinary overlap on macOS, where an install is outstanding
-  // for as long as minutes.
-  //
-  // `isOutstanding` rather than `isInstalling`, so this covers a spent attempt too.
-  // Spent is not terminal: the bound is only where we stopped waiting, and a late
-  // hand-off still promotes it back to `handoff` and re-claims the flags. A check
-  // allowed to start in the meantime would then be in flight during a genuine
-  // hand-off, and its failure would release `skipForcedQuit` with the installer
-  // owning the exit -- the one outcome this whole path exists to prevent. Checking
-  // is worth less than that: after a spent attempt it can only find a version this
-  // process is already refusing to download.
-  if (updateInstallQuit.isOutstanding()) return deriveAppUpdateState();
-  if (appUpdateCheckPromise) {
-    if (force) sendAppUpdatePush();
-    const activeResult = await appUpdateCheckPromise;
-    if (force) {
-      appUpdateLastAttemptAt = activeResult?.checkedAt || new Date().toISOString();
-      appUpdateLastError = resolveAppUpdateCheckError(appUpdateLastError, activeResult, { force: true });
-      if (activeResult?.ok) {
-        if (activeResult.newer) restoreDismissedAppUpdate(activeResult.latest?.version);
-      }
-      sendAppUpdatePush();
-    }
-    return maybeDownloadAutomaticAppUpdate(deriveAppUpdateState());
-  }
-  const block = settings?.appUpdate || {};
-  if (!bypassCooldown && shouldSkipAppUpdateCheck({
-    force,
-    lastCheckedAt: block.lastCheckedAt,
-    latest: block.lastKnownLatest,
-    dismissedVersion: block.dismissedVersion,
-    currentVersion: app.getVersion()
-  })) {
-    return maybeDownloadAutomaticAppUpdate(deriveAppUpdateState());
-  }
-  const checkTask = (async () => {
-    appUpdateCheckInFlight = true;
-    appUpdateLastAttemptAt = new Date().toISOString();
-    if (force) sendAppUpdatePush();
-    let result;
-    try {
-      result = await checkAppUpdateProvider();
-      appUpdateLastAttemptAt = result.checkedAt || appUpdateLastAttemptAt;
-      if (result.ok) {
-        rememberSuccessfulAppUpdateCheck(result.latest, result.checkedAt, { clearLatest: result.clearLatest });
-        if (force && result.newer) restoreDismissedAppUpdate(result.latest?.version);
-      } else {
-        appUpdateLastError = resolveAppUpdateCheckError(appUpdateLastError, result, { force });
-        if (!force) console.warn('App update check failed:', result.error);
-      }
-    } catch (error) {
-      const classified = classifyAppUpdateError(error);
-      appUpdateLastError = resolveAppUpdateCheckError(appUpdateLastError, {
-        ok: false,
-        error: classified.message,
-        errorKind: classified.kind
-      }, { force });
-      if (!force) console.warn('App update check threw:', error);
-      return {
-        ok: false,
-        newer: false,
-        latest: null,
-        error: classified.message,
-        errorKind: classified.kind,
-        checkedAt: appUpdateLastAttemptAt
-      };
-    } finally {
-      appUpdateCheckInFlight = false;
-      sendAppUpdatePush();
-    }
-    return result;
-  })();
-  appUpdateCheckPromise = checkTask;
-  try {
-    await checkTask;
-  } finally {
-    if (appUpdateCheckPromise === checkTask) appUpdateCheckPromise = null;
-  }
-  return maybeDownloadAutomaticAppUpdate(deriveAppUpdateState());
-}
-
-async function maybeDownloadAutomaticAppUpdate(updateState) {
-  if (!shouldDownloadAutomaticAppUpdate({
-    automaticAppUpdates: settings?.automaticAppUpdates,
-    updateState
-  })) return updateState;
-  return downloadAndPrepareAppUpdate();
-}
-
-function maybeRunBackgroundUpdateCheck() {
-  runAppUpdateCheck({ force: false }).catch(() => {});
-}
-
-function scheduleStartupAppUpdateCheck() {
-  const timer = setTimeout(() => {
-    runAppUpdateCheck({ bypassCooldown: true }).catch(() => {});
-  }, APP_UPDATE_STARTUP_DELAY_MS);
-  timer.unref?.();
-}
-
-function startAppUpdateBackgroundChecks() {
-  if (appUpdateBackgroundTimer) return;
-  appUpdateBackgroundTimer = setInterval(maybeRunBackgroundUpdateCheck, 60 * 60 * 1000);
-  appUpdateBackgroundTimer.unref?.();
-  // A machine that slept overnight should not wait for the next hourly tick to
-  // notice a release. Both still go through the cooldown.
-  powerMonitor.on('resume', maybeRunBackgroundUpdateCheck);
-  powerMonitor.on('unlock-screen', maybeRunBackgroundUpdateCheck);
-}
-
-function dismissAppUpdateVersion(version) {
-  if (typeof version !== 'string' || !version) return deriveAppUpdateState();
-  settings.appUpdate = {
-    ...(settings.appUpdate || {}),
-    dismissedVersion: version
-  };
-  saveSettings();
-  sendAppUpdatePush();
-  return deriveAppUpdateState();
-}
-
-async function downloadAndPrepareAppUpdate() {
-  const support = appUpdateInstallSupport({ isPackaged: app.isPackaged, platform: process.platform, env: process.env });
-  if (!support.supported) {
-    setNativeAppUpdateState({ phase: 'error', error: support.reason || 'unsupported-platform', progress: null });
-    return deriveAppUpdateState();
-  }
-  // Same ownership rule as the check path, and one more: a spent attempt can never
-  // be installed by this process either, so re-entering the download lifecycle
-  // rebuilds MacUpdater's local proxy while the listener the first quitAndInstall()
-  // attached is still on the native updater. The renderer stops offering this and
-  // the automatic downloader stands down, but neither of those is the boundary --
-  // this is, and an IPC action queued before the attempt ended still arrives here.
-  //
-  // Every entry point uses the same rule, for the same reason (see
-  // runAppUpdateCheck): while the guard holds anything, nothing else drives the
-  // updater.
-  if (updateInstallQuit.isOutstanding()) return deriveAppUpdateState();
-  if (appUpdateCheckPromise) await appUpdateCheckPromise;
-  if (appUpdateNativeBusy) return deriveAppUpdateState();
-  const latest = settings?.appUpdate?.lastKnownLatest || null;
-  if (downloadedAppUpdateMatchesLatest({
-    phase: appUpdateNativeState.phase,
-    downloadedVersion: appUpdateNativeState.version,
-    latest
-  })) return deriveAppUpdateState();
-  configureNativeAppUpdater();
-  appUpdateNativeBusy = true;
-  setNativeAppUpdateState({ phase: 'checking', progress: null, error: null });
-  try {
-    const result = await autoUpdater.checkForUpdates();
-    const availability = providerUpdateCheckAvailability(result, app.getVersion());
-    if (!availability.valid) throw new Error('Update metadata missing or invalid');
-    const checkedAt = new Date().toISOString();
-    const latestFromCheck = rememberSuccessfulAppUpdateCheck(
-      availability.latest,
-      checkedAt,
-      { clearLatest: availability.clearLatest }
-    );
-    const version = latestFromCheck?.version || null;
-    if (!availability.newer || !version) {
-      appUpdateNativeBusy = false;
-      setNativeAppUpdateState({ phase: 'idle', version, progress: null, error: null });
-      return deriveAppUpdateState();
-    }
-    restoreDismissedAppUpdate(version);
-    setNativeAppUpdateState({ phase: 'downloading', version, progress: 0, error: null });
-    await autoUpdater.downloadUpdate();
-  } catch (error) {
-    appUpdateNativeBusy = false;
-    setNativeAppUpdateState({ phase: 'error', progress: null, error: error?.message || String(error) });
-  }
-  return deriveAppUpdateState();
-}
-
-async function installDownloadedAppUpdate() {
-  // The other half of the same rule. Refusing new operations during the install
-  // only holds the boundary if nothing was already running when it started, and a
-  // check begun a moment earlier would still be reporting on the shared event.
-  // Waiting rather than refusing, since this one is a button press: the checks
-  // below are read afterwards, when the update it is about to install is settled.
-  if (appUpdateCheckPromise) await appUpdateCheckPromise;
-  const latest = settings?.appUpdate?.lastKnownLatest || null;
-  if (!downloadedAppUpdateMatchesLatest({
-    phase: appUpdateNativeState.phase,
-    downloadedVersion: appUpdateNativeState.version,
-    latest
-  })) return deriveAppUpdateState();
-  // quitAndInstall goes through before-quit, and electron-updater owns the
-  // restart from there. Stand the forced exit down or the installer never runs.
-  // Refused while an earlier request is still outstanding, and permanently once an
-  // attempt is spent, so a second press can never stack install attempts.
-  if (!updateInstallQuit.request()) {
-    // Say so rather than leave a button that quietly does nothing: a spent attempt
-    // cannot be retried in this process at all.
-    if (updateInstallQuit.phase() === 'spent') {
-      setNativeAppUpdateState({
-        phase: 'error',
-        progress: null,
-        error: 'Update install was already attempted',
-        errorKind: 'attempt-spent'
-      });
-    }
-    return deriveAppUpdateState();
-  }
-  try {
-    // isSilent: skip the NSIS installer UI on Windows so the update feels seamless
-    // (per-user install needs no elevation); isForceRunAfter relaunches the app.
-    autoUpdater.quitAndInstall(true, true);
-  } catch (error) {
-    // The abort above ended the attempt this call had just made, so unlike the
-    // updater's own error handler there is nothing else this failure could belong
-    // to, and the same recovery applies.
-    updateInstallQuit.abort();
-    setNativeAppUpdateState({
-      phase: 'error',
-      progress: null,
-      error: error?.message || String(error || 'Update failed'),
-      errorKind: installFailureErrorKind({ spent: updateInstallQuit.isSpent() })
-    });
-  }
-  return deriveAppUpdateState();
 }
 
 // The one URL the edge dock can ask for: the Codex reset forecast row is the
@@ -7664,7 +6402,7 @@ function createWindow(boundsOverride, options = {}) {
   // last real window closes, which window-all-closed relies on for quitting.
   win.on('closed', () => {
     if (quitRequested || process.platform === 'darwin') return;
-    if (BrowserWindow.getAllWindows().every((other) => (edgeDockController?.owns(other) || notchController?.owns(other)))) app.quit();
+    if (BrowserWindow.getAllWindows().every((other) => edgeDockController?.owns(other))) app.quit();
   });
   win.on('show', () => syncPluginWindowVisibility(win));
   win.on('hide', () => syncPluginWindowVisibility(win));
@@ -7878,13 +6616,10 @@ function rebuildWindow() {
 
 // Plugin hosts load from their own privileged scheme, which Chromium only
 // accepts before 'ready'.
-registerPluginScheme(protocol);
 
 app.whenReady().then(() => {
   if (process.platform === 'darwin' && app.dock) app.dock.setIcon(APP_ICON_PATH);
   ensureSettingsLoaded();
-  powerMonitor.on('lock-screen', () => notchController?.setLocked(true));
-  powerMonitor.on('unlock-screen', () => notchController?.setLocked(false));
   void sessionProxy.apply();
   // Switching the OS between light and dark repaints the taskbar underneath an
   // icon we have already handed to the shell, so the renderer has to recompose
@@ -7893,28 +6628,8 @@ app.whenReady().then(() => {
     applyNativeMaterial();
     // Rebuilds the dock only when Reduce Transparency moved its material.
     if (edgeDockController?.isRunning()) edgeDockController.sync();
-    if (notchController?.isRunning()) notchController.sync();
     void pushSystemUiThemeAfterChange();
   });
-  const widgetRuntime = macWidgetRuntimeSupport({
-    platform: process.platform,
-    osRelease: process.platform === 'darwin' ? os.release() : ''
-  });
-  const widgetRuntimeSupported = widgetRuntime.supported;
-  const widgetRecoveryAbort = widgetRuntimeSupported ? new AbortController() : null;
-  const abortWidgetRecovery = () => widgetRecoveryAbort?.abort();
-  if (widgetRecoveryAbort) app.once('before-quit', abortWidgetRecovery);
-  const widgetRecovery = widgetRuntimeSupported
-    ? recoverMacWidgetLaunchServicesRegistration({
-      platform: process.platform,
-      runtimeSupported: true,
-      isPackaged: app.isPackaged,
-      resourcesPath: process.resourcesPath,
-      userDataPath: app.getPath('userData'),
-      signal: widgetRecoveryAbort.signal,
-      logger: (message) => console.warn(message)
-    })
-    : Promise.resolve({ status: 'skipped', reason: widgetRuntime.reason });
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     callback({
       responseHeaders: {
@@ -7934,30 +6649,9 @@ app.whenReady().then(() => {
   ensureTray();
   if (settings.trayMode) enterTrayMode();
   regenerateTokscalePricing();
-  if (widgetRuntimeSupported) ensureMacWidgetDemand();
   startMode();
-  void widgetRecovery.then((result) => {
-    if (result.status !== 'completed' || widgetRecoveryAbort?.signal.aborted) return;
-    const config = macWidgetConfiguration();
-    if (!config) return;
-    // The retained snapshot may be unchanged after an update, so publication
-    // deduplication alone cannot wake the newly registered extension. Do not
-    // require a recent demand heartbeat from the extension we just retired.
-    requestMacWidgetReload({
-      widgetKind: config.widgetKind,
-      isCurrent: () => !widgetRecoveryAbort?.signal.aborted,
-      logger: (message) => console.warn(message)
-    });
-  }).finally(() => {
-    if (widgetRecoveryAbort) app.removeListener('before-quit', abortWidgetRecovery);
-    if (!widgetRecoveryAbort?.signal.aborted) {
-      macWidgetPublicationReady = true;
-      macWidgetSnapshotController?.resume();
-    }
-  });
   void hydrateCodexManagedWorkspaceLabels();
-  if (settings.discordRpcEnabled) startDiscordRpc();
-  rateCache = readRateCache();
+    rateCache = readRateCache();
   applyEffectiveRates();                 // use cache/defaults immediately, avoid first-paint gap
   refreshExchangeRates();                // non-blocking: only fetches when stale
   rateRefreshTimer = setInterval(() => { refreshExchangeRates(); }, 6 * 60 * 60 * 1000);
@@ -8054,24 +6748,22 @@ app.whenReady().then(() => {
   // pausing the session archive must not be reported done while the worker can
   // still capture under the old value.
   ipcMain.handle('settings:update', async (event, patch) => {
-    const finishPluginChange = await pluginRuntime?.beforeSettingsChange(event, patch);
-    assertPluginSkinRequest(event, patch);
-    const contentRuntime = getSyncContentRuntime();
+            const contentRuntime = getSyncContentRuntime();
     const sharedEdit = patch.modelAliases !== undefined || patch.modelAliasGrouping !== undefined
       || patch.customModelPricing !== undefined;
     const settingsIdentity = contentRuntime.status().identity;
     await contentRuntime.publishPatch(patch, patch?.syncContentBase);
     if (sharedEdit && settingsIdentity !== contentRuntime.status().identity) throw new Error('hub_changed');
-    assertPluginSkinRequest(event, patch);
-    let dotsVisibilityApplied = Promise.resolve();
+        let dotsVisibilityApplied = Promise.resolve();
     applySettingsPatch(patch, (refresh) => { dotsVisibilityApplied = refresh; });
     await latestUsageHost?.transformSettingsApplied?.();
     await dotsVisibilityApplied;
-    await finishPluginChange?.();
     // Other settings writes may finish while this visibility projection waits.
     // Return the latest saved selection rather than restoring an older one.
     return settingsForRenderer();
   });
+
+  // The settings:update body
   async function applyCredentialSettingsPatch(patch, { provider }) {
     const refreshes = [];
     applySettingsPatch(patch, undefined, {
@@ -8089,17 +6781,14 @@ app.whenReady().then(() => {
   // The settings:update body, named so a credential save persists through the
   // exact same normalization, runtime reconfigure and limit invalidation.
   function applySettingsPatch(patch, onDotsVisibilityRefresh = () => {}, limitContext = {}) {
-    const skinSelection = preparePluginSkinSettings(patch, settings, pluginRuntime);
-    patch = skinSelection.patch;
-    const contentRuntime = getSyncContentRuntime();
+        const contentRuntime = getSyncContentRuntime();
     credentialCommands.noteSettingsPatch(patch);
     const previousSettingsState = settings;
     const previousRuntimeSettings = JSON.parse(JSON.stringify(settings));
     const previousNativeMaterial = nativeBlurEnabled();
     const previousWindowsBackdrop = normalizeWindowsBackdropMode(settings?.windowsBackdrop);
     const previousClients = settings.clients;
-    const previousDiscordRpcEnabled = settings.discordRpcEnabled;
-    const previousShowTrayIcon = settings.showTrayIcon;
+        const previousShowTrayIcon = settings.showTrayIcon;
     const previousTrayMode = settings.trayMode;
     const previousHideAppIcon = settings.hideAppIcon;
     const previousTrayContent = settings.trayContent;
@@ -8111,8 +6800,7 @@ app.whenReady().then(() => {
     const previousCompactTokenUnits = settings.compactTokenUnits;
     const previousLanguage = settings.language;
     const previousStartAtLogin = settings.startAtLogin;
-    const previousAutomaticAppUpdates = settings.automaticAppUpdates;
-    const previousCustomModelPricing = JSON.stringify(settings.customModelPricing || []);
+        const previousCustomModelPricing = JSON.stringify(settings.customModelPricing || []);
     const previousProxyKey = JSON.stringify([settings.proxyUrl || '', settings.noProxy || '']);
     const normalizedCurrency = patch.currency !== undefined ? normalizeCurrency(patch.currency, settings.currency) : normalizeCurrency(settings.currency);
     const normalizedPatch = { ...patch, currency: normalizedCurrency };
@@ -8210,34 +6898,6 @@ app.whenReady().then(() => {
       ),
       tokenRateMode: normalizeTokenRateMode(patch.tokenRateMode ?? settings.tokenRateMode),
       floatingBubbleEnabled: parseBoolean(patch.floatingBubbleEnabled ?? settings.floatingBubbleEnabled, false),
-      notchEnabled: parseBoolean(patch.notchEnabled ?? settings.notchEnabled, false),
-      notchStyle: normalizeNotchStyle(patch.notchStyle ?? settings.notchStyle),
-      notchShape: normalizeNotchShape(patch.notchShape ?? settings.notchShape),
-      notchSize: normalizeEdgeDockSize(patch.notchSize ?? settings.notchSize),
-      notchCustomScale: normalizeEdgeDockCustomScale(patch.notchCustomScale ?? settings.notchCustomScale),
-      notchItems: normalizeEdgeDockItems('notchItems' in (patch || {}) ? patch.notchItems : settings.notchItems),
-      notchPageOrder: pluginPlacements.normalizeNotchPageOrder(patch.notchPageOrder ?? settings.notchPageOrder),
-      notchBuiltinPages: pluginPlacements.normalizeNotchBuiltinPages(patch.notchBuiltinPages ?? settings.notchBuiltinPages),
-      notchPluginPages: pluginPlacements.normalizeNotchPluginPages('notchPluginPages' in (patch || {}) ? patch.notchPluginPages : settings.notchPluginPages),
-      pluginMainPages: pluginPlacements.normalizeRefList('pluginMainPages' in (patch || {}) ? patch.pluginMainPages : settings.pluginMainPages, 32),
-      pluginsEnabled: parseBoolean(patch.pluginsEnabled ?? settings.pluginsEnabled, true),
-      // Consent is written only by the plugin manager (plugins:setEnabled),
-      // never by a generic settings patch from a renderer.
-      pluginStates: normalizePluginStates(settings.pluginStates),
-      pluginAuthorSkin: skinSelection.authorSkin,
-      notchRunningIndicatorEnabled: parseBoolean(patch.notchRunningIndicatorEnabled ?? settings.notchRunningIndicatorEnabled, false),
-      notchWarnColors: parseBoolean(patch.notchWarnColors ?? settings.notchWarnColors, false),
-      notchHoverAction: normalizeNotchHoverAction(patch.notchHoverAction ?? settings.notchHoverAction),
-      notchHoverDelay: normalizeNotchHoverDelay(patch.notchHoverDelay ?? settings.notchHoverDelay),
-      notchSwipeGestures: parseBoolean(patch.notchSwipeGestures ?? settings.notchSwipeGestures, true),
-      notchHaptic: parseBoolean(patch.notchHaptic ?? settings.notchHaptic, true),
-      notchProgressiveBlur: parseBoolean(patch.notchProgressiveBlur ?? settings.notchProgressiveBlur, true),
-      notchHideSummaryInFullScreen: parseBoolean(patch.notchHideSummaryInFullScreen ?? settings.notchHideSummaryInFullScreen, true),
-      notchRefreshEnabled: parseBoolean(patch.notchRefreshEnabled ?? settings.notchRefreshEnabled, false),
-      notchSummaryMode: notchSummaryMode({ notchSummaryMode: patch.notchSummaryMode ?? settings.notchSummaryMode }),
-      notchSummaryEnabled: parseBoolean(patch.notchSummaryEnabled ?? settings.notchSummaryEnabled, true),
-      notchCustomLayout: normalizeTrayLayout(patch.notchCustomLayout ?? settings.notchCustomLayout),
-      notchDisplayId: normalizeEdgeDockDisplayId(patch.notchDisplayId ?? settings.notchDisplayId),
       edgeDockEnabled: parseBoolean(patch.edgeDockEnabled ?? settings.edgeDockEnabled, false),
       edgeDockRefreshEnabled: parseBoolean(patch.edgeDockRefreshEnabled ?? settings.edgeDockRefreshEnabled, false),
       edgeDockRunningIndicatorEnabled: parseBoolean(patch.edgeDockRunningIndicatorEnabled ?? settings.edgeDockRunningIndicatorEnabled, true),
@@ -8254,8 +6914,7 @@ app.whenReady().then(() => {
       // `null` is a real value here (back to the automatic default), so the
       // patch is checked for presence rather than coalesced.
       edgeDockItems: normalizeEdgeDockItems('edgeDockItems' in (patch || {}) ? patch.edgeDockItems : settings.edgeDockItems),
-      discordRpcEnabled: patch.discordRpcEnabled ?? settings.discordRpcEnabled ?? false,
-      limitsEnabled: parseBoolean(patch.limitsEnabled ?? settings.limitsEnabled, true),
+            limitsEnabled: parseBoolean(patch.limitsEnabled ?? settings.limitsEnabled, true),
       // Sourced from settings only, never from the patch: subscriptions:save is
       // the one write path, because it knows whether this device owns the list
       // or shares it with a hub. Reading the patch here would let any caller
@@ -8335,8 +6994,7 @@ app.whenReady().then(() => {
       currencyRates: patch.currencyRates !== undefined ? normalizeCurrencyOverrides(patch.currencyRates) : normalizeCurrencyOverrides(settings.currencyRates),
       language: patch.language !== undefined ? normalizeLanguageSetting(patch.language, settings.language) : normalizeLanguageSetting(settings.language),
       startAtLogin: loginItemEnabledHere() ? parseBoolean(patch.startAtLogin ?? settings.startAtLogin, false) : false,
-      automaticAppUpdates: parseBoolean(patch.automaticAppUpdates ?? settings.automaticAppUpdates, false),
-      // A hand-edited settings.json value the form would refuse is kept as-is
+            // A hand-edited settings.json value the form would refuse is kept as-is
       // so the transport fails closed on it rather than silently going direct.
       proxyUrl: patch.proxyUrl !== undefined ? normalizeProxyUrl(patch.proxyUrl) : String(settings.proxyUrl || ''),
       noProxy: patch.noProxy !== undefined ? normalizeNoProxy(patch.noProxy) : String(settings.noProxy || ''),
@@ -8345,7 +7003,6 @@ app.whenReady().then(() => {
         ? normalizeCustomPricingSetting(patch.customModelPricing)
         : normalizeCustomPricingSetting(settings.customModelPricing)
     }, windowBehaviorSelection(normalizedPatch));
-    retainIcloudDeviceIdentity(previousSettingsState, settings);
     settings.archivedClientUsage = normalizeArchivedClientUsage(settings.archivedClientUsage);
     if (settings.clients !== previousClients) updateArchivedClientUsage(previousClients, settings.clients);
     delete settings.edgeDrawerEnabled;
@@ -8390,20 +7047,7 @@ app.whenReady().then(() => {
       if (proxySettingChanged || sessionChanged) return queueLimitInvalidation({ all: true }, 'settings-change');
       return null;
     }).catch((error) => console.log(`[limits-runtime] proxy refresh failed: ${error.message}`));
-    if (settings.automaticAppUpdates && !previousAutomaticAppUpdates) {
-      runAppUpdateCheck({ bypassCooldown: true }).catch(() => {});
-    }
     if (patch.zoomFactor !== undefined) applyZoomFactor();
-    if (settings.discordRpcEnabled && !previousDiscordRpcEnabled) {
-      startDiscordRpc();
-      if (latestStats) updateDiscordRpcDisplay(latestStats);
-    }
-    else if (!settings.discordRpcEnabled && previousDiscordRpcEnabled) stopDiscordRpc();
-    else if (settings.discordRpcEnabled && (
-      settings.currency !== previousCurrency
-      || settings.compactTokenUnits !== previousCompactTokenUnits
-      || settings.language !== previousLanguage
-    ) && latestStats) updateDiscordRpcDisplay(latestStats);
     applyWindowSettings();
     syncFloatingBubbleAvailability();
     syncDockSurfaces();
@@ -8417,10 +7061,6 @@ app.whenReady().then(() => {
       applyNativeMaterial();
     }
     const runtimeChange = classifySettingsChange(previousRuntimeSettings, settings);
-    const widgetHistorySourceChanged = previousRuntimeSettings.historyEnabled !== settings.historyEnabled;
-    if (widgetHistorySourceChanged && !runtimeChange.modeStructural) {
-      refreshMacWidgetHistorySource();
-    }
     const limitInvalidations = settingsLimitInvalidationPlan(runtimeChange, limitContext.ensureLimitProvider);
     if (runtimeChange.modeStructural || (receiverPermissionChanged && settings.hubMode === 'host')) {
       for (const { scope, reason, options } of limitInvalidations) {
@@ -8483,8 +7123,7 @@ app.whenReady().then(() => {
     if (patch.currency !== undefined || patch.currencyRates !== undefined) {
       applyEffectiveRates();               // sync: settingsForRenderer() below sees fresh effective map
       updateTrayDisplay();
-      if (settings.discordRpcEnabled && latestStats) updateDiscordRpcDisplay(latestStats);
-      refreshExchangeRates();              // async: fetch if stale, then re-push
+            refreshExchangeRates();              // async: fetch if stale, then re-push
     }
     if ((settings.opencodeLocalLimitsEnabled === true) !== previousOpenCodeLocalLimitsEnabled) {
       // Re-project the cached aggregate immediately. The Hub can be offline and
@@ -8505,8 +7144,7 @@ app.whenReady().then(() => {
     if (settings.sessionTitlesEnabled !== previousSettingsState.sessionTitlesEnabled) {
       refreshLimitStatsPresentation();
     }
-    pluginRuntime?.settingsChanged();
-    return settingsForRenderer();
+        return settingsForRenderer();
   }
   ipcMain.handle('appearance:preview', (event, patch) => {
     // Other document windows retain their saved theme; glass previews
@@ -8519,9 +7157,6 @@ app.whenReady().then(() => {
     }
     if (patch && patch.edgeDockCustomScale !== undefined && edgeDockController?.isRunning()) {
       edgeDockController.previewScale(patch.edgeDockCustomScale);
-    }
-    if (patch && patch.notchCustomScale !== undefined && notchController?.isRunning()) {
-      notchController.previewScale(patch.notchCustomScale);
     }
     return true;
   });
@@ -8709,7 +7344,6 @@ app.whenReady().then(() => {
     return getNativeMaterialState(win);
   });
   ipcMain.handle('app:getInfo', () => ({
-    notchCapabilities: notchController?.getCapabilities() || null,
     version: app.getVersion(),
     platform: process.platform,
     arch: process.arch,
@@ -8724,25 +7358,7 @@ app.whenReady().then(() => {
     loginItemOpenAtLogin: currentLoginItemState(),
     systemDarkUi: currentSystemDarkTrayUi()
   }));
-  ipcMain.handle('diagnostics:generate', async () => {
-    const report = await diagnosticReportGenerator.generate();
-    return {
-      generatedAt: report.generatedAt,
-      completeness: report.completeness,
-      text: report.text,
-      bytes: report.bytes,
-      truncated: report.truncated,
-      includedClientCount: report.includedClientCount,
-      omittedClientCount: report.omittedClientCount,
-      includedLimitProviderCount: report.includedLimitProviderCount,
-      omittedLimitProviderCount: report.omittedLimitProviderCount,
-      includedRemoteGroupCount: report.includedRemoteGroupCount,
-      omittedRemoteGroupCount: report.omittedRemoteGroupCount,
-      includedJournalEventCount: report.includedJournalEventCount,
-      journalOmittedCount: report.journalOmittedCount
-    };
-  });
-  // Where each known tool's data is read from on THIS machine. The absolute
+    // Where each known tool's data is read from on THIS machine. The absolute
   // paths stay local by design — they carry the user's home directory and never
   // go on the wire — so the renderer asks the main process for them instead.
   //
@@ -8818,12 +7434,7 @@ app.whenReady().then(() => {
   ipcMain.handle('mimo:setAccountEnabled', (_event, id, enabled) => setMimoManagedAccountEnabled(id, enabled));
   ipcMain.handle('mimo:removeAccount', async (_event, id) => removeMimoManagedAccount(id));
   ipcMain.handle('tokscale:getStatus', () => getTokscaleStatus());
-  ipcMain.handle('appUpdate:getState', () => deriveAppUpdateState());
-  ipcMain.handle('appUpdate:checkNow', () => runAppUpdateCheck({ force: true }));
-  ipcMain.handle('appUpdate:download', () => downloadAndPrepareAppUpdate());
-  ipcMain.handle('appUpdate:install', () => installDownloadedAppUpdate());
-  ipcMain.handle('appUpdate:dismiss', (_event, version) => dismissAppUpdateVersion(version));
-  ipcMain.handle('cursor:loginManual', async (_event, raw) => {
+    ipcMain.handle('cursor:loginManual', async (_event, raw) => {
     if (isExternalAgentActive()) {
       return { ok: false, code: 'EXTERNAL_AGENT_ACTIVE', error: CURSOR_EXTERNAL_AGENT_ERROR };
     }
@@ -9767,7 +8378,7 @@ app.whenReady().then(() => {
     const action = activateWindowAction({
       mainWindow,
       windows: BrowserWindow.getAllWindows(),
-      isDockOwned: (win) => Boolean(edgeDockController?.owns(win) || notchController?.owns(win))
+      isDockOwned: (win) => Boolean(edgeDockController?.owns(win))
     });
     if (action === 'focusWindow') focusExistingWindow();
     else if (action === 'createWindow') {
@@ -9779,88 +8390,7 @@ app.whenReady().then(() => {
       createWindow();
     }
   });
-  startPluginRuntime();
-  function startPluginRuntime() {
-    try {
-      pluginRuntime = createPluginRuntime({
-        getAppSettings: settingsForRenderer,
-        electron: { app, BrowserWindow, utilityProcess: require('electron').utilityProcess, Notification, ipcMain, nativeImage, session, shell, dialog },
-        userDataDir: app.getPath('userData'),
-        getSettings: () => settings,
-        applySettingsPatch,
-        persistPluginStates: (states) => {
-          settings = { ...settings, pluginStates: normalizePluginStates(states) };
-          saveSettings({ throwOnError: true });
-          pushSettingsToRenderer();
-        },
-        persistManagementSettings: (patch) => {
-          // Main-owned transaction state only; never exposed as generic renderer settings.
-          const allowed = ['pluginStates', 'pluginInitialSetup', 'themeColors', 'vendorColors', 'pluginAuthorSkin', 'trayContent', 'homeModuleOrder', 'hiddenHomeModules', 'edgeDockItems', 'trayCustomLayout', 'floatingBubbleCustomLayout', 'notchCustomLayout', 'notchPageOrder', 'notchPluginPages', 'pluginMainPages', 'pluginContentSelections', 'pluginContentOrder'];
-          settings = { ...settings, ...Object.fromEntries(allowed.filter(key => Object.hasOwn(patch, key)).map(key => [key, patch[key]])) };
-          settings.pluginStates = normalizePluginStates(settings.pluginStates);
-          saveSettings({ throwOnError: true });
-          if (Object.hasOwn(patch, 'trayContent') || Object.hasOwn(patch, 'trayCustomLayout')) updateTrayDisplay();
-          pushSettingsToRenderer();
-        },
-        getLocale: () => trayMenuLocale(),
-        getContext: () => ({ mode, hubMode: settings.hubMode, hubUrl: settings.hubUrl, deviceId: settings.deviceId }),
-        // Business reads use captured host records, not renderer DTOs or provider
-        // credentials. These adapters never refresh the collector or limits.
-        businessAdapters: {
-          sourceId: () => `${hubModeGeneration}:${mode}:${settings.hubMode}`,
-          extras: stats => ({
-            liveRateContext: { hubMode: settings.hubMode, deviceId: settings.deviceId, clients: settings.clients },
-            historyRevision: JSON.stringify([settings.historyEnabled !== false, stats?.deviceHistoryRevision || statsHistoryRevision(stats)]),
-            subscriptions: effectiveSubscriptions(),
-            subscriptionContext: { date: subscriptionDisplay.todayString(), rates: { ...(effectiveRates || resolveEffectiveRates(rateCache?.rates || {}, settings?.currencyRates || {})) } },
-            preferences: { currency: settings.currency, locale: trayMenuLocale(), timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone, sessionTitlesEnabled: settings.sessionTitlesEnabled !== false, historyEnabled: settings.historyEnabled !== false, projectsEnabled: settings.projectsEnabled !== false }
-          }),
-          loadAllTime: ({ stats }) => {
-            const complete = completeLocalSyncStats(stats);
-            if (!complete?.periods?.allTime) return null;
-            const captured = snapshotLocalDevices.get(stats);
-            // Wire records omit lifetime detail by design. The native Month
-            // fallback is display-only and must not enter this accounting API.
-            return {
-              ...complete?.periods?.allTime,
-              sessionSources: (complete?.devices || []).map(device => ({
-                ...device,
-                sessionDetailAvailable: !captured || device.deviceId === captured.localDevice?.deviceId
-              }))
-            };
-          },
-          loadHistory: () => getCompleteHistory(),
-          loadSubscriptions: () => effectiveSubscriptions()
-        },
-        isMainSender: (event) => Boolean(mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents),
-        surfaceContext: (event, surface) => surface === 'edgeDock' ? edgeDockController?.webSurface(event.sender) : surface === 'notch' ? notchController?.webSurface(event.sender) : null,
-        isSurfaceSender: (event, surface) => {
-          const win = BrowserWindow.fromWebContents(event.sender);
-          return Boolean(win && (surface === 'edgeDock' ? edgeDockController?.owns(win) : notchController?.owns(win)));
-        },
-        placementContext: () => {
-          const stats = latestStats ? electronPresentationStats(latestStats) : null;
-          return {
-            defaultEdgeDockProviders: edgeDockPresentationApi.connectedLimitProviders(stats, {
-              limitsEnabled: settings.limitsEnabled !== false,
-              limitProviders: settings.limitProviders,
-              limitProviderOrder: settings.limitProviderOrder
-            }),
-            trayPresetLayout: notchSummaryLayout({ ...settings, notchSummaryMode: 'tray' }, stats)
-          };
-        },
-      });
-      void pluginRuntime.start().catch(error => console.warn(`[plugins] startup: ${error.message}`));
-      pluginRuntime.manager.onChanged(() => { repaintDockSurfaces(); refreshTrayContextMenu(); });
-      if (latestStats) pluginRuntime.publishStats(electronPresentationStats(latestStats), latestStats);
-    } catch (error) {
-      pluginRuntime = null;
-      console.warn(`[plugins] runtime failed to start: ${error.message}`);
-    }
-  }
-  scheduleStartupAppUpdateCheck();
-  startAppUpdateBackgroundChecks();
-});
+    });
 
 app.on('second-instance', focusExistingWindow);
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
@@ -9872,16 +8402,12 @@ app.on('before-quit', () => {
   quitRequested = true;
   antigravityOAuthLoginController?.abort();
   workbuddyManagedAccountService?.cancelLogin();
-  resetMacWidgetReloadThrottle();
   if (rateRefreshTimer) clearInterval(rateRefreshTimer);
-  if (appUpdateBackgroundTimer) clearInterval(appUpdateBackgroundTimer);
-  stopTaskbarZOrderKeeper();
+    stopTaskbarZOrderKeeper();
   unregisterWindowToggleShortcut();
   edgeDockController?.stop();
-  notchController?.dispose();
-  clearTimeout(notchRateTimer);
   electronWorkbuddyLocalAuth.dispose();
-  if (skipForcedQuit) { disposePluginRuntime(); return; }
+  
   performQuit();
 });
 for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {

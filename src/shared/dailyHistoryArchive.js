@@ -5,7 +5,7 @@ const path = require('node:path');
 const { isDeepStrictEqual } = require('node:util');
 const { sharedDataDir, writeJsonAtomic } = require('./config');
 const {
-  normalizeTokscaleClientName, normalizeTokscaleModelNameForClient,
+  hasDisjointReasoning, normalizeTokscaleClientName, normalizeTokscaleModelNameForClient,
   normalizeTokscaleModelComponentSummary, num, sumOutputTokens, sumTokens
 } = require('./history');
 const {
@@ -172,8 +172,45 @@ function normalizeComponentSummary(value, observations) {
   };
 }
 
-function normalizeDay(value, fallbackDate = '') {
-  const date = String(value?.date || fallbackDate).slice(0, 10);
+// Days written before the remainder rule carry a disjoint-reasoning client's
+// reasoning as a model named `unknown`, because the old writer turned every
+// leftover token into that bucket. Fold it back into the models that produced it
+// so an archive loaded after the fix stops reporting a phantom model; clients that
+// do not separate reasoning keep their remainder untouched.
+function foldReasoningRemainder(observations) {
+  const byClient = new Map();
+  for (const observation of Object.values(observations)) {
+    const client = normalizeTokscaleClientName(observation.client) || 'unknown';
+    if (!byClient.has(client)) byClient.set(client, { unknown: null, models: [] });
+    const entry = byClient.get(client);
+    if (String(observation.modelId || '').toLowerCase() === 'unknown') entry.unknown = observation;
+    else entry.models.push(observation);
+  }
+  for (const [client, entry] of byClient) {
+    if (!entry.unknown || entry.models.length === 0 || !hasDisjointReasoning(client)) continue;
+    const modeledTokens = entry.models.reduce((sum, observation) => sum + observation.tokens, 0);
+    if (modeledTokens <= 0) continue;
+    delete observations[observationKey(entry.unknown)];
+    let leftTokens = entry.unknown.tokens;
+    let leftCost = entry.unknown.cost;
+    entry.models.forEach((observation, index) => {
+      const last = index === entry.models.length - 1;
+      const share = observation.tokens / modeledTokens;
+      const addTokens = last ? leftTokens : Math.round(entry.unknown.tokens * share);
+      const addCost = last ? leftCost : entry.unknown.cost * share;
+      leftTokens -= addTokens;
+      leftCost -= addCost;
+      const key = observationKey(observation);
+      observations[key] = normalizeObservation({
+        ...observation,
+        tokens: observation.tokens + addTokens,
+        cost: observation.cost + addCost
+      });
+    });
+  }
+}
+
+function normalizeDay(value, fallbackDate = '') {  const date = String(value?.date || fallbackDate).slice(0, 10);
   if (!DAY_KEY_RE.test(date)) return null;
   const observations = {};
   const source = Array.isArray(value?.observations)
@@ -186,6 +223,7 @@ function normalizeDay(value, fallbackDate = '') {
     observations[key] = addObservation(observations[key], observation);
   }
   if (Object.keys(observations).length === 0 && num(value?.activeTimeMs) <= 0) return null;
+  foldReasoningRemainder(observations);
   const componentSummary = normalizeComponentSummary(
     normalizeTokscaleModelComponentSummary(value?.componentSummary, source), observations
   );
@@ -397,7 +435,26 @@ function periodLiveDay(period, date) {
     const remainderTokens = Math.max(0, clientTokens - modeledTokens);
     const remainderCost = Math.max(0, clientCost - modeledCost);
     if (modelIds.length === 0 || remainderTokens > 0 || remainderCost > 0) {
-      addObservation(client, 'unknown', remainderTokens, remainderCost);
+      // A client whose reasoning is counted in its own total but reported without
+      // a per-model row (antigravity, codex and the other disjoint-reasoning
+      // sources) leaves exactly that reasoning over as the difference. Spreading it
+      // across the models that produced it keeps the headline total while stopping
+      // the archive from filing a client's own tokens under a model it never used.
+      if (modelIds.length > 0 && hasDisjointReasoning(client)) {
+        let leftTokens = remainderTokens;
+        let leftCost = remainderCost;
+        modelIds.forEach((modelId, index) => {
+          const last = index === modelIds.length - 1;
+          const share = models[modelId] / modeledTokens;
+          const addTokens = last ? leftTokens : Math.round(remainderTokens * share);
+          const addCost = last ? leftCost : remainderCost * share;
+          leftTokens -= addTokens;
+          leftCost -= addCost;
+          if (addTokens > 0 || addCost > 0) addObservation(client, modelId, addTokens, addCost);
+        });
+      } else {
+        addObservation(client, 'unknown', remainderTokens, remainderCost);
+      }
     }
   }
 

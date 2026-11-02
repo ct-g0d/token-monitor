@@ -341,7 +341,7 @@ test('settings page uses collapsible icon sections with summaries', () => {
   assert.match(html, /class="settings-section-icon settings-section-icon-window"/);
   assert.match(html, /class="settings-section-icon settings-section-icon-tools"/);
   assert.match(html, /class="settings-section-icon settings-section-icon-limits"/);
-  assert.match(html, /class="settings-section-icon settings-section-icon-sync"/);
+  assert.match(html, /class="settings-section-icon settings-section-icon-subscriptions"/);
   assert.doesNotMatch(html, /data-settings-section="accounts"/);
   assert.match(html, /id="accountsSettingsDetails" class="hidden" aria-hidden="true"/);
   assert.match(html, /id="generalSettingsSummary"/);
@@ -681,16 +681,7 @@ test('general section owns app-level preferences before startup and updates', ()
   assert.doesNotMatch(generalSection, /id="currencyInput"/);
 });
 
-test('sync section icon uses a local sync asset instead of a hand-drawn refresh arrow', () => {
-  const html = readRendererFile('index.html');
-  const css = readRendererFile('styles.css');
-  const icon = html.match(/<span class="settings-section-icon settings-section-icon-sync" aria-hidden="true"><\/span>/)?.[0] || '';
-  assert.notEqual(icon, '', 'sync icon should be a local masked icon span');
-  assert.match(cssRule(css, '.settings-section-icon-sync'), /icons\/settings\/sync\.svg/);
-  assert.doesNotMatch(html, /<svg class="settings-section-icon settings-section-icon-sync"/);
-  assert.doesNotMatch(css, /\.settings-section-icon-sync::(?:before|after)/);
-  assert.doesNotMatch(cssRule(css, '.settings-section-icon-sync'), /rotate/);
-});
+
 
 test('startup setting stays visible when login items are unsupported', () => {
   const html = readRendererFile('index.html');

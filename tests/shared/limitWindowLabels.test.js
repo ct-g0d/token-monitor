@@ -58,14 +58,9 @@ test('Command Code rolling windows resolve to 5-hour from the kind alone', () =>
 test('every surface that paints a window label routes through the helper', () => {
   const app = read('src/electron/renderer/app.js');
   const dock = read('src/electron/renderer/edgeDock/dock.js');
-  const widget = read('src/shared/macWidgetSnapshot.js');
 
   assert.match(app, /const \{[^}]*limitWindowLabel[^}]*\} = window\.TokenMonitorLimitWindowLabels;/);
   assert.match(dock, /const limitWindowLabels = window\.TokenMonitorLimitWindowLabels;/);
-  assert.match(widget, /require\('\.\/limits\/windowLabels'\)/);
-
-  // The duplicated per-provider knowledge is gone from the widget snapshot.
-  assert.doesNotMatch(widget, /FIVE_HOUR_WINDOW_PROVIDERS/);
   // The dock no longer keeps a kind table of its own.
   assert.doesNotMatch(dock, /WINDOW_KIND_LABELS/);
   // The Limits view no longer hard-codes a rolling-window name.

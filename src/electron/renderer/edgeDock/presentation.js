@@ -126,13 +126,23 @@
     return limitProviders?.limitProviderForClient?.(client) ?? null;
   }
 
+  // A provider's usage and sessions are keyed by client id, and the catalog's
+  // mapping is the usual answer. A provider whose records carry its own id as the
+  // client (Antigravity does) matched nothing, so its card showed neither usage
+  // nor recent sessions. Fall back to the id itself rather than dropping it.
+  function clientBelongsToProvider(client, provider) {
+    const id = normalizedId(client);
+    if (!id || !provider) return false;
+    if (providerForClient(id) === provider) return true;
+    return id === normalizedId(provider);
+  }
   function periodUsageFor(period, provider) {
     let tokens = 0;
     let costUsd = 0;
     let unpricedTokens = 0;
     let seen = false;
     for (const [client, value] of Object.entries(period?.clients || {})) {
-      if (providerForClient(normalizedId(client)) !== provider) continue;
+      if (!clientBelongsToProvider(client, provider)) continue;
       seen = true;
       tokens += finite(value) || 0;
       costUsd += finite(period?.clientCosts?.[client]) || 0;
@@ -462,7 +472,7 @@
     // sessionId: two clients can carry the same id, and collapsing them onto one
     // key made their states overwrite each other while the rows stayed distinct.
     const grouped = groupedSessions || groupedSessionRows(stats);
-    const rows = grouped.rows.filter(row => providerForClient(normalizedId(row.client)) === provider);
+    const rows = grouped.rows.filter(row => clientBelongsToProvider(row.client, provider));
     const states = new Map(rows.map(row => [row.key, grouped.stateFor(row)]));
     const running = rows.filter(row => states.get(row.key) === 'running');
     const waiting = rows.filter(row => states.get(row.key) === 'waiting');

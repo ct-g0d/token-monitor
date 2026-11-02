@@ -9,7 +9,14 @@ const test = require('node:test');
 
 const { aggregateLimits } = require('../../src/shared/limits/core');
 const { claudeCommandCandidates, claudeWebCookie, fetchClaudeLimits, mapClaudeCliUsageToProvider, mapClaudeUsageToProvider, normalizeClaudeWebCookieInput } = require('../../src/shared/limits/collector');
-const { listClaudeWebOrganizations, runClaudeAuthStatus, touchClaudeAuthPath } = require('../../src/shared/providers/claude/limits');
+const {
+  discoverClaudeAutomaticCredential,
+  listClaudeWebOrganizations,
+  persistClaudeRefresh,
+  runClaudeAuthStatus,
+  touchClaudeAuthPath,
+  writeClaudeCredentials
+} = require('../../src/shared/providers/claude/limits');
 const { claudeProbeDir } = require('../../src/shared/providers/claude/probe');
 const probeTempRoot = process.platform === 'win32' ? os.homedir() : os.tmpdir();
 
@@ -2597,4 +2604,104 @@ test('the prepaid TTL follows the limits refresh interval at twice its length', 
   nowMs += 61_000;
   await fetchClaudeLimits(options, deps);
   assert.equal(requests.filter((url) => url.includes('/prepaid/credits')).length, 1);
+});
+
+test('writeClaudeCredentials CAS guard prevents overwriting rotated refresh tokens', async () => {
+  const fileStore = new Map();
+  fileStore.set('/test/creds.json', JSON.stringify({
+    claudeAiOauth: {
+      accessToken: 'access-v2',
+      refreshToken: 'refresh-v2-from-cli',
+      expiresAt: 2000000
+    }
+  }));
+
+  const deps = {
+    readFile: async (file) => fileStore.get(file),
+    writeFile: async (file, data) => fileStore.set(file, data),
+    rename: async (from, to) => {
+      fileStore.set(to, fileStore.get(from));
+      fileStore.delete(from);
+    },
+    unlink: async (file) => fileStore.delete(file),
+    expectedRefreshToken: 'refresh-v1-original'
+  };
+
+  // If another process rotated the refresh token to v2, our attempt to write with expectedRefreshToken v1 must abort
+  const written = await writeClaudeCredentials('/test/creds.json', 'claudeAiOauth', {
+    accessToken: 'access-v1-stale',
+    refreshToken: 'refresh-v1-new',
+    expiresAt: 1500000
+  }, deps);
+
+  assert.equal(written, false);
+  const current = JSON.parse(fileStore.get('/test/creds.json'));
+  assert.equal(current.claudeAiOauth.refreshToken, 'refresh-v2-from-cli');
+
+  // If expectedRefreshToken matches and expiration is newer, write succeeds
+  const matchDeps = { ...deps, expectedRefreshToken: 'refresh-v2-from-cli' };
+  const writeSuccess = await writeClaudeCredentials('/test/creds.json', 'claudeAiOauth', {
+    accessToken: 'access-v3',
+    refreshToken: 'refresh-v3',
+    expiresAt: 3000000
+  }, matchDeps);
+
+  assert.equal(writeSuccess, true);
+  const updated = JSON.parse(fileStore.get('/test/creds.json'));
+  assert.equal(updated.claudeAiOauth.refreshToken, 'refresh-v3');
+
+  // persistClaudeRefresh automatically passes expectedRefreshToken
+  await persistClaudeRefresh({
+    source: 'file',
+    filePath: '/test/creds.json',
+    fileShape: 'claudeAiOauth',
+    refreshToken: 'stale-refresh-token'
+  }, {
+    accessToken: 'access-v4',
+    refreshToken: 'refresh-v4',
+    expiresAt: 4000000
+  }, deps);
+  // Still refresh-v3 because stale-refresh-token did not match refresh-v3
+  const afterPersist = JSON.parse(fileStore.get('/test/creds.json'));
+  assert.equal(afterPersist.claudeAiOauth.refreshToken, 'refresh-v3');
+});
+
+test('discoverClaudeAutomaticCredential validates env token and handles file edge cases', async (t) => {
+  const tempDir = await fs.mkdtemp(path.join(probeTempRoot, 'token-monitor-claude-disc-'));
+  t.after(async () => {
+    await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+  });
+
+  const emptyConfigDir = path.join(tempDir, 'empty-config');
+  // Whitespace-only or empty env token is rejected and does not fall back if dir is empty
+  assert.equal(discoverClaudeAutomaticCredential({ CLAUDE_CODE_OAUTH_TOKEN: '   ', CLAUDE_CONFIG_DIR: emptyConfigDir }), null);
+  assert.equal(discoverClaudeAutomaticCredential({ CLAUDE_CODE_OAUTH_TOKEN: '', CLAUDE_CONFIG_DIR: emptyConfigDir }), null);
+  assert.deepEqual(discoverClaudeAutomaticCredential({ CLAUDE_CODE_OAUTH_TOKEN: 'valid-token' }), { source: 'env' });
+
+  // Custom HOME dir path
+
+  const claudeDir = path.join(tempDir, '.claude');
+  await fs.mkdir(claudeDir, { recursive: true });
+  const credPath = path.join(claudeDir, '.credentials.json');
+
+  // Empty or invalid JSON file does not crash and returns null
+  await fs.writeFile(credPath, '   ');
+  assert.equal(discoverClaudeAutomaticCredential({ HOME: tempDir }), null);
+
+  await fs.writeFile(credPath, '{"broken": ');
+  assert.equal(discoverClaudeAutomaticCredential({ HOME: tempDir }), null);
+
+  // Valid credentials return detected metadata
+  await fs.writeFile(credPath, JSON.stringify({
+    claudeAiOauth: {
+      accessToken: 'test-access-token',
+      subscriptionType: 'pro',
+      rateLimitTier: 'default'
+    }
+  }));
+
+  const discovered = discoverClaudeAutomaticCredential({ HOME: tempDir });
+  assert.equal(discovered?.source, 'claude-cli');
+  assert.equal(discovered?.subscriptionType, 'pro');
+  assert.equal(discovered?.accountLabel, 'Pro');
 });

@@ -7,13 +7,12 @@
 })(typeof window === 'undefined' ? null : window, () => {
   const SURFACES = [
     { id: 'edgeDock', input: 'edgeDockInput', title: 'settings.display.edgeDock', short: 'edge', options: ['edgeDockOptions', 'edgeDockComposerRow'] },
-    { id: 'notch', input: 'notchInput', title: 'settings.notch.title', short: 'notch', options: ['notchOptions'] },
     { id: 'floatingBubble', input: 'floatingBubbleInput', title: 'settings.display.floatingBubble', short: 'bubble', options: ['floatingBubbleOptions'] },
     { id: 'tray', input: 'showTrayIconInput', title: 'settings.display.showTrayIcon', short: 'tray', options: ['trayIconOptions'] }
   ];
   const CATEGORY_IDS = {
-    interaction: ['notchHideSummaryInFullScreenInput', 'edgeDockModeLabel', 'notchHoverActionLabel', 'notchHoverDelayRow', 'notchHapticInput', 'edgeDockHapticInput', 'floatingBubbleTriggerRow', 'notchSwipeGesturesInput', 'trayModeInput', 'trayOptions', 'hideAppIconRow', 'hideAppIconOptions'],
-    appearance: ['edgeDockSideLabel', 'edgeDockSizeLabel', 'edgeDockCustomScaleRow', 'notchSizeLabel', 'notchCustomScaleRow', 'notchShapeLabel', 'notchStyleInput', 'edgeDockMacBackdropRow', 'edgeDockWindowsBackdropRow', 'notchProgressiveBlurInput']
+    interaction: ['edgeDockModeLabel', 'edgeDockHapticInput', 'floatingBubbleTriggerRow', 'trayModeInput', 'trayOptions', 'hideAppIconRow', 'hideAppIconOptions'],
+    appearance: ['edgeDockSideLabel', 'edgeDockSizeLabel', 'edgeDockCustomScaleRow', 'edgeDockMacBackdropRow', 'edgeDockWindowsBackdropRow']
   };
   function create({ document, root, scrollPanel, t, platform, settings = () => ({}), preview, cancelScroll }) {
     if (!root) return null;
@@ -65,7 +64,7 @@
       const title = input.closest('label'); title.classList.add('display-settings-title');
       const stage = make('div', 'display-settings-preview');
       const states = make('div', 'display-settings-states'); states.setAttribute('role', 'group');
-      const phaseList = surface.id === 'notch' ? ['closed', 'open'] : [];
+      const phaseList = [];
       states.hidden = phaseList.length === 0;
       for (const phase of phaseList) {
         const button = make('button', '', `settings.displayModes.${phase}`); button.dataset.phase = phase;
@@ -76,7 +75,7 @@
           updatePreview();
         }); states.append(button);
       }
-      const note = make('p', 'settings-note display-settings-preview-note', surface.id === 'edgeDock' || surface.id === 'notch' ? 'settings.displayModes.previewNote' : 'settings.displayModes.currentPreview');
+      const note = make('p', 'settings-note display-settings-preview-note', surface.id === 'edgeDock' ? 'settings.displayModes.previewNote' : 'settings.displayModes.currentPreview');
       const tabs = make('div', 'display-settings-categories'); tabs.setAttribute('role', 'tablist'); tabs.hidden = flat;
       const groups = {};
       for (const category of ['content', 'interaction', 'appearance']) {
@@ -93,7 +92,7 @@
         const options = document.getElementById(id);
         const inner = options.querySelector(':scope > .accordion-animation-inner') || options;
         for (const child of [...inner.children]) {
-          if (child.id === 'edgeDockMoreOptionsGroup' || child.id === 'notchMoreOptionsGroup') {
+          if (child.id === 'edgeDockMoreOptionsGroup') {
             const more = child.querySelector('.cursor-settings-details');
             const moreInner = more.querySelector(':scope > .accordion-animation-inner') || more;
             groups.content.append(...moreInner.children); child.hidden = true;
@@ -132,7 +131,7 @@
     const oldGroup = root.querySelector('.settings-presence-group'); oldGroup.hidden = true; oldGroup.style.display = 'none';
     container.append(overview, detail); root.append(container);
     wireArrows(quick, button => open([...entries].find(([, entry]) => entry.tab === button)[0]));
-    function available(id) { return id === 'notch' ? platform() === 'darwin' : id !== 'edgeDock' || ['darwin', 'win32'].includes(platform()); }
+    function available(id) { return id !== 'edgeDock' || ['darwin', 'win32'].includes(platform()); }
     function updatePreview(force = false) { if (scrollPanel.classList.contains('hidden') || root.closest('.settings-section-details')?.classList.contains('hidden')) return; if (active) { const entry = entries.get(active); preview?.(active, entry.stage, entry.phase, { force }); } }
     function open(id) {
       if (!entries.has(id) || !available(id)) return;

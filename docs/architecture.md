@@ -157,11 +157,8 @@ The seven-day chart takes its newest bar from live Today accounting and past day
 
 ## Widget mode switching
 
-`settings.hubMode` selects the source: `local` uses the local IPC collector; `client` uses Hub SSE plus this device's sync collector; `host` adds an embedded Hub; `icloud` uses local collection and iCloud file reconciliation instead of SSE. A live agent PID suppresses widget Hub uploads and owns the local daily-history archive. The agent has no iCloud sink, so the widget must still publish its iCloud record while yielding archive writes.
 
-**iCloud identity and deletion.** Main persists former Device IDs across mode/ID changes; `icloudSyncRuntime.js` cleans them only after publishing the replacement. Failed publication leaves the former record visible; failed cleanup retries after restart. Until confirmed, aggregate one visible former identity rather than double-counting old and new records. `icloudSync.js` retains revisions and this writer's complete deletion targets locally; losing those targets on restart could resurrect deleted devices. Older ledgers cannot overwrite an unreadable deletion snapshot with an empty one. Tombstones hide records, not erase cloud files.
 
-Manual device removal requires a known remote device marked stale in main's latest fetched stats; internal identity cleanup is separate. iCloud rechecks the current file before tombstoning. Hub deletion remains unconditional, so the main-process eligibility check and deletion are not atomic.
 
 **Publication and activity.** `statsPublisher.js` owns whole-tree publication; `deviceState.js` owns immutable accounting parts.
 
@@ -197,11 +194,9 @@ SSE broadcasts serialize each required frame once per fan-out; the Worker encode
 
 The account picker retains healthy readings even when a provider cannot supply a stable account key or display identity. Missing identity alone does not imply an unconfigured placeholder; known failed identities and saved bindings remain available independently.
 
-Subscriptions are one list per selected backend, not deduplicated per-device copies: account keys differ across platforms and would double totals. `src/shared/subscriptionDisplay.js` owns presentation; Hub endpoints and iCloud snapshots own persistence.
 
 - Hub writes use the `baseUpdatedAt` the editor opened with, returning `409` on mismatch. A queued write cannot retarget a refreshed base. Client/host local copies are caches; refuse offline writes rather than fork the list.
 - Authenticated stats/SSE carry `subscriptionsUpdatedAt`; mismatches trigger a reread in the subscription lane, with bounded retry and no periodic polling. An absent stamp means no news. Keep `statsWithSubscriptionVersion()` outside Worker `getStats()`, which the public route exposes.
-- iCloud chooses a whole-list winner by counter/writer ID among discovered files; edits must match that discovered revision. Refuse writes on unreadable/invalid files or unresolved newer own publications. This is not cross-Mac atomic CAS: unseen concurrent writes can both succeed, and the losing edit must be reapplied after propagation.
 - A stable writer identity survives Device ID changes. Its ledger distinguishes reserved counters from published/in-flight ones and retains exact in-flight candidates for restart recovery; reservation gaps alone must not block writes. Legacy pending counters without candidates fail closed until visible. Local records remain set aside until the discovered winner contains them completely, without promising protection from later remote winners.
 
 ## Shared sync content

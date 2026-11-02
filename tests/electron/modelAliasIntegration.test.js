@@ -81,26 +81,3 @@ test('model alias settings do not restart collection, sync or limits runtimes', 
   for (const field of ['modeStructural', 'usageStructural', 'sinkStructural', 'limitsReconfigure']) assert.equal(changes[field], false);
   assert.deepEqual(changes.limitScopes, []);
 });
-
-test('native widget work freezes the alias choice and projects independently resolved history', () => {
-  const settings = { modelAliases: { ...aliases } };
-  const capture = mainFunction('captureMacWidgetWork', {
-    settings, macWidgetConfiguration: () => ({ snapshotPath: '/fixture/snapshot.json', widgetKind: 'fixture' }),
-    macWidgetDemand: null, historyResolverOptions: () => ({}), macWidgetHistorySourceKey: () => 'local',
-    completeHistorySource: () => 'local', macWidgetActiveCodexAccount: () => null,
-    macWidgetPresentation: () => ({})
-  });
-  const work = capture({ stats: {}, owner: { epoch: 1 } });
-  settings.modelAliases['anthropic/claude-opus-5'] = 'changed';
-  assert.equal(work.modelAliases?.['anthropic/claude-opus-5'], 'claude-opus-5');
-  assert.equal(Object.isFrozen(work.modelAliases), true);
-  const controller = mainFunction('ensureMacWidgetSnapshotController', {
-    macWidgetRuntimeSupported: () => true, macWidgetSnapshotController: null, macWidgetPublicationReady: true,
-    captureMacWidgetWork: capture, createMacWidgetSnapshotController: (options) => options,
-    discardMacWidgetSnapshot: () => {}, prepareMacWidgetSnapshotUpdate: (_stats, options) => options.snapshotOptions
-  })();
-  const history = { daily: [{ perModel: { 'anthropic/claude-opus-5': { tokens: 20, cost: 8, unclassifiedTokens: 0 } } }], monthly: [], summary: {} };
-  const prepared = controller.prepareSnapshot(work, history);
-  assert.deepEqual(prepared.history.daily[0].perModel, { 'claude-opus-5': { tokens: 20, cost: 8, unclassifiedTokens: 0 } });
-  assert.equal(history.daily[0].perModel['anthropic/claude-opus-5'].cost, 8);
-});

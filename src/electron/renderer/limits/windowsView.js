@@ -1903,7 +1903,37 @@
     const title = titleText ? document.createElement('span') : null;
     if (title) {
       title.className = 'limit-name-title';
-      title.textContent = titleText;
+      // An account named by its address gets the Home row's mask: the address is
+      // redacted until clicked, so the Limits page does not show what Home hides.
+      const email = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(titleText) ? titleText : '';
+      if (email) {
+        const redacted = accountIdentity.redactedPlaceholder(email);
+        let revealed = false;
+        const paint = () => {
+          title.textContent = revealed ? email : redacted;
+          title.classList.toggle('revealed', revealed);
+          title.setAttribute('aria-pressed', String(revealed));
+        };
+        title.setAttribute('role', 'button');
+        title.setAttribute('tabindex', '0');
+        title.setAttribute('aria-label', 'Toggle account email visibility');
+        title.classList.add('limit-name-email');
+        title.addEventListener('click', (event) => {
+          event.stopPropagation();
+          revealed = !revealed;
+          paint();
+        });
+        title.addEventListener('keydown', (event) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          event.stopPropagation();
+          revealed = !revealed;
+          paint();
+        });
+        paint();
+      } else {
+        title.textContent = titleText;
+      }
     }
     const provenance = presentationApi.limitProviderProvenance(provider, provenanceContext());
     // The ✓ marks the account THIS device's Codex is signed into

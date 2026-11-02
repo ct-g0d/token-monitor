@@ -220,13 +220,14 @@ test('Amp carries its own brand colour and mask-safe icon assets', () => {
   assert.ok(clientLabelIds().has('amp'));
   assert.equal(clientColors.amp, '#F34E3F', 'Amp chart colour is the Amp brand red');
   assertUsageMarks('amp');
-  assert.match(styles, /\.row-icon-amp\s*\{[^}]*mask-image:\s*url\(["']?[^)]*assets\/icons\/amp\.svg["']?\)/s);
-  assert.doesNotMatch(styles, /\.row-icon-amp\s*\{[^}]*background-image:/s);
+  // Amp's artwork has a fill of its own, so it is painted rather than masked —
+  // a mask would keep only the alpha and repaint it in the text colour.
+  assert.match(styles, /\.row-icon-amp\s*\{[^}]*background:\s*transparent\s+url\(["']?[^)]*assets\/icons\/amp\.svg["']?\)/s);
+  assert.match(styles, /\.row-icon-amp\s*\{[^}]*mask-image:\s*none/s);
   assert.ok(fs.existsSync(path.join(__dirname, '..', '..', 'assets', 'icons', 'amp.svg')));
   assert.ok(fs.existsSync(path.join(__dirname, '..', '..', '.github', 'assets', 'tools-icon', 'amp.png')));
 
-  // The mark is a single flat ink, so the tray's re-ink path can recolour it
-  // instead of drawing it in the SVG's own fill.
+  // A single flat fill, so the tray's re-ink path can still recolour it.
   const icon = fs.readFileSync(path.join(__dirname, '..', '..', 'assets', 'icons', 'amp.svg'), 'utf8');
   assert.match(icon, /fill="#F34E3F"/);
   assert.doesNotMatch(icon, /<linearGradient|<radialGradient|stroke=/);

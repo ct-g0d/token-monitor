@@ -11,7 +11,6 @@ Headless agent 就是拿掉介面的小工具採集器。它掃描本機上的 A
 - 伺服器、SSH 主機等會用 AI 工具、但不執行桌面小工具的機器。
 - 在 WSL 內採集 Windows 小工具無法可靠讀取的 SQLite 工具。請依照 [WSL SQLite 用量設定指南](wsl-sqlite-setup.zh-TW.md)操作，它在本指南之上補充了 WSL 專屬步驟。
 
-已經執行小工具的機器不需要 agent：開啟多裝置同步後，小工具會自動回報本機用量。iCloud Drive 同步僅供小工具使用，不接受 agent。
 
 ## 前置需求
 

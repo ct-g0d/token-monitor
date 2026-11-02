@@ -11,7 +11,6 @@ The headless agent is the widget's collector without the UI. It scans the AI too
 - Servers, SSH hosts, and other machines where you use AI tools but don't run the desktop widget.
 - Inside WSL, for SQLite-backed tools the Windows widget cannot read reliably. Follow the [WSL SQLite setup](wsl-sqlite-setup.md), which adds WSL-specific steps on top of this guide.
 
-A machine that already runs the widget does not need the agent: the widget contributes its own usage once multi-device sync is on. iCloud Drive sync is widget-only and does not accept agents.
 
 ## Requirements
 

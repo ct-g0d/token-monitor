@@ -5,10 +5,10 @@ const { pathToFileURL } = require('node:url');
 
 const CSP_HEADER = [
   "default-src 'self'",
-  "script-src 'self' tm-plugin:",
-  "style-src 'self' tm-plugin:",
-  "img-src 'self' tm-plugin: data: blob:",
-  "font-src 'self' tm-plugin:",
+  "script-src 'self'",
+  "style-src 'self'",
+  "img-src 'self' data: blob:",
+  "font-src 'self'",
   "connect-src 'self'",
   "object-src 'none'",
   "base-uri 'none'",
@@ -17,7 +17,7 @@ const CSP_HEADER = [
 ].join('; ');
 
 const previewDocument = pathToFileURL(path.join(__dirname, 'renderer', 'edgeDock', 'index.html'));
-const previewUrls = new Set(['notch', 'rail', 'peek'].map(surface => {
+const previewUrls = new Set(['rail', 'peek'].map(surface => {
   const url = new URL(previewDocument);
   url.search = new URLSearchParams({ surface, settingsPreview: '1' }).toString();
   return url.href;

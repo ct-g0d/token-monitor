@@ -53,7 +53,9 @@ const clientsWithIcon = new Set(vendorPresentationApi.VENDOR_IDS);
 const limitMarksWithIcon = new Set(vendorPresentationApi.MARK_IDS);
 
 // Modes whose device list is shared with other machines; only these can remove one.
-const SHARED_SYNC_MODES = new Set(['client', 'host', 'icloud']);
+const SHARED_SYNC_MODES = new Set(['client', 'host']);
+
+
 
 function osIconFor(platform) {
   const prefix = String(platform || '').toLowerCase().split('-')[0];
@@ -156,7 +158,6 @@ const limitResetAnimator = window.TokenMonitorLimitResetAnimator.createLimitRese
   cancelAnimationFrame: (handle) => cancelAnimationFrame(handle),
   performance
 });
-const appUpdatePresentationApi = window.TokenMonitorAppUpdatePresentation;
 const accountIdentityApi = window.TokenMonitorAccountIdentity;
 const clientStatusPresentationApi = window.TokenMonitorClientStatusPresentation;
 const clientHealthPresentationApi = window.TokenMonitorClientHealthPresentation;
@@ -274,8 +275,6 @@ const HOME_MODULE_OPTIONS = [
   { id: 'device', labelKey: 'home.devices', viewId: 'device' },
   { id: 'trends', labelKey: 'home.activity', viewId: 'trends' }
 ];
-const pluginViewsApi = window.TokenMonitorPluginViews;
-const pluginPlacementsApi = window.TokenMonitorPluginPlacements;
 // Assigned in the Plugins block below; read lazily by Home, tray and settings.
 let pluginViewHost = null;
 let pluginContent = null;
@@ -309,7 +308,7 @@ const TOKEN_MONITOR_ISSUES_URL = `${TOKEN_MONITOR_REPOSITORY_URL}/issues/new/cho
 const TOKEN_MONITOR_WEBSITE_URL = 'https://javis-ai.com/token-monitor/';
 const TOKEN_MONITOR_WSL_SQLITE_GUIDE_URL = `${TOKEN_MONITOR_REPOSITORY_URL}/blob/main/docs/wsl-sqlite-setup.md`;
 const serviceStatusProviderPreferencesApi = window.TokenMonitorServiceStatusProviderPreferences;
-const SETTINGS_SECTION_IDS = ['general', 'main', 'window', 'appearance', 'tools', 'limits', 'subscriptions', 'sync', 'plugins'];
+const SETTINGS_SECTION_IDS = ['general', 'main', 'window', 'appearance', 'tools', 'limits', 'subscriptions', 'sync'];
 const REFRESH_BUTTON_FEEDBACK_MS = 700;
 const LIVE_TOKEN_RATE_ACTIVE_MS = 8000;
 const LIVE_TOKEN_RATE_CLEAR_MS = 3 * 60 * 1000;
@@ -320,13 +319,12 @@ let initialBreakdownPreferenceApplied = typeof initialViewState.breakdown === 's
 
 function normalizeInitialViewValue(value, allowed, fallback) {
   const raw = String(value || '').trim();
-  return allowed.has(raw) || (allowed === viewBreakdownValues && pluginPlacementsApi.isHomeToken(raw)) ? raw : fallback;
+  return allowed.has(raw) ? raw : fallback;
 }
 
 const state = { period: normalizeInitialViewValue(initialViewState.period, viewPeriodValues, 'today'), appUpdate: null, breakdown: normalizeInitialViewValue(initialViewState.breakdown, viewBreakdownValues, 'home'), viewSwitcherOpen: false, viewSwitcherHasOpened: false, limitDetailTooltipHasOpened: false, limitDetailTooltipActive: false, limitDetailTooltipRenderPending: false, settings: null, windowVisible: new URLSearchParams(window.location.search).get('windowHidden') !== '1', stats: null, homeHistory: null, homeHistoryBusy: false, homeHistoryRequested: false, homeHistorySignature: '', homeHistoryRetries: 0, homeHistoryRetryTimer: null, homeActivityScrollLeft: null, homeActivityFollowEnd: true, homeActivityResizeObserver: null, serviceStatus: null, serviceStatusBusy: false, serviceProvidersExpanded: false, trendSettingsExpanded: false, trendsActivating: false, homeSettingsExpanded: false, homeLimitSettingsExpanded: false, limitProviderSettingsExpanded: '', clientHealthExpanded: '', clientSources: clientSourceCacheApi.createClientSourceCache(), clientSourcesKey: '', clientSourcesRequest: 0, subscriptionEditingId: '', subscriptionTopUps: [], subscriptionFormBase: null, subscriptionEditorTransitionId: 0, serviceStatusTicker: null, refreshTimer: null, refreshBusy: false, refreshFeedbackTimer: null, currentTotal: 0, rowSignature: '', streamConnected: false, streamFailure: null, mode: 'idle', appInfo: null, systemDarkUi: false, tokscaleStatus: null, hubInfo: null, hubBuildStatus: null, cursorAccount: { status: null, error: '' }, cursorAccountExpanded: false, codexAccountExpanded: false, codexAccountError: '', codexSignInBusy: false, codexSignInFlowId: '', codexLoginUrl: '', codexLoginStatus: '', codexLoginOutput: '', codexWorkspaceChoices: [], codexWorkspaceId: '', codexActiveAccount: null, codexPendingActiveAccount: null, codexPendingActiveAccountUntil: 0, codexPendingActiveAccountTimer: null, customPricingExpanded: false, claudeAccountExpanded: false, claudePendingCheckSince: 0, opencodeProfileCount: 0, opencodeCookieExpanded: false, openrouterProfileCount: 0, openrouterAccountExpanded: false, thirdPartyProfileCount: 0, thirdPartyAccountExpanded: false, deepseekAccountExpanded: false, deepseekPendingCheckSince: 0, minimaxAccountExpanded: false, minimaxPendingCheckSince: 0, factoryAccountExpanded: false, factoryPendingCheckSince: 0, clineAccountExpanded: false, clinePendingCheckSince: 0, zaiAccountExpanded: false, zaiPendingCheckSince: 0, zaiteamAccountExpanded: false, zaiteamPendingCheckSince: 0, volcengineAccountExpanded: false, volcenginePendingCheckSince: 0, volcengineAgentExpanded: false, qoderAccountExpanded: false, qoderPendingCheckSince: 0, kimiAccountExpanded: false, kimiPendingCheckSince: 0, ollamaAccountExpanded: false, ollamaPendingCheckSince: 0, mimoAccountExpanded: false, mimoAccountError: '', antigravityAccountExpanded: false, antigravityAccountError: '', antigravitySignInBusy: false, workbuddyAccountExpanded: false, workbuddyAccountError: '', workbuddySignInBusy: false, workbuddyCancelBusy: false, workbuddyMutationBusy: false, workbuddyLoginAttempt: 0, workbuddyLoginStatusKey: '', workbuddyAccountsRevision: 0, copilotAccountExpanded: false, copilotManualExpanded: false, copilotPendingCheckSince: 0, copilotSignInBusy: false, copilotSignInCancelable: false, copilotSignInFlowId: '', copilotAuthorizeMessage: '', copilotLoginStatus: '', copilotErrorMessage: '', floatingBubble: initialFloatingBubble, suppressInitialNumberAnimation: window.__TOKEN_MONITOR_SUPPRESS_INITIAL_NUMBER_ANIMATION__ === true, openSession: null, detailSort: 'time', recordingWindowShortcut: false, windowShortcutInvalid: false, toolSearchQuery: '', limitProviderSearchQuery: '', accountPanelMessages: {} };
 state.devinAccountExpanded = false;
 state.devinPendingCheckSince = 0;
-state.icloudStatus = null;
 state.zedAccountExpanded = false;
 state.zedPendingCheckSince = 0;
 state.toolDetailMode = 'tokens';
@@ -414,34 +412,6 @@ Object.assign(els, {
   backHomeButton: document.getElementById('backHomeButton'),
   systemGlassInputs: Array.from(document.querySelectorAll('input[name="systemGlassOption"]')),
   floatingBubbleOptions: document.getElementById('floatingBubbleOptions'),
-  notchFeature: document.getElementById('notchFeature'),
-  notchInput: document.getElementById('notchInput'),
-  notchOptions: document.getElementById('notchOptions'),
-  notchStyleInput: document.getElementById('notchStyleInput'),
-  notchShapeInputs: Array.from(document.querySelectorAll('input[name="notchShape"]')),
-  notchSummaryModeInput: document.getElementById('notchSummaryModeInput'),
-  notchSummaryModeNote: document.getElementById('notchSummaryModeNote'),
-  notchSummaryInput: document.getElementById('notchSummaryInput'),
-  notchWarnColorsInput: document.getElementById('notchWarnColorsInput'),
-  notchComposer: document.getElementById('notchComposer'),
-  notchComposerDetails: document.getElementById('notchComposerDetails'),
-  notchItemsComposer: document.getElementById('notchItemsComposer'),
-  notchRunningIndicatorInput: document.getElementById('notchRunningIndicatorInput'),
-  notchRunningIndicatorRow: document.getElementById('notchRunningIndicatorRow'),
-  notchHapticInput: document.getElementById('notchHapticInput'),
-  notchHoverActionInputs: Array.from(document.querySelectorAll('input[name="notchHoverAction"]')),
-  notchHoverDelayInput: document.getElementById('notchHoverDelayInput'),
-  notchHoverDelayRow: document.getElementById('notchHoverDelayRow'),
-  notchSwipeGesturesInput: document.getElementById('notchSwipeGesturesInput'),
-  resetNotchHoverDelayButton: document.getElementById('resetNotchHoverDelayButton'),
-  notchProgressiveBlurInput: document.getElementById('notchProgressiveBlurInput'),
-  notchHideSummaryInFullScreenInput: document.getElementById('notchHideSummaryInFullScreenInput'),
-  notchSizeInputs: Array.from(document.querySelectorAll('input[name="notchSize"]')),
-  notchCustomScaleInput: document.getElementById('notchCustomScaleInput'),
-  notchCustomScaleRow: document.getElementById('notchCustomScaleRow'),
-  notchMoreOptionsGroup: document.getElementById('notchMoreOptionsGroup'),
-  notchMoreOptionsToggle: document.getElementById('notchMoreOptionsToggle'),
-  notchMoreOptionsDetails: document.getElementById('notchMoreOptionsDetails'),
   edgeDockComposerRow: document.getElementById('edgeDockComposerRow'),
   edgeDockFeature: document.getElementById('edgeDockFeature'),
   edgeDockInput: document.getElementById('edgeDockInput'),
@@ -466,11 +436,6 @@ Object.assign(els, {
   trayIconOptions: document.getElementById('trayIconOptions'),
   trayOptions: document.getElementById('trayOptions'),
   hubModeOptions: document.getElementById('hubModeOptions'),
-  icloudModeOption: document.querySelector('#hubModeOptions option[value="icloud"]'),
-  syncModeDescription: document.getElementById('syncModeDescription'),
-  icloudFields: document.getElementById('icloudFields'),
-  icloudStatus: document.getElementById('icloudStatus'),
-  icloudRootStatus: document.getElementById('icloudRootStatus'),
   hubBuildStatus: document.getElementById('hubBuildStatus'),
   hubClientFields: document.getElementById('hubClientFields'),
   syncConnectionEditor: document.getElementById('syncConnectionEditor'),
@@ -620,13 +585,11 @@ const SYNC_MODE_DESCRIPTIONS = {
   local: 'settings.sync.localOnlyDesc',
   client: 'settings.sync.connectHubDesc',
   host: 'settings.sync.hostHubDesc',
-  icloud: 'settings.sync.icloudDesc'
 };
 const SYNC_MODE_ICON_PATHS = {
   local: ['M5 4h14v12H5z', 'M2 20h20l-3-4H5z'],
   client: ['M10 13a5 5 0 0 0 7 .5l3-3a5 5 0 0 0-7-7l-2 2', 'M14 11a5 5 0 0 0-7-.5l-3 3a5 5 0 0 0 7 7l2-2'],
   host: ['M4 3h16v7H4z', 'M4 14h16v7H4z', 'M7 6.5h.01M7 17.5h.01', 'M11 6.5h6M11 17.5h6'],
-  icloud: ['M7 18H6a4 4 0 1 1 .7-7.9A6 6 0 0 1 18 8a5 5 0 0 1 0 10H7']
 };
 const syncModeIcons = Object.fromEntries(Object.entries(SYNC_MODE_ICON_PATHS).map(([mode, paths]) => [mode, (doc) => {
   const svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -753,11 +716,7 @@ const codexAccountControl = codexAccountControlApi.createCodexAccountControl({
   }
 });
 
-const diagnosticsPanel = window.TokenMonitorDiagnosticsPanel?.createDiagnosticsPanel({
-  api: window.tokenMonitor,
-  translate: t,
-  getLocale: currentLocale
-});
+const diagnosticsPanel = null;
 
 function translatedLimitCapabilityTag(label) {
   const key = LIMIT_CAPABILITY_TAG_KEYS[label];
@@ -905,7 +864,7 @@ function settingsSectionSummary(section) {
     return [summary, pluginUpdateCount ? t('plugins.catalog.updatesAvailable', { count: pluginUpdateCount }) : ''].filter(Boolean).join(' · ');
   }
   if (section === 'sync') {
-    const modeKeys = { host: 'settings.sync.hostHub', client: 'settings.sync.connectHub', icloud: 'settings.sync.icloud' };
+    const modeKeys = { host: 'settings.sync.hostHub', client: 'settings.sync.connectHub' };
     const label = t(modeKeys[state.settings.hubMode] || 'settings.sync.localOnly');
     const devices = SHARED_SYNC_MODES.has(state.settings.hubMode) && state.mode === 'sync' ? state.stats?.devices : null;
     if (!Array.isArray(devices) || devices.length === 0) return label;
@@ -1072,11 +1031,6 @@ function displayLiveTokenRateItems() {
       content: state.settings?.floatingBubbleContent,
       layout: state.settings?.floatingBubbleCustomLayout
     },
-    {
-      enabled: state.appInfo?.platform === 'darwin' && state.settings?.notchEnabled === true && state.settings?.notchSummaryMode === 'custom',
-      content: 'custom',
-      layout: state.settings?.notchCustomLayout
-    }
   ]);
 }
 
@@ -1465,349 +1419,11 @@ function formatActiveDuration(ms) {
 function versionText(value) {
   return value ? `v${value}` : 'unknown';
 }
-// The release-note card under the footer update button. It opens on hover the
-// way a tooltip does, because the button's own press is the update action.
-const APP_UPDATE_CARD_OPEN_DELAY_MS = 250;
-const APP_UPDATE_CARD_CLOSE_DELAY_MS = 150;
-let appUpdateCardOpenTimer = 0;
-let appUpdateCardCloseTimer = 0;
-let suppressAppUpdateCardFocusOpen = false;
 
-function setAppUpdatePillDisclosure(available) {
-  const action = els.appUpdatePillAction;
-  if (available) {
-    action.setAttribute('aria-haspopup', 'dialog');
-    action.setAttribute('aria-controls', 'appUpdatePopover');
-    action.setAttribute('aria-expanded', String(els.appUpdatePopover.matches(':popover-open')));
-    return;
-  }
-  action.removeAttribute('aria-haspopup');
-  action.removeAttribute('aria-controls');
-  action.removeAttribute('aria-expanded');
-}
-function appUpdatePillStatus(s, mode) {
-  if (s.installStarting) return 'installing';
-  // A download starts with a fresh provider check, reported as `checking`.
-  if (s.installPhase === 'downloading' || (s.installPhase === 'checking' && s.installBusy)) return 'downloading';
-  if (mode === 'install') return 'downloaded';
-  if (mode === 'release') return 'release';
-  return 'available';
-}
-function appUpdateDownloadPercent(s) {
-  return s?.installPhase === 'downloading' && Number.isFinite(s.installProgress)
-    ? Math.max(0, Math.min(100, Math.round(s.installProgress)))
-    : 0;
-}
-function appUpdatePillLabel(status, percent) {
-  if (status === 'downloading') return t('settings.appUpdate.downloading', { percent });
-  if (status === 'downloaded') return t('settings.appUpdate.restart');
-  if (status === 'installing') return t('settings.appUpdate.installStarting');
-  if (status === 'release') return t('settings.appUpdate.viewRelease');
-  return t('settings.appUpdate.download');
-}
-function renderAppUpdatePill() {
-  const s = state.appUpdate;
-  const pill = els.appUpdatePill;
-  if (!pill) return;
-  const action = els.appUpdatePillAction;
-  const mode = appUpdatePresentationApi.appUpdateActionMode(s);
-  const version = s?.latest?.version || s?.installVersion || '';
-  if (!s || !mode || !version || !s.showUpdateNotice) {
-    pill.classList.add('hidden');
-    hideAppUpdatePopover();
-    action.removeAttribute('aria-label');
-    action.removeAttribute('aria-disabled');
-    setAppUpdatePillDisclosure(false);
-    syncLiveTokenRateFooterState();
-    return;
-  }
-  const status = appUpdatePillStatus(s, mode);
-  const percent = appUpdateDownloadPercent(s);
-  pill.classList.remove('hidden');
-  action.dataset.status = status;
-  els.appUpdatePillProgress.style.strokeDashoffset = String(100 - percent);
-  action.setAttribute('aria-label', appUpdatePillLabel(status, percent));
-  // aria-disabled rather than disabled: a disabled button stops receiving the
-  // pointer events that open the card, which is where the progress is shown.
-  if (s.installBusy) action.setAttribute('aria-disabled', 'true');
-  else action.removeAttribute('aria-disabled');
-  setAppUpdatePillDisclosure(true);
-  syncLiveTokenRateFooterState();
-}
-function releaseNoteHistoryForCurrentLocale(latest) {
-  return appUpdatePresentationApi.releaseNoteHistoryForLocale(latest, currentLocale());
-}
-function buildAppUpdateNoteItemNode(item) {
-  const row = document.createElement('li');
-  const { lead, body } = appUpdatePresentationApi.splitReleaseNoteLead(item);
-  if (!lead) {
-    row.textContent = body;
-    return row;
-  }
-  const strong = document.createElement('strong');
-  strong.textContent = lead;
-  row.append(strong, document.createTextNode(/[:]$/.test(lead) ? ` ${body}` : body));
-  return row;
-}
-function buildAppUpdateNoteGroupNodes(groups) {
-  return groups.map((group) => {
-    const section = document.createElement('section');
-    section.className = 'app-update-note-group';
-    const title = document.createElement('div');
-    title.className = 'app-update-note-title';
-    title.textContent = String(group?.title || '');
-    const list = document.createElement('ul');
-    for (const item of Array.isArray(group?.items) ? group.items : []) {
-      list.append(buildAppUpdateNoteItemNode(String(item || '')));
-    }
-    section.append(title, list);
-    return section;
-  });
-}
-function buildAppUpdateReleaseLink(className, label, url) {
-  const link = document.createElement('button');
-  link.type = 'button';
-  link.className = `${className} app-update-release-link`;
-  link.dataset.releaseUrl = url;
-  link.textContent = label;
-  return link;
-}
-// One section per release, newest first. A single release is already named by the
-// heading above it, so it goes without its own version line.
-function buildAppUpdateReleaseNodes(entries) {
-  const showVersions = entries.length > 1;
-  return entries.map((entry) => {
-    const section = document.createElement('section');
-    section.className = 'app-update-release';
-    if (showVersions) {
-      const label = `v${entry.version}`;
-      const head = entry.htmlUrl
-        ? buildAppUpdateReleaseLink('app-update-release-version', label, entry.htmlUrl)
-        : Object.assign(document.createElement('div'), { className: 'app-update-release-version', textContent: label });
-      if (entry.htmlUrl) head.setAttribute('aria-description', t('settings.appUpdate.viewFullRelease'));
-      // A wrapper, because a stuck scroll-state container styles its descendants,
-      // not itself.
-      const wrapper = document.createElement('div');
-      wrapper.className = 'app-update-release-head';
-      wrapper.append(head);
-      section.append(wrapper);
-    }
-    // Every item: these are written summaries, so cutting them short hides whole
-    // groups (a release's fixes come last) rather than trimming noise.
-    section.append(...buildAppUpdateNoteGroupNodes(entry.groups));
-    return section;
-  });
-}
-function buildAppUpdateReleaseHistoryNodes(s) {
-  const history = releaseNoteHistoryForCurrentLocale(s?.latest);
-  const entries = history
-    .filter((entry, _index, all) => all.length > 1 || entry.groups.length > 0);
-  const nodes = buildAppUpdateReleaseNodes(entries);
-  // A single release has no version heading to open its page, so it gets an
-  // explicit link after its notes — even when the locale carries no groups and
-  // the link is the body's only node.
-  if (history.length === 1 && history[0]?.htmlUrl) {
-    nodes.push(buildAppUpdateReleaseLink('app-update-release-full', t('settings.appUpdate.viewFullRelease'), history[0].htmlUrl));
-  }
-  if (nodes.length > 0 && s?.latest?.releaseHistoryTruncated && s.releasesUrl) {
-    nodes.push(buildAppUpdateReleaseLink('app-update-release-older', t('settings.appUpdate.olderReleases'), s.releasesUrl));
-  }
-  return { entries, nodes };
-}
-// Download progress pushes many times a second. Rebuilding the notes on each one
-// would reset the reader's scroll position, so they are rebuilt only when what
-// they say changes.
-function appUpdateNotesContentKey(s) {
-  return JSON.stringify([currentLocale(), s?.currentVersion || '', s?.latest?.version || '', s?.latest?.releaseNoteHistory || null, s?.latest?.releaseNotes || null, Boolean(s?.latest?.releaseHistoryTruncated)]);
-}
-// The card explains; the button under it acts. A second action button in the
-// card only repeated the one the pointer had just passed over.
-function renderAppUpdatePopover(s) {
-  const mode = appUpdatePresentationApi.appUpdateActionMode(s);
-  const version = s?.latest?.version || s?.installVersion || '';
-  if (!s || !mode || !version) {
-    hideAppUpdatePopover();
-    return false;
-  }
-  const status = appUpdatePillStatus(s, mode);
-  const percent = appUpdateDownloadPercent(s);
-  const heading = {
-    available: [t('settings.appUpdate.availableTitle', { version }), t('settings.appUpdate.currentVersion', { version: s.currentVersion })],
-    release: [t('settings.appUpdate.availableTitle', { version }), t('settings.appUpdate.currentVersion', { version: s.currentVersion })],
-    downloading: [t('settings.appUpdate.downloading', { percent }), `v${version}`],
-    downloaded: [t('settings.appUpdate.readyTitle', { version }), t('settings.appUpdate.ready')],
-    installing: [t('settings.appUpdate.installStarting'), `v${version}`]
-  }[status];
-  els.appUpdatePopoverTitle.textContent = heading[0];
-  els.appUpdatePopoverSubtitle.textContent = heading[1];
-  const contentKey = appUpdateNotesContentKey(s);
-  if (els.appUpdatePopoverBody.dataset.contentKey !== contentKey) {
-    const { nodes } = buildAppUpdateReleaseHistoryNodes(s);
-    els.appUpdatePopoverBody.replaceChildren(...nodes);
-    els.appUpdatePopoverBody.dataset.contentKey = contentKey;
-    els.appUpdatePopoverBody.classList.toggle('hidden', nodes.length === 0);
-  }
-  els.appUpdatePopoverDismiss.classList.toggle('hidden', mode === 'install' || Boolean(s.installBusy));
-  return true;
-}
-function positionAppUpdatePopover() {
-  const rect = els.appUpdatePill.getBoundingClientRect();
-  const width = Math.min(320, window.innerWidth - 24);
-  const left = Math.max(12, Math.min(window.innerWidth - width - 12, rect.right - width));
-  const bottom = Math.max(12, window.innerHeight - rect.top + 8);
-  els.appUpdatePopover.style.width = `${width}px`;
-  els.appUpdatePopover.style.left = `${left}px`;
-  els.appUpdatePopover.style.bottom = `${bottom}px`;
-  els.appUpdatePopover.style.maxHeight = `${appUpdatePresentationApi.appUpdatePopoverMaxHeight({ viewportHeight: window.innerHeight, bottom })}px`;
-}
-function clearAppUpdateCardTimers() {
-  clearTimeout(appUpdateCardOpenTimer);
-  clearTimeout(appUpdateCardCloseTimer);
-  appUpdateCardOpenTimer = 0;
-  appUpdateCardCloseTimer = 0;
-}
-function showAppUpdatePopover() {
-  clearAppUpdateCardTimers();
-  if (els.appUpdatePill.classList.contains('hidden') || typeof els.appUpdatePopover.showPopover !== 'function') return false;
-  if (!renderAppUpdatePopover(state.appUpdate)) return false;
-  positionAppUpdatePopover();
-  if (!els.appUpdatePopover.matches(':popover-open')) els.appUpdatePopover.showPopover();
-  return true;
-}
-function hideAppUpdatePopover() {
-  clearAppUpdateCardTimers();
-  if (!els.appUpdatePopover?.matches(':popover-open')) return;
-  // Only focus that was inside the card goes back to the button. A card that
-  // closes because the pointer left it must not pull focus to the button.
-  const focusWasInside = els.appUpdatePopover.contains(document.activeElement);
-  els.appUpdatePopover.hidePopover();
-  if (focusWasInside && !els.appUpdatePill.classList.contains('hidden')) {
-    suppressAppUpdateCardFocusOpen = true;
-    els.appUpdatePillAction.focus();
-  }
-}
-function scheduleAppUpdatePopoverOpen() {
-  clearAppUpdateCardTimers();
-  if (els.appUpdatePopover.matches(':popover-open')) return;
-  appUpdateCardOpenTimer = setTimeout(showAppUpdatePopover, APP_UPDATE_CARD_OPEN_DELAY_MS);
-}
-function scheduleAppUpdatePopoverClose() {
-  clearAppUpdateCardTimers();
-  appUpdateCardCloseTimer = setTimeout(() => {
-    appUpdateCardCloseTimer = 0;
-    // Keyboard focus inside the card holds it open until focus leaves.
-    if (els.appUpdatePopover.contains(document.activeElement)) return;
-    hideAppUpdatePopover();
-  }, APP_UPDATE_CARD_CLOSE_DELAY_MS);
-}
-function renderAppUpdateNotes(s) {
-  const version = s?.latest?.version || '';
-  const contentKey = appUpdateNotesContentKey(s);
-  if (els.appUpdateNotesBody.dataset.contentKey !== contentKey) {
-    const { entries, nodes } = version ? buildAppUpdateReleaseHistoryNodes(s) : { entries: [], nodes: [] };
-    const visible = Boolean(version && nodes.length > 0);
-    els.appUpdateNotes.classList.toggle('hidden', !visible);
-    if (!visible) {
-      setSettingsAccordionExpanded(els.appUpdateNotes, els.appUpdateNotesToggle, els.appUpdateNotesDetails, false);
-      els.appUpdateNotesTitle.textContent = '';
-      els.appUpdateNotesBody.replaceChildren();
-      delete els.appUpdateNotesBody.dataset.contentKey;
-      return;
-    }
-
-    els.appUpdateNotesTitle.textContent = entries.length > 1
-      ? t('settings.appUpdate.changesSince', { version: s.currentVersion })
-      : t('settings.appUpdate.whatsNew', { version });
-    els.appUpdateNotesBody.replaceChildren(...nodes);
-    els.appUpdateNotesBody.dataset.contentKey = contentKey;
-  }
-  if (s.hasUpdate && state.appUpdateNotesPresentedVersion !== version) {
-    // The disclosure may have just changed from display:none. Commit its
-    // collapsed grid once so the first automatic reveal can transition too.
-    els.appUpdateNotesDetails.getBoundingClientRect();
-    setSettingsAccordionExpanded(els.appUpdateNotes, els.appUpdateNotesToggle, els.appUpdateNotesDetails, true);
-    state.appUpdateNotesPresentedVersion = version;
-  }
-}
-function renderSettingsAppUpdateRow() {
-  const s = state.appUpdate;
-  if (!s) {
-    els.appUpdateInstalled.textContent = '—';
-    els.appUpdateLatest.textContent = t('settings.common.notChecked');
-    els.appUpdateCheckButton.disabled = false;
-    els.appUpdateCheckButton.textContent = t('settings.appUpdate.check');
-    els.appUpdateViewReleaseButton.classList.add('hidden');
-    els.appUpdateMessage.textContent = '';
-    els.appUpdateMessage.classList.remove('error');
-    renderAppUpdateNotes(null);
-    return;
-  }
-  els.appUpdateInstalled.textContent = `v${s.currentVersion}`;
-  const presentation = appUpdatePresentationApi.appUpdateStatusPresentation(s);
-  const displayVersion = presentation.displayVersion;
-  if (displayVersion) {
-    const status = presentation.latestStatusKey ? t(presentation.latestStatusKey) : '';
-    els.appUpdateLatest.textContent = status
-      ? t('settings.appUpdate.latestWithStatus', { version: displayVersion, status })
-      : `v${displayVersion}`;
-    const actionMode = appUpdatePresentationApi.appUpdateActionMode(s);
-    els.appUpdateViewReleaseButton.classList.toggle('hidden', !actionMode);
-    els.appUpdateViewReleaseButton.disabled = Boolean(s.installBusy);
-    els.appUpdateViewReleaseButton.textContent = actionMode === 'install'
-      ? t('settings.appUpdate.restart')
-      : actionMode === 'download'
-        ? t('settings.appUpdate.download')
-        : t('settings.appUpdate.viewRelease');
-  } else {
-    els.appUpdateLatest.textContent = s.lastError
-      ? t('settings.appUpdate.unavailable')
-      : s.lastCheckedAt
-        ? t('settings.appUpdate.upToDate')
-        : t('settings.common.notChecked');
-    els.appUpdateViewReleaseButton.classList.add('hidden');
-  }
-  // installRetryBlocked as well as busy: the main process stops running checks once
-  // an attempt is spent, so without this the button would sit live and do nothing.
-  // It is not folded into installBusy, which would disable View release along with
-  // it and take away the one path a spent attempt leaves working.
-  els.appUpdateCheckButton.disabled = Boolean(s.checking || s.installBusy || s.installRetryBlocked);
-  els.appUpdateCheckButton.textContent = s.checking ? t('settings.appUpdate.checking') : t('settings.appUpdate.check');
-  renderAppUpdateNotes(s);
-  if (s.installPhase === 'downloading') {
-    const percent = Number.isFinite(s.installProgress) ? Math.round(s.installProgress) : 0;
-    els.appUpdateMessage.textContent = t('settings.appUpdate.downloading', { percent });
-    els.appUpdateMessage.classList.remove('error');
-  } else if (s.installStarting) {
-    els.appUpdateMessage.textContent = t('settings.appUpdate.installStarting');
-    els.appUpdateMessage.classList.remove('error');
-  } else if (s.downloaded) {
-    els.appUpdateMessage.textContent = t('settings.appUpdate.ready');
-    els.appUpdateMessage.classList.remove('error');
-  } else if (s.installError) {
-    els.appUpdateMessage.textContent = t(appUpdatePresentationApi.appUpdateInstallErrorMessageKey(s.installErrorKind));
-    els.appUpdateMessage.classList.add('error');
-  } else if (s.lastError) {
-    const error = t(presentation.errorKey);
-    const age = compactAge(presentation.lastSuccessfulCheckAt);
-    els.appUpdateMessage.textContent = age
-      ? t('settings.appUpdate.errorWithLastSuccess', { error, age })
-      : error;
-    els.appUpdateMessage.classList.add('error');
-  } else {
-    els.appUpdateMessage.textContent = '';
-    els.appUpdateMessage.classList.remove('error');
-  }
-}
-
-// Per-field edit state. `dirty` keeps a settings push from overwriting text
-// that has not been stored (an edit in progress or a refused value), and the
-// revision lets a save that finishes after a newer edit leave that edit alone.
 const networkProxyDrafts = {
   proxyUrl: { revision: 0, dirty: false },
   noProxy: { revision: 0, dirty: false }
 };
-// The last refused save, kept until that field is edited again so the next
-// settings push does not wipe the reason off screen.
 let networkProxyError = null;
 const PROXY_SETTING_ERROR_CODES = ['proxy_invalid_url', 'proxy_unsupported_scheme', 'proxy_credentials_unsupported', 'proxy_bypass_unsupported', 'proxy_bypass_too_long'];
 
@@ -1851,39 +1467,15 @@ async function saveNetworkProxySetting(field) {
     const message = String(error?.message || '');
     code = PROXY_SETTING_ERROR_CODES.find((candidate) => message.includes(candidate)) || 'save_failed';
   }
-  // A newer edit owns the field now; this outcome no longer describes it.
   if (draft.revision !== revision) return;
-  // A refused value stays dirty, so it is left in place to be corrected.
   draft.dirty = Boolean(code);
   networkProxyError = code ? { field, code } : (networkProxyError?.field === field ? null : networkProxyError);
   preserveSettingsPanelScroll(syncNetworkProxyControls);
 }
 
-function renderAutomaticAppUpdateControl() {
-  if (!els.automaticAppUpdatesInput) return;
-  const control = appUpdatePresentationApi.automaticAppUpdateControlState({
-    preferenceEnabled: state.settings?.automaticAppUpdates,
-    updateState: state.appUpdate
-  });
-  els.automaticAppUpdatesInput.checked = control.checked;
-  els.automaticAppUpdatesInput.disabled = control.disabled;
-  els.automaticAppUpdatesRow?.classList.toggle('is-disabled', control.unavailable);
-  if (els.automaticAppUpdatesNote) {
-    els.automaticAppUpdatesNote.textContent = t(control.descriptionKey);
-  }
-}
+function renderSettingsAppUpdateRow() {}
+function renderAutomaticAppUpdateControl() {}
 
-function compactAge(value) {
-  const date = value ? new Date(value) : null;
-  if (!date || Number.isNaN(date.getTime())) return '';
-  const diffMs = Math.max(0, Date.now() - date.getTime());
-  if (diffMs < 45_000) return t('settings.age.justNow');
-  const minutes = Math.round(diffMs / 60000);
-  if (minutes < 60) return t('settings.age.minutesAgo', { minutes });
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return t('settings.age.hoursAgo', { hours });
-  return t('settings.age.daysAgo', { days: Math.round(hours / 24) });
-}
 function colorWithAlpha(hex, alpha) {
   const raw = String(hex || '').replace('#', '');
   if (!/^[0-9a-f]{6}$/i.test(raw)) return `rgba(183, 234, 212, ${alpha})`;
@@ -3366,8 +2958,7 @@ function visibleBreakdownOrder() {
 
 function ensureBreakdownVisible() {
   if (pluginPageOptions().some(page => page.id === state.breakdown)) return;
-  if (!state.pluginCatalog && pluginPlacementsApi.isHomeToken(state.breakdown)) return;
-  const availableIds = availableBreakdownIds();
+    const availableIds = availableBreakdownIds();
   if (directBreakdownOverride === state.breakdown && availableIds.includes(state.breakdown)) return;
   directBreakdownOverride = null;
   const next = viewDisplayPreferencesApi.preferredViewId({
@@ -3951,9 +3542,7 @@ function renderSubscriptionSyncError() {
 function renderSubscriptionNote() {
   const el = els.subscriptionNote;
   if (!el) return;
-  const key = state.settings?.hubMode === 'icloud'
-    ? 'settings.subscriptions.noteIcloud'
-    : state.settings?.subscriptionsShared
+  const key = state.settings?.subscriptionsShared
       ? 'settings.subscriptions.noteShared'
       : 'settings.subscriptions.note';
   el.dataset.i18n = key;
@@ -4886,7 +4475,7 @@ function renderLimits() {
   });
   if (
     state.limitPanelRenderSignature === renderSignature
-    && els.limitsPanel.children.length === orderedProviders.length
+    && els.limitsPanel.children.length === state.limitPanelChildCount
   ) {
     // View changes intentionally reuse the rendered Limits DOM. Replaying the
     // entrance motion here keeps that cache from swallowing the normal bar fill.
@@ -4896,6 +4485,7 @@ function renderLimits() {
   const resetMotionSnapshot = captureLimitResetMotion();
   state.limitPanelRenderSignature = renderSignature;
   const nodes = [];
+  const signedOut = [];
   const rows = orderedProviders;
   if (rows.length === 0) {
     els.limitsPanel.replaceChildren();
@@ -4904,6 +4494,14 @@ function renderLimits() {
   for (const { id, label } of rows) {
     const visibleProviders = visibleProviderEntries.get(id) || [{ provider: id, status: 'disabled', windows: [] }];
     const color = limitProviderColor(id);
+    // Providers nobody signed into report nothing. A full row each turned the page
+    // into a list of empty cards between the ones that matter, so they collapse
+    // into one strip of marks at the end.
+    const entries = Array.isArray(visibleProviders) ? visibleProviders : [visibleProviders];
+    if (entries.length > 0 && entries.every((entry) => entry?.status === 'notConfigured')) {
+      signedOut.push({ id, label });
+      continue;
+    }
     // Several accounts of one provider are a group; one is a row. Both builders
     // take the provider id and nothing else — which mark, colour and plan text
     // each account takes is the view's own per-provider policy, so the dock card
@@ -4915,8 +4513,36 @@ function renderLimits() {
     const provider = Array.isArray(visibleProviders) ? visibleProviders[0] : visibleProviders;
     nodes.push(renderLimitProviderSolo(id, label, provider, color));
   }
+  if (signedOut.length > 0) nodes.push(signedOutProviderStrip(signedOut));
+  state.limitPanelChildCount = nodes.length;
   els.limitsPanel.replaceChildren(...nodes);
   animateLimitResets(resetMotionSnapshot);
+}
+
+// The marks of every provider that has no account signed in, in one wrapping row.
+// Icons only, behind a caption: the row exists to say what is available, not to
+// report a reading.
+function signedOutProviderStrip(entries) {
+  const strip = document.createElement('div');
+  strip.className = 'limit-signed-out-strip';
+  strip.setAttribute('aria-label', t('limits.notSignedIn'));
+  const caption = document.createElement('span');
+  caption.className = 'limit-signed-out-label';
+  caption.textContent = t('limits.notSignedIn');
+  // Caption on its own line: sharing the row with the marks made the first mark
+  // look like part of the sentence.
+  const icons = document.createElement('div');
+  icons.className = 'limit-signed-out-icons';
+  for (const { id, label } of entries) {
+    const item = document.createElement('span');
+    item.className = 'limit-signed-out-item';
+    item.title = `${label} · ${t('limits.notSignedIn')}`;
+    item.setAttribute('aria-label', `${label} ${t('limits.notSignedIn')}`);
+    item.append(limitWindowsView.renderLimitProviderMark(id, limitProviderColor(id)));
+    icons.append(item);
+  }
+  strip.append(caption, icons);
+  return strip;
 }
 
 function serviceStatusLabel(status) {
@@ -5863,17 +5489,13 @@ function resetSettingsListSearch() {
   if (els.limitProviderSearchInput) els.limitProviderSearchInput.value = '';
 }
 
-function openSettingsPanel(section) {
+function openSettingsPanel(_section) {
   if (!els.settingsPanel) return;
   if (state.viewSwitcherOpen) setViewSwitcherOpen(false);
   els.settingsPanel.classList.remove('hidden');
   els.shell.classList.add('settings-open');
   syncSettingsForm();
   ensureServiceStatusTicker();
-  if (section === 'notch') {
-    setSettingsSectionExpanded('window', true);
-    displaySettings?.open('notch');
-  }
   els.shell.style.transform = 'translateZ(0)';
   requestAnimationFrame(() => { els.shell.style.transform = ''; });
 }
@@ -6196,17 +5818,7 @@ function syncPeriodMenu() {
 // Only placed views count as known: an active plugin's other views must not be
 // appended to the order the way a newly shipped built-in module would be.
 function homeModuleOptions() {
-  const placed = new Set(String(state.settings?.homeModuleOrder || '').split(',').map((id) => id.trim().toLowerCase()));
-  const extra = [];
-  for (const plugin of state.pluginCatalog?.plugins || []) {
-    if (plugin.status !== 'active') continue;
-    for (const view of plugin.views || []) {
-      const id = pluginPlacementsApi.homeToken(view.ref);
-      if (!view.surfaces.includes('home') || !placed.has(id)) continue;
-      extra.push({ id, label: view.title, ref: view.ref, pluginName: plugin.name, icon: view.icon });
-    }
-  }
-  return [...HOME_MODULE_OPTIONS, ...extra];
+  return [...HOME_MODULE_OPTIONS];
 }
 
 function homeModuleIds() {
@@ -6228,7 +5840,7 @@ function viewSwitcherIcon(id) {
   const page = pluginPageOptions().find(page => page.id === id);
   if (page) return window.TokenMonitorPluginViews.navigationIcon(document, page, 14);
   const icon = document.createElement('span');
-  icon.className = `view-switcher-icon ${VIEW_ICON_CLASSES[id] || (pluginPlacementsApi.isHomeToken(id) ? 'view-icon-plugin' : 'view-icon-home')}`;
+  icon.className = `view-switcher-icon ${VIEW_ICON_CLASSES[id] || 'view-icon-home'}`;
   icon.setAttribute('aria-hidden', 'true');
   return icon;
 }
@@ -6492,6 +6104,11 @@ function homeLimitRows() {
     accountPlan: (provider, index, providerEntries) => limitWindowsView.limitAccountPlan(provider, {
       grouped: providerEntries.length > 1
     }),
+    accountEmail: (provider, index, providerEntries) => accountIdentityApi.accountEmailLabel(
+      provider,
+      providerEntries,
+      { maskEmail: state.settings?.maskLimitAccountEmails === true }
+    ),
     accountColor: (provider, id, fallbackColor) => (
       id === 'thirdparty'
         ? limitProviderPresentationApi.thirdPartyAdapterVisual(provider, fallbackColor).color
@@ -6546,6 +6163,30 @@ function homeLimitWindowLabel(window, providerId = '', visibleWindows = []) {
   return window.label;
 }
 
+// The address is drawn from a stable stand-in and blurred, so the real text is
+// not in the DOM until it is revealed. Clicking swaps in the value, clicking
+// again puts the stand-in back.
+function homeLimitEmailNode(email) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'home-limit-email';
+  const redacted = accountIdentityApi.redactedPlaceholder(email);
+  let revealed = false;
+  const paint = () => {
+    button.textContent = revealed ? email : redacted;
+    button.classList.toggle('revealed', revealed);
+    button.setAttribute('aria-pressed', String(revealed));
+  };
+  button.addEventListener('click', (event) => {
+    // The row itself is clickable; revealing must not open it.
+    event.stopPropagation();
+    revealed = !revealed;
+    paint();
+  });
+  paint();
+  return button;
+}
+
 function renderHomeLimitModule() {
   const { module, body } = homeModuleShell('limits', t('home.limits'), 'limits');
   const rows = homeLimitRows();
@@ -6573,7 +6214,13 @@ function renderHomeLimitModule() {
     applyHomeListMark(mark, iconKindFor({ key: row.iconId || row.providerId || row.key }, 'limits'), row.color);
     const name = document.createElement('span');
     name.className = 'home-list-name';
-    name.textContent = row.name;
+    if (row.email) {
+      // Provider first, then the account address: the mark alone cannot say
+      // which account of a provider a row is for.
+      name.append(`${row.providerLabel || row.name} (`, homeLimitEmailNode(row.email), ')');
+    } else {
+      name.textContent = row.name;
+    }
     account.append(mark, name);
     if (row.plan) {
       const plan = document.createElement('span');
@@ -7037,49 +6684,8 @@ function moveHomeActivityTooltip(tooltip, cell) {
 function setupHomeActivityHover(scroller) {
   const canvas = scroller.querySelector('.home-activity-canvas');
   const svg = canvas?.querySelector('.dash-heatmap');
-  const gradient = svg?.querySelector('#homeActivitySpotlightGradient');
   const tooltip = homeActivityTooltipEl();
   let activeCell = null;
-  let spotlightFrame = 0;
-  let spotlightVisible = false;
-  const spotlightTarget = { x: -200, y: -200 };
-  const spotlightCurrent = { x: -200, y: -200 };
-
-  const setSpotlight = (point) => {
-    gradient?.setAttribute('cx', String(Math.round(point.x * 10) / 10));
-    gradient?.setAttribute('cy', String(Math.round(point.y * 10) / 10));
-  };
-
-  const scheduleSpotlight = () => {
-    if (spotlightFrame || !gradient) return;
-    spotlightFrame = requestAnimationFrame(() => {
-      spotlightFrame = 0;
-      const dx = spotlightTarget.x - spotlightCurrent.x;
-      const dy = spotlightTarget.y - spotlightCurrent.y;
-      if (Math.abs(dx) < 0.12 && Math.abs(dy) < 0.12) {
-        spotlightCurrent.x = spotlightTarget.x;
-        spotlightCurrent.y = spotlightTarget.y;
-      } else {
-        spotlightCurrent.x += dx * 0.32;
-        spotlightCurrent.y += dy * 0.32;
-        scheduleSpotlight();
-      }
-      setSpotlight(spotlightCurrent);
-    });
-  };
-
-  const moveSpotlight = (x, y) => {
-    spotlightTarget.x = x;
-    spotlightTarget.y = y;
-    if (!spotlightVisible) {
-      spotlightVisible = true;
-      spotlightCurrent.x = x;
-      spotlightCurrent.y = y;
-      setSpotlight(spotlightCurrent);
-      return;
-    }
-    scheduleSpotlight();
-  };
 
   const hide = ({ clearHover = true, concealTooltip = true } = {}) => {
     if (clearHover) {
@@ -7091,14 +6697,6 @@ function setupHomeActivityHover(scroller) {
       tooltip.setAttribute('aria-hidden', 'true');
       tooltip.style.transform = 'translate(-9999px, -9999px)';
     }
-    if (spotlightFrame) cancelAnimationFrame(spotlightFrame);
-    spotlightFrame = 0;
-    spotlightVisible = false;
-    spotlightTarget.x = -200;
-    spotlightTarget.y = -200;
-    spotlightCurrent.x = -200;
-    spotlightCurrent.y = -200;
-    setSpotlight(spotlightCurrent);
     if (activeCell) activeCell.removeAttribute('data-active');
     activeCell = null;
   };
@@ -7108,12 +6706,6 @@ function setupHomeActivityHover(scroller) {
       hide();
       return;
     }
-    const rect = svg.getBoundingClientRect();
-    const view = svg.viewBox.baseVal;
-    const x = view.x + (clientX - rect.left) * view.width / Math.max(1, rect.width);
-    const y = view.y + (clientY - rect.top) * view.height / Math.max(1, rect.height);
-    moveSpotlight(x, y);
-
     const targetCell = target instanceof Element ? target.closest('.heat[data-d]') : null;
     const cell = targetCell && canvas.contains(targetCell) ? targetCell : null;
     if (!cell) {
@@ -7268,8 +6860,8 @@ function renderHomeTrendsModule() {
   const activityScroll = document.createElement('div');
   activityScroll.className = 'home-activity-scroll';
   if (state.homeActivityHoverPoint && state.homeActivityHoverDate) {
-    // This replacement is being inserted directly under a stationary pointer. Keep
-    // the already-visible spotlight from replaying its hover fade on the new SVG.
+    // This replacement is being inserted directly under a stationary pointer, so
+    // the restored hover must not replay its transition on the new SVG.
     activityScroll.classList.add('is-restoring-hover');
   }
   activityScroll.tabIndex = 0;
@@ -7279,10 +6871,7 @@ function renderHomeTrendsModule() {
   activityCanvas.className = 'home-activity-canvas';
   activityCanvas.innerHTML = charts.heatmapSvg(activity, {
     monthLabel: (month) => compactMonthLabel(month.label),
-    radius: activityLayout.radius,
-    glowFilterId: 'homeActivityHeatGlow',
-    spotlightId: 'homeActivitySpotlight',
-    spotlightRadius: 82
+    radius: activityLayout.radius
   });
   activityScroll.append(activityCanvas);
   const linePoints = charts.clampDaily(points, 45);
@@ -7328,23 +6917,8 @@ function renderHomeTrendsModule() {
 
 // A plugin view on Home: the shell is ours, the body is the plugin's resolved
 // view, repainted in place by plugin pushes without re-rendering Home.
-function renderHomePluginModule(id) {
-  const option = homeModuleOptions().find((entry) => entry.id === id);
-  const ref = pluginPlacementsApi.refFromHomeToken(id);
-  const existing = [...els.homePanel.children].find(node => node.dataset.pluginRef === ref);
-  if (existing) {
-    existing.setAttribute('aria-label', option?.label || ref);
-    const label = existing.querySelector('.home-module-label'); if (label) label.textContent = option?.label || ref;
-    const meta = existing.querySelector('.home-module-meta'); if (meta) meta.textContent = option?.pluginName || '';
-    return existing;
-  }
-  const { module, body } = homeModuleShell('plugin', option?.label || ref, null, option?.pluginName || '');
-  module.dataset.pluginRef = ref;
-  const mount = document.createElement('div');
-  mount.className = 'home-plugin-body';
-  body.append(mount);
-  pluginViewHost?.mount(mount, ref, 'home');
-  return module;
+function renderHomePluginModule() {
+  return null;
 }
 
 function renderHome() {
@@ -7696,11 +7270,6 @@ function streamFailureText(failure) {
 }
 
 function statusTextFor(mode, connected) {
-  if (mode === 'sync' && state.settings?.hubMode === 'icloud') {
-    return String(state.icloudStatus?.state || '').toLowerCase() === 'available'
-      ? 'iCloud'
-      : 'Waiting…';
-  }
   if (mode === 'sync') return connected ? 'Live' : 'Offline';
   if (mode === 'local') return connected ? 'Local' : 'Collecting…';
   return 'Starting…';
@@ -7708,12 +7277,6 @@ function statusTextFor(mode, connected) {
 
 function liveDotTitle(mode, connected) {
   if (mode === 'sync') {
-    if (state.settings?.hubMode === 'icloud') {
-      const status = String(state.icloudStatus?.state || 'waiting');
-      return status === 'available'
-        ? t('settings.sync.icloudAvailable')
-        : t('settings.sync.icloudWaiting');
-    }
     if (connected) return t('status.hubStreamLive');
     const reason = streamFailureText(state.streamFailure);
     return reason ? `${t('status.hubStreamOffline')}: ${reason}` : t('status.hubStreamOffline');
@@ -7929,11 +7492,6 @@ function initFooterActionDisclosure() {
   // The footer group's width changes on every frame of the update's margin
   // transition. Observe it so an open card follows both motion and instant
   // reduced-motion changes without a permanent animation-frame loop.
-  const anchorObserver = new ResizeObserver(() => {
-    if (els.appUpdatePopover.matches(':popover-open')) positionAppUpdatePopover();
-  });
-  anchorObserver.observe(actions);
-  window.addEventListener('unload', () => anchorObserver.disconnect(), { once: true });
   const reveal = () => actions.classList.add('is-disclosed');
   const hide = () => actions.classList.remove('is-disclosed');
   els.utilityActions.addEventListener('pointerenter', reveal);
@@ -8026,7 +7584,6 @@ function applyAppearanceSettings(settings) {
   // stay available on every macOS and Windows; material pushes land here too.
   els.edgeDockMacBackdropRow?.classList.toggle('hidden', !isMac);
   syncEdgeDockMacBackdropInput(settings);
-  syncNotchStyleInput(settings);
   els.edgeDockWindowsBackdropRow?.classList.toggle('hidden', !isWindows);
   if (els.macBackdropInput) els.macBackdropInput.value = macGlass.backdropMode;
   applyReduceMotionPreference(settings?.reduceMotion);
@@ -8939,29 +8496,24 @@ function applyAppearanceFromControls() {
 }
 
 async function saveAppearanceFromControls() {
-  await saveSettings({ ...appearancePatchFromControls(), discordRpcEnabled: Boolean(els.discordRpcInput.checked) });
+  await saveSettings({
+    ...appearancePatchFromControls(),
+  });
 }
 
 function syncHubModeUi() {
+  if (!els.hubModeOptions) return;
   syncContentForm?.syncSettings();
   const mode = state.settings.hubMode || 'local';
   els.hubModeOptions.value = mode;
   if (els.syncModeDescription) els.syncModeDescription.textContent = t(SYNC_MODE_DESCRIPTIONS[mode] || SYNC_MODE_DESCRIPTIONS.local);
-  const icloudSupported = state.appInfo?.platform === 'darwin';
-  if (els.icloudModeOption) els.icloudModeOption.disabled = !icloudSupported;
   els.hubClientFields.classList.toggle('hidden', mode !== 'client');
   els.hubClientFields.inert = mode !== 'client';
   els.hubHostFields.classList.toggle('hidden', mode !== 'host');
   els.hubHostFields.inert = mode !== 'host';
-  if (els.icloudFields) {
-    els.icloudFields.classList.toggle('hidden', mode !== 'icloud');
-    els.icloudFields.inert = mode !== 'icloud';
-  }
   if (mode === 'host') {
     els.hubSecretInput.value = state.settings.hubHostSecret || '';
     renderHubStatus();
-  } else {
-    renderIcloudStatus();
   }
   syncModeSelect?.sync();
   renderSyncPanel();
@@ -8970,36 +8522,7 @@ function syncHubModeUi() {
   syncHubSaveButton();
 }
 
-function renderIcloudStatus() {
-  if (!els.icloudStatus || !els.icloudRootStatus) return;
-  const supported = state.appInfo?.platform === 'darwin';
-  const info = state.icloudStatus || state.hubInfo?.icloud || null;
-  if (!supported) {
-    els.icloudStatus.textContent = t('settings.sync.icloudUnsupported');
-    els.icloudStatus.className = 'hub-status';
-    els.icloudRootStatus.textContent = '';
-    return;
-  }
-  const status = String(info?.state || 'waiting');
-  const labels = {
-    available: 'settings.sync.icloudAvailable',
-    initializing: 'settings.sync.icloudInitializing',
-    starting: 'settings.sync.icloudInitializing',
-    waiting: 'settings.sync.icloudWaiting',
-    unavailable: 'settings.sync.icloudUnavailable',
-    error: 'settings.sync.icloudError',
-    stopped: 'settings.sync.icloudWaiting'
-  };
-  els.icloudStatus.textContent = t(labels[status] || 'settings.sync.icloudWaiting');
-  els.icloudStatus.className = `hub-status${status === 'available' ? ' ok' : status === 'error' ? ' error' : ''}`;
-  const root = String(info?.root || '').trim();
-  els.icloudRootStatus.textContent = root
-    ? `${t('settings.sync.icloudRoot')}: ${root}`
-    : t('settings.sync.icloudRootWaiting');
-}
-
 function renderHubStatus() {
-  renderIcloudStatus();
   if (!els.hubStatusRow || !els.hubAddressList) return;
   const info = state.hubInfo;
   const port = Number(state.settings.hubHostPort || 17321);
@@ -9049,7 +8572,7 @@ function renderSyncPanel() {
   if (!els.syncDevicePanel) return;
   const hubMode = state.settings?.hubMode || 'local';
   const shared = SHARED_SYNC_MODES.has(hubMode)
-    && (hubMode !== 'icloud' || state.appInfo?.platform === 'darwin');
+    ;
   els.syncDevicePanel.hidden = !shared;
   if (!shared) {
     syncPanelRows = [];
@@ -9342,7 +8865,6 @@ async function refreshHubInfo() {
   if (!window.tokenMonitor.getHubInfo) return;
   try {
     state.hubInfo = await window.tokenMonitor.getHubInfo();
-    if (state.hubInfo?.icloud) state.icloudStatus = state.hubInfo.icloud;
     renderHubStatus();
   } catch (_) { /* ignore */ }
 }
@@ -9762,7 +9284,6 @@ function syncSettingsForm() {
     !supportsLocalizedCompactTokenUnits(currentLocale())
   );
   els.swapSettingsRefreshInput.checked = state.settings.settingsInTitlebar === true;
-  els.discordRpcInput.checked = Boolean(state.settings.discordRpcEnabled);
   els.floatingBubbleInput.checked = state.settings.floatingBubbleEnabled === true;
   const floatingBubbleTrigger = state.settings.floatingBubbleTrigger === 'hover' ? 'hover' : 'click';
   for (const input of els.floatingBubbleTriggerInputs || []) input.checked = input.value === floatingBubbleTrigger;
@@ -12988,227 +12509,10 @@ window.addEventListener('blur', () => {
   if (state.viewSwitcherOpen) setViewSwitcherOpen(false);
 });
 
-function renderNotchPageChoices() {
-  window.TokenMonitorNotchPageSettings?.render({ document, container: document.getElementById('notchPageChoices'),
-    settings: state.settings, catalog: state.pluginCatalog, t,
-    resetButton: document.getElementById('resetNotchPageOrderButton'),
-    save: async patch => { await saveSettings(patch); },
-    place: async (ref, placed) => { await pluginApi.place(ref, 'notch', placed); },
-    pluginIcon: (name, identityIcon) => window.TokenMonitorPluginViews?.navigationIcon(document, { icon: name, identityIcon }, 14),
-    createRowDrag: config => rowDragControllerApi.createRowDragController({
-      dragSort: verticalDragSortApi, getScrollPanel: () => els.settingsPanel,
-      preserveScroll: preserveSettingsPanelScroll, ...config
-    }),
-    formatError: error => window.TokenMonitorPluginSettings.actionErrorMessage(error, t)
-  });
-}
-
-// ---- Plugins -------------------------------------------------------------
-// The catalog (from main) decides which plugin views exist; the view host
-// paints resolved views into Home and reports what is visible, so main only
-// samples sources something on screen, or a background rule, needs.
-const pluginBridge = window.tokenMonitor.plugins || null;
-pluginViewHost = pluginViewsApi && pluginBridge ? pluginViewsApi.createPluginViewHost({
-  document,
-  window,
-  t,
-  services: {
-    app: window.tokenMonitor,
-    native: {
-      quota: limitWindowsView,
-      usageRow: data => { const node = rowTemplate(data); updateRow(node, { ...data, barValue: data.barValue ?? data.value, max: data.max ?? data.value, color: data.color || 'var(--accent)' }); return node; },
-      updateUsageRow: updateRow,
-      quotaProvider: (id, label, record, color) => renderLimitProviderSolo(id, label, record, color),
-      quotaGroup: (id, label, records, color) => renderLimitProviderGroup(id, label, records, color)
-    },
-    navigate: openViewFromTray
-  },
-  getContext: () => ({ period: state.period, source: state.settings?.hubMode, stats: state.stats }),
-  onLoaded: () => { void maybeUpdateBarsIcon(); renderFloatingBubbleContent(); },
-  onDemand: (surface, refs) => pluginBridge.setDemand(surface, refs),
-  motionAllowed: () => !prefersReducedMotion(),
-  motionMode: () => tokenNumberAnimationApi.normalize(state.settings?.tokenNumberAnimation),
-  isSurfaceActive: (surface, container) => !isRendererWindowHidden() && !state.floatingBubble.collapsed
-    && (surface === 'settings' ? isSettingsPanelOpen() : !isSettingsPanelOpen()
-      || (surface === 'page' && Boolean(container?.closest('#pluginMainPanel'))))
-}) : null;
-pluginContent = pluginViewHost ? window.TokenMonitorPluginContent.create({ document,
-  host: { mount: (container, view, context) => pluginViewHost.mount(container, view.ref, 'page', context), unmount: container => pluginViewHost.unmount(container) },
-  getViews: () => (state.pluginCatalog?.plugins || []).filter(plugin => plugin.status === 'active').flatMap(plugin => plugin.views || []),
-  selection: target => state.pluginCatalog?.contentSelections?.[target]
-}) : null;
-pluginMainPages = pluginViewHost ? window.TokenMonitorPluginMainPages.create({
-  document, container: document.getElementById('pluginMainPanel'), headingContainer: document.getElementById('pluginPageHeading'), actionsContainer: document.getElementById('pluginPageActions'), host: pluginViewHost, t,
-  openWindow: ref => pluginBridge.openPage(ref),
-  formatError: error => window.TokenMonitorPluginSettings.actionErrorMessage(error, t)
-}) : null;
-if (pluginViewHost) new MutationObserver(() => pluginViewHost.refreshDemand()).observe(els.shell, { attributes: true, attributeFilter: ['class'] });
-let pluginCatalogKey = '';
-
-function applyPluginCatalog(list) {
-  if (!list) return list;
-  state.pluginCatalog = list;
-  // Home and the theme chips depend only on which plugins and views are
-  // active; process metrics refresh every few seconds and must not re-render.
-  const key = JSON.stringify([list.contentSelections, list.contentOrder, (list.plugins || []).map((plugin) => [plugin.id, plugin.name, plugin.status, plugin.revision,
-    (plugin.views || []).map((view) => [view.ref, view.title, view.surfaces, view.placements?.page, view.placements?.notch]), plugin.skins, plugin.revision])]);
-  if (key !== pluginCatalogKey) {
-    pluginCatalogKey = key;
-    render();
-    renderViewSwitcher();
-    renderThemePresetChips();
-    renderNotchPageChoices();
-    if (isSettingsSurfaceVisible()) preserveSettingsPanelScroll(renderViewPreferences);
-  }
-  return list;
-}
-
-async function loadPluginCatalog() {
-  try {
-    const list = applyPluginCatalog(await pluginBridge.list());
-    try { applyPluginCatalogUpdates(await pluginBridge.catalog()); } catch (_) {}
-    return list;
-  }
-  catch (error) {
-    // Initial failure must resolve the pending restored page. Later transient
-    // failures retain the last known catalog until a successful refresh.
-    if (!state.pluginCatalog) applyPluginCatalog({ enabled: false, plugins: [] });
-    throw error;
-  }
-}
-
-function applyPluginCatalogUpdates(catalog) {
-  pluginUpdateCount = catalog.entries.filter(entry => entry.status === 'update').length;
-  renderSettingsSummaries();
-  return catalog;
-}
-
-pluginApi = pluginBridge ? {
-  list: loadPluginCatalog,
-  orderContent: async (target, refs) => applyPluginCatalog(await window.tokenMonitorTrustedPlugins.orderContent(target, refs)),
-  selectContent: async (target, ref) => applyPluginCatalog(await window.tokenMonitorTrustedPlugins.selectContent(target, ref)),
-  setEnabled: async (id, enabled, initialSetup) => applyPluginCatalog(await pluginBridge.setEnabled(id, enabled, initialSetup)),
-  setBackground: async (id, enabled) => applyPluginCatalog(await pluginBridge.setBackground(id, enabled)),
-  restart: async (id) => applyPluginCatalog(await pluginBridge.restart(id)),
-  reload: async () => applyPluginCatalog(await pluginBridge.reload()),
-  place: async (ref, surface, placed) => applyPluginCatalog(await pluginBridge.place(ref, surface, placed)),
-  openPage: async ref => {
-    const page = pluginPageOptions().find(page => page.ref === ref);
-    if (!page) throw new Error(t('plugins.page.enableFirst'));
-    openViewFromTray(page.id);
-    document.querySelector('#pluginPageHeading .plugin-main-heading:not(.hidden) h2')?.focus({ preventScroll: true });
-  },
-  getSettings: id => pluginBridge.getSettings(id),
-  updateSettings: (id, input) => pluginBridge.updateSettings(id, input),
-  catalog: async () => applyPluginCatalogUpdates(await pluginBridge.catalog()),
-  discoverCatalog: async force => applyPluginCatalogUpdates(await pluginBridge.discoverCatalog(force)),
-  catalogDetails: (source, id) => pluginBridge.catalogDetails(source, id),
-  closeCatalogDetails: () => pluginBridge.closeCatalogDetails(),
-  catalogReadmeImage: (documentId, index) => pluginBridge.catalogReadmeImage(documentId, index),
-  catalogPreview: (source, id, version) => pluginBridge.catalogPreview(source, id, version),
-  addSource: async input => applyPluginCatalogUpdates(await pluginBridge.addSource(input)),
-  refreshSource: async id => applyPluginCatalogUpdates(await pluginBridge.refreshSource(id)),
-  removeSource: async id => applyPluginCatalogUpdates(await pluginBridge.removeSource(id)),
-  importPackage: kind => pluginBridge.importPackage(kind),
-  install: async (token, options) => applyPluginCatalog(await pluginBridge.install(token, options)),
-  cancelInstall: token => pluginBridge.cancelInstall(token),
-  rollback: async id => applyPluginCatalog(await pluginBridge.rollback(id)),
-  uninstall: async (id, options) => applyPluginCatalog(await pluginBridge.uninstall(id, options)),
-  openFolder: () => pluginBridge.openFolder()
-} : null;
-
-pluginSettingsPanel = pluginApi && window.TokenMonitorPluginSettings
-  ? window.TokenMonitorPluginSettings.createPluginSettingsPanel({
-    mountSettings: (container, view) => pluginViewHost.mount(container, view.ref, 'settings', { descriptor: view }),
-    unmountSettings: container => pluginViewHost.unmount(container),
-    document,
-    container: document.getElementById('pluginSettingsList'),
-    t,
-    api: pluginApi,
-    getLocale: currentLocale,
-    onOpenExternal: (url) => window.tokenMonitor.openExternal(url),
-    onCopyText: (text) => window.tokenMonitor.copyText(text),
-    setDetailTooltip: limitWindowsView.setDetailTooltip,
-    onApplySkin: (skin) => applyPluginSkin(skin),
-    onPlaced: () => renderSettingsSummaries(),
-    getEnabled: () => state.settings.pluginsEnabled !== false,
-    onSetEnabled: async (enabled) => {
-      await saveSettings({ pluginsEnabled: enabled });
-      renderSettingsSummaries();
-      return pluginApi.list();
-    }
-  }) : null;
-
-async function refreshPluginCatalog() {
-  if (!pluginApi) return;
-  if (state.settingsSections?.plugins && pluginSettingsPanel && !pluginSettingsPanel.isInteracting()) {
-    await pluginSettingsPanel.refresh();
-    renderSettingsSummaries();
-    return;
-  }
-  try { await pluginApi.list(); } catch (_) {}
-}
-
-// The tray bitmap has no DOM to observe, so its demand is the plugin items in
-// the custom layout whenever that layout is the one being drawn.
-function syncPluginTrayDemand() {
-  if (!pluginViewHost) return;
-  const refs = state.settings?.showTrayIcon !== false && state.settings?.trayContent === 'custom'
-    ? trayLayoutApi.trayLayoutPluginRefs(state.settings?.trayCustomLayout) : [];
-  if (!isRendererWindowHidden() && state.floatingBubble.collapsed && state.settings?.floatingBubbleContent === 'custom') {
-    refs.push(...trayLayoutApi.trayLayoutPluginRefs(state.settings.floatingBubbleCustomLayout));
-  }
-  pluginViewHost.setExplicitDemand('tray', [...new Set(refs)]);
-}
-
-function pluginTrayViews(layout) {
-  const views = {};
-  for (const ref of trayLayoutApi.trayLayoutPluginRefs(layout)) {
-    views[ref] = pluginViewHost?.state('tray', ref) || null;
-  }
-  return views;
-}
-
-async function applyPluginSkin(skin) {
-  // Main resolves the active author manifest and commits palette + tokens
-  // together. Never send the renderer's copy of the skin as trusted settings.
-  await saveSettings({ pluginSkinRef: skin.ref });
-  buildAppearanceColorControls();
-  renderSettingsSummaries();
-}
-
-async function applyAppearancePluginSkin(skin, chip) {
-  const container = els.themePresetChips;
-  if (container.getAttribute('aria-busy') === 'true') return;
-  container.querySelector('.plugin-action-error')?.remove();
-  for (const control of container.querySelectorAll('button')) control.removeAttribute('aria-describedby');
-  const skinKey = JSON.stringify(skin), settingsRevision = state.settingsPushRevision;
-  const restoreFocus = document.activeElement === chip;
-  container.setAttribute('aria-busy', 'true');
-  try { await applyPluginSkin(skin); }
-  catch (error) {
-    // saveSettings refreshes the form before rethrowing. Reattach to the same
-    // skin after that refresh, but discard failures from superseded settings.
-    if (state.settingsPushRevision !== settingsRevision) return;
-    const target = container.contains(chip) ? chip
-      : [...container.querySelectorAll('button')].find(control => control.dataset.pluginSkin === skinKey);
-    if (!target) return;
-    const notice = document.createElement('p'); notice.className = 'plugin-action-error';
-    notice.id = 'theme-plugin-skin-error';
-    notice.setAttribute('role', 'alert'); notice.setAttribute('aria-atomic', 'true');
-    notice.textContent = window.TokenMonitorPluginSettings.actionErrorMessage(error, t);
-    target.setAttribute('aria-describedby', notice.id); container.append(notice);
-    if (restoreFocus && (document.activeElement === document.body || document.activeElement === chip)) target.focus({ preventScroll: true });
-  } finally { container.setAttribute('aria-busy', 'false'); }
-}
-
-if (pluginBridge) {
-  pluginBridge.onViews((payload) => {
-    pluginViewHost?.update(payload);
-    if (payload?.surface === 'tray') { void maybeUpdateBarsIcon(); renderFloatingBubbleContent(); }
-  });
-  pluginBridge.onChanged(() => void refreshPluginCatalog());
-}
+// ---- Plugins (stubbed) ---------------------------------------------------
+function syncPluginTrayDemand() {}
+function pluginTrayViews() { return {}; }
+async function applyAppearancePluginSkin() {}
 
 async function init() {
   // Subscribe before querying: a native appearance/accessibility change can
@@ -13245,16 +12549,8 @@ async function init() {
     void maybeUpdateBarsIcon();
     void deliverTrayProviderIcons();
   };
-  let notchCapabilitiesSeeded = false;
-  window.tokenMonitor.onNotchCapabilitiesPush?.((value) => {
-    notchCapabilitiesSeeded = true;
-    state.notchCapabilities = value;
-    syncNotchCapabilities();
-  });
   window.tokenMonitor.onSystemUiThemePush?.((payload) => applySystemUiTheme(payload?.dark === true));
   try { state.appInfo = await window.tokenMonitor.getAppInfo?.(); } catch (_) {}
-  if (!notchCapabilitiesSeeded) state.notchCapabilities = state.appInfo?.notchCapabilities || null;
-  syncNotchCapabilities();
   // Seeding assigns directly: the rest of init delivers both icon sets anyway,
   // and settings have not loaded yet, so repainting from here would only churn.
   if (!systemUiThemeSeeded) state.systemDarkUi = state.appInfo?.systemDarkUi === true;
@@ -13267,17 +12563,7 @@ async function init() {
   applyEffectiveCurrencyRates();
   deliverTrayProviderIcons();
 
-  state.appUpdate = await window.tokenMonitor.getAppUpdateState();
-  renderAppUpdatePill();
-  renderSettingsAppUpdateRow();
-  window.tokenMonitor.onAppUpdatePush?.((payload) => {
-    state.appUpdate = payload;
-    renderAppUpdatePill();
-    renderSettingsAppUpdateRow();
-    renderAutomaticAppUpdateControl();
-    if (els.appUpdatePopover.matches(':popover-open')) renderAppUpdatePopover(payload);
-  });
-  if (state.appInfo?.loginItemSupported) {
+    if (state.appInfo?.loginItemSupported) {
     state.settings.startAtLogin = Boolean(state.appInfo.loginItemOpenAtLogin);
   }
   syncSettingsForm();
@@ -13512,13 +12798,9 @@ els.syncConnectionCancel?.addEventListener('click', cancelClientConnectionEdit);
 
 els.syncPanelOpenDevices?.addEventListener('click', () => openViewFromTray('device'));
 
-els.hubModeOptions.addEventListener('change', async (event) => {
+els.hubModeOptions?.addEventListener('change', async (event) => {
   const target = event.target;
   if (target !== els.hubModeOptions) return;
-  if (target.value === 'icloud' && state.appInfo?.platform !== 'darwin') {
-    syncHubModeUi();
-    return;
-  }
   await saveSettings({ hubMode: target.value });
   await refreshHubInfo();
   void refreshHubBuildStatus();
@@ -13860,7 +13142,6 @@ setupSettingsAccordion(els.advancedSettingsGroup, els.advancedSettingsToggle, el
 setupSettingsAccordion(els.themeAdvancedGroup, els.themeAdvancedToggle, els.themeAdvancedDetails);
 setupSettingsAccordion(els.themeVendorGroup, els.themeVendorToggle, els.themeVendorDetails);
 setupSettingsAccordion(els.edgeDockMoreOptionsGroup, els.edgeDockMoreOptionsToggle, els.edgeDockMoreOptionsDetails);
-setupSettingsAccordion(els.notchMoreOptionsGroup, els.notchMoreOptionsToggle, els.notchMoreOptionsDetails);
 for (const input of els.systemGlassInputs || []) {
   input.addEventListener('change', () => {
     if (input.checked) saveAppearanceFromControls();
@@ -13916,7 +13197,6 @@ els.swapSettingsRefreshInput.addEventListener('change', () => {
   applyControlLayout(els.swapSettingsRefreshInput.checked);
   void saveAppearanceFromControls();
 });
-els.discordRpcInput.addEventListener('change', saveAppearanceFromControls);
 els.windowBehaviorInput.addEventListener('change', () => saveSettings({ windowBehavior: els.windowBehaviorInput.value }));
 els.keepAboveTaskbarInput?.addEventListener('change', () => saveSettings({ keepAboveTaskbar: els.keepAboveTaskbarInput.checked }));
 els.floatingBubbleInput.addEventListener('change', () => {
@@ -13944,37 +13224,6 @@ function syncDockSizeControls(surface) {
   }
 }
 
-// Liquid Glass is offered on the same terms as the widget's own selector. A
-// saved choice the system cannot draw shows as the Frosted Glass it falls back to.
-// Appearance previews carry only the controls they own, so the notch style is
-// read from the saved settings underneath them.
-const NOTCH_HOVER_DELAY_DEFAULT_MS = 0;
-
-// Hover duration applies only to hover-to-open.
-function syncNotchHoverControls() {
-  const action = state.settings?.notchHoverAction === 'open' ? 'open' : 'peek';
-  for (const input of els.notchHoverActionInputs) input.checked = input.value === action;
-  els.notchHoverDelayRow?.classList.toggle('hidden', action !== 'open');
-  if (els.notchHoverDelayInput && document.activeElement !== els.notchHoverDelayInput) {
-    const delay = Number(state.settings?.notchHoverDelay);
-    els.notchHoverDelayInput.value = String(Number.isFinite(delay) ? delay : NOTCH_HOVER_DELAY_DEFAULT_MS);
-  }
-  syncNotchHoverDelayValue();
-}
-
-function syncNotchHoverDelayValue() {
-  const value = els.notchHoverDelayRow?.querySelector('.slider-value');
-  if (value && els.notchHoverDelayInput) value.textContent = `${(Number(els.notchHoverDelayInput.value) / 1000).toFixed(1)} s`;
-}
-
-function syncNotchStyleInput(preview) {
-  if (!els.notchStyleInput) return;
-  const settings = Object.assign({}, state.settings, ...pendingSettingsPatches, preview);
-  syncMacStyleSelect(els.notchStyleInput, settings?.notchStyle || 'inherit', nativeMaterialState.liquidGlassSupported === true);
-}
-
-// Liquid Glass options hide where it cannot be drawn, and a saved Liquid Glass
-// choice shows the Frosted Glass the surface falls back to.
 function syncMacStyleSelect(select, style, liquidGlassAvailable) {
   for (const value of ['liquid-glass', 'liquid-glass-clear']) {
     const option = select.querySelector(`option[value="${value}"]`);
@@ -13991,10 +13240,6 @@ function syncEdgeDockMacBackdropInput(preview) {
     nativeMaterialState.liquidGlassSupported === true);
 }
 
-function syncNotchCapabilities() {
-  els.notchRunningIndicatorRow?.classList.toggle('hidden', state.notchCapabilities?.rings === false);
-}
-
 function syncDockControls() {
   if (!els.edgeDockInput) return;
   const available = edgeDockAvailable();
@@ -14008,7 +13253,6 @@ function syncDockControls() {
   const mode = modes.includes(state.settings?.edgeDockMode) ? state.settings.edgeDockMode : 'autoHide';
   for (const input of els.edgeDockModeInputs || []) input.checked = input.value === mode;
   syncDockSizeControls('edgeDock');
-  syncDockSizeControls('notch');
   els.edgeDockHapticRow?.classList.toggle('hidden', state.appInfo?.platform !== 'darwin');
   if (els.edgeDockHapticInput) els.edgeDockHapticInput.checked = state.settings?.edgeDockHaptic !== false;
   if (els.edgeDockWarnColorsInput) els.edgeDockWarnColorsInput.checked = state.settings?.edgeDockWarnColors === true;
@@ -14017,38 +13261,8 @@ function syncDockControls() {
   if (els.edgeDockWindowsBackdropInput) {
     els.edgeDockWindowsBackdropInput.value = windowsBackdropApi.normalizeWindowsDockBackdropMode(state.settings?.edgeDockWindowsBackdrop);
   }
-  const notchAvailable = state.appInfo?.platform === 'darwin';
-  const notchEnabled = notchAvailable && state.settings?.notchEnabled === true;
-  els.notchFeature?.classList.toggle('hidden', !notchAvailable);
-  if (els.notchInput) els.notchInput.checked = notchEnabled;
-  els.notchOptions?.classList.toggle('hidden', !notchEnabled);
-  renderNotchPageChoices();
-  syncNotchStyleInput();
-  for (const input of els.notchShapeInputs) input.checked = input.value === (state.settings?.notchShape || 'auto');
-  syncNotchSummaryMode();
-  if (els.notchSummaryInput) els.notchSummaryInput.checked = state.settings?.notchSummaryEnabled !== false;
-  if (els.notchWarnColorsInput) els.notchWarnColorsInput.checked = state.settings?.notchWarnColors === true;
-  if (els.notchRunningIndicatorInput) els.notchRunningIndicatorInput.checked = state.settings?.notchRunningIndicatorEnabled === true;
-  syncNotchCapabilities();
-  if (els.notchProgressiveBlurInput) els.notchProgressiveBlurInput.checked = state.settings?.notchProgressiveBlur !== false;
-  if (els.notchHapticInput) els.notchHapticInput.checked = state.settings?.notchHaptic !== false;
-  if (els.notchSwipeGesturesInput) els.notchSwipeGesturesInput.checked = state.settings?.notchSwipeGestures !== false;
-  syncNotchHoverControls();
-  if (els.notchHideSummaryInFullScreenInput) els.notchHideSummaryInFullScreenInput.checked = state.settings?.notchHideSummaryInFullScreen !== false;
-  els.edgeDockComposerRow?.classList.toggle('hidden', !enabled);
-  if (available) edgeDockComposer?.render();
-  if (notchAvailable) notchItemsComposer?.render();
 }
 
-function syncNotchSummaryMode() {
-  const mode = state.settings?.notchSummaryMode || 'sessions';
-  if (els.notchSummaryModeInput) els.notchSummaryModeInput.value = mode;
-  if (els.notchSummaryModeNote) {
-    const key = mode === 'auto' ? 'settings.notch.summaryModeNote' : `settings.notch.summaryMode.${mode}Note`;
-    els.notchSummaryModeNote.dataset.i18n = key;
-    els.notchSummaryModeNote.textContent = t(key);
-  }
-}
 
 function createDockItemsComposer(root, itemsKey) {
   return root && window.TokenMonitorEdgeDockComposer
@@ -14094,65 +13308,6 @@ function createDockItemsComposer(root, itemsKey) {
     : null;
 }
 const edgeDockComposer = createDockItemsComposer(els.edgeDockComposer, 'edgeDockItems');
-const notchItemsComposer = createDockItemsComposer(els.notchItemsComposer, 'notchItems');
-
-els.notchSummaryInput?.addEventListener('change', () => {
-  void saveSettings({ notchSummaryEnabled: els.notchSummaryInput.checked });
-});
-els.notchWarnColorsInput?.addEventListener('change', () => {
-  void saveSettings({ notchWarnColors: els.notchWarnColorsInput.checked });
-});
-els.notchHideSummaryInFullScreenInput?.addEventListener('change', () => {
-  void saveSettings({ notchHideSummaryInFullScreen: els.notchHideSummaryInFullScreenInput.checked });
-});
-for (const input of els.notchHoverActionInputs) {
-  input.addEventListener('change', () => {
-    if (!input.checked) return;
-    state.settings.notchHoverAction = input.value;
-    syncNotchHoverControls();
-    void saveSettings({ notchHoverAction: input.value });
-  });
-}
-els.notchProgressiveBlurInput?.addEventListener('change', () => {
-  void saveSettings({ notchProgressiveBlur: els.notchProgressiveBlurInput.checked });
-});
-els.notchHoverDelayInput?.addEventListener('input', () => syncNotchHoverDelayValue());
-els.resetNotchHoverDelayButton?.addEventListener('click', () => {
-  if (!els.notchHoverDelayInput) return;
-  els.notchHoverDelayInput.value = String(NOTCH_HOVER_DELAY_DEFAULT_MS);
-  syncNotchHoverDelayValue();
-  void saveSettings({ notchHoverDelay: NOTCH_HOVER_DELAY_DEFAULT_MS });
-});
-els.notchHoverDelayInput?.addEventListener('change', () => {
-  void saveSettings({ notchHoverDelay: Number(els.notchHoverDelayInput.value) });
-});
-els.notchSwipeGesturesInput?.addEventListener('change', () => {
-  void saveSettings({ notchSwipeGestures: els.notchSwipeGesturesInput.checked });
-});
-els.notchRunningIndicatorInput?.addEventListener('change', () => {
-  void saveSettings({ notchRunningIndicatorEnabled: els.notchRunningIndicatorInput.checked });
-});
-
-els.notchInput?.addEventListener('change', () => {
-  state.settings.notchEnabled = els.notchInput.checked;
-  syncDockControls();
-  refreshTrayComposers();
-  void saveSettings({ notchEnabled: els.notchInput.checked });
-});
-for (const input of els.notchShapeInputs) {
-  input.addEventListener('change', () => {
-    if (input.checked) void saveSettings({ notchShape: input.value });
-  });
-}
-els.notchStyleInput?.addEventListener('change', () => {
-  void saveSettings({ notchStyle: els.notchStyleInput.value });
-});
-els.notchSummaryModeInput?.addEventListener('change', () => {
-  state.settings.notchSummaryMode = els.notchSummaryModeInput.value;
-  syncNotchSummaryMode();
-  refreshTrayComposers();
-  void saveSettings({ notchSummaryMode: els.notchSummaryModeInput.value });
-});
 
 els.edgeDockInput?.addEventListener('change', () => {
   state.settings.edgeDockEnabled = els.edgeDockInput.checked;
@@ -14176,9 +13331,6 @@ els.edgeDockMacBackdropInput?.addEventListener('change', () => {
 els.edgeDockWindowsBackdropInput?.addEventListener('change', () => {
   void saveSettings({ edgeDockWindowsBackdrop: windowsBackdropApi.normalizeWindowsDockBackdropMode(els.edgeDockWindowsBackdropInput.value) });
 });
-els.notchHapticInput?.addEventListener('change', () => {
-  void saveSettings({ notchHaptic: els.notchHapticInput.checked });
-});
 els.edgeDockHapticInput?.addEventListener('change', () => {
   void saveSettings({ edgeDockHaptic: els.edgeDockHapticInput.checked });
 });
@@ -14187,7 +13339,7 @@ for (const input of els.edgeDockModeInputs || []) {
     if (input.checked) void saveSettings({ edgeDockMode: input.value });
   });
 }
-for (const surface of ['edgeDock', 'notch']) {
+for (const surface of ['edgeDock']) {
   for (const input of els[`${surface}SizeInputs`] || []) {
     input.addEventListener('change', () => {
       if (!input.checked) return;
@@ -14273,7 +13425,7 @@ els.resetZoomButton.addEventListener('click', async () => {
   syncSliderRow(els.zoomInput);
   await saveSettings({ zoomFactor: defaultAppearance.zoomFactor });
 });
-els.openConfigButton.addEventListener('click', () => window.tokenMonitor.openUserData());
+els.openConfigButton?.addEventListener('click', () => window.tokenMonitor.openUserData());
 els.openTokscaleLinkButton?.addEventListener('click', () => window.tokenMonitor.openExternal?.('https://github.com/junhoyeo/tokscale'));
 els.openRepositoryButton?.addEventListener('click', () => window.tokenMonitor.openExternal?.(TOKEN_MONITOR_REPOSITORY_URL));
 els.openWebsiteButton?.addEventListener('click', () => window.tokenMonitor.openExternal?.(TOKEN_MONITOR_WEBSITE_URL));
@@ -14319,126 +13471,6 @@ els.floatingBubbleTab.addEventListener('keydown', (event) => {
   window.tokenMonitor.expandFloatingBubble?.();
 });
 
-async function runAppUpdateAction() {
-  const mode = appUpdatePresentationApi.appUpdateActionMode(state.appUpdate);
-  if (mode === 'install') {
-    state.appUpdate = await window.tokenMonitor.installAppUpdate();
-  } else if (mode === 'download') {
-    state.appUpdate = await window.tokenMonitor.downloadAppUpdate();
-  } else if (mode === 'release') {
-    const latest = state.appUpdate?.latest;
-    if (!latest?.htmlUrl) return;
-    await window.tokenMonitor.openExternal(latest.htmlUrl);
-  } else {
-    return;
-  }
-  renderAppUpdatePill();
-  renderSettingsAppUpdateRow();
-}
-
-els.appUpdatePillAction.addEventListener('click', async () => {
-  // While a download or install is under way the press shows its progress.
-  if (els.appUpdatePillAction.getAttribute('aria-disabled') === 'true') {
-    showAppUpdatePopover();
-    return;
-  }
-  if (appUpdatePresentationApi.appUpdateActionMode(state.appUpdate) === 'release') hideAppUpdatePopover();
-  await runAppUpdateAction();
-});
-
-for (const target of [els.appUpdatePillAction, els.appUpdatePopover]) {
-  target.addEventListener('pointerenter', (event) => {
-    if (event.pointerType === 'touch') return;
-    if (target === els.appUpdatePopover || els.appUpdatePopover.matches(':popover-open')) clearAppUpdateCardTimers();
-    else scheduleAppUpdatePopoverOpen();
-  });
-  target.addEventListener('pointerleave', (event) => {
-    if (event.pointerType === 'touch') return;
-    scheduleAppUpdatePopoverClose();
-  });
-}
-
-// Keyboard users get the card on focus, the same moment pointer users get it on
-// hover, and Tab then moves into it rather than past it.
-els.appUpdatePillAction.addEventListener('focus', () => {
-  if (suppressAppUpdateCardFocusOpen) {
-    suppressAppUpdateCardFocusOpen = false;
-    return;
-  }
-  if (els.appUpdatePillAction.matches(':focus-visible')) showAppUpdatePopover();
-});
-els.appUpdatePillAction.addEventListener('keydown', (event) => {
-  if (event.key !== 'Tab' || event.shiftKey || !els.appUpdatePopover.matches(':popover-open')) return;
-  // Dismiss while it is offered; otherwise the notes body, which is a focusable
-  // scroller. A generic button search lands on a release link deep in the notes,
-  // or finds nothing at all once Dismiss is hidden during an install.
-  const dismiss = els.appUpdatePopoverDismiss.classList.contains('hidden') || els.appUpdatePopoverDismiss.disabled
-    ? null
-    : els.appUpdatePopoverDismiss;
-  const target = dismiss || (els.appUpdatePopoverBody.classList.contains('hidden') ? null : els.appUpdatePopoverBody);
-  if (!target) return;
-  event.preventDefault();
-  target.focus();
-});
-for (const target of [els.appUpdatePillAction, els.appUpdatePopover]) {
-  target.addEventListener('focusout', (event) => {
-    const next = event.relatedTarget;
-    if (next && (els.appUpdatePopover.contains(next) || next === els.appUpdatePillAction)) return;
-    if (els.appUpdatePopover.matches(':hover') || els.appUpdatePillAction.matches(':hover')) return;
-    hideAppUpdatePopover();
-  });
-}
-
-// A manual popover, so a press on the button is not also a light dismiss: the
-// card stays up to show the download it just started. Outside presses and Escape
-// are handled here instead.
-document.addEventListener('pointerdown', (event) => {
-  if (!els.appUpdatePopover.matches(':popover-open')) return;
-  if (els.appUpdatePopover.contains(event.target) || els.appUpdatePill.contains(event.target)) return;
-  hideAppUpdatePopover();
-}, true);
-document.addEventListener('keydown', (event) => {
-  if (event.key !== 'Escape' || !els.appUpdatePopover.matches(':popover-open')) return;
-  hideAppUpdatePopover();
-});
-
-els.appUpdatePopover.addEventListener('toggle', (event) => {
-  const open = event.newState === 'open';
-  if (els.appUpdatePillAction.hasAttribute('aria-haspopup')) {
-    els.appUpdatePillAction.setAttribute('aria-expanded', String(open));
-  }
-});
-
-els.appUpdatePopoverDismiss.addEventListener('click', async () => {
-  const version = state.appUpdate?.latest?.version;
-  if (!version) return;
-  hideAppUpdatePopover();
-  state.appUpdate = await window.tokenMonitor.dismissAppUpdate(version);
-  renderAppUpdatePill();
-  renderSettingsAppUpdateRow();
-});
-
-for (const container of [els.appUpdatePopoverBody, els.appUpdateNotesBody]) {
-  container.addEventListener('click', async (event) => {
-    const link = event.target.closest('[data-release-url]');
-    if (!link || !container.contains(link)) return;
-    await window.tokenMonitor.openExternal(link.dataset.releaseUrl);
-  });
-}
-
-window.addEventListener('resize', () => {
-  if (els.appUpdatePopover.matches(':popover-open')) positionAppUpdatePopover();
-});
-
-els.appUpdateCheckButton.addEventListener('click', async () => {
-  state.appUpdate = await window.tokenMonitor.checkAppUpdateNow();
-  renderAppUpdatePill();
-  renderSettingsAppUpdateRow();
-});
-
-els.appUpdateViewReleaseButton.addEventListener('click', async () => {
-  await runAppUpdateAction();
-});
 
 window.tokenMonitor.onSettingsPush?.((next) => {
   if (!next) return;
@@ -14479,7 +13511,6 @@ window.tokenMonitor.onFloatingBubbleState?.((payload) => {
 window.tokenMonitor.onHubPush?.((payload) => {
   if (!payload?.info) return;
   state.hubInfo = payload.info;
-  if (payload.info.icloud) state.icloudStatus = payload.info.icloud;
   const settingsVisible = isSettingsSurfaceVisible();
   // The first switch to Host mode generates the shared secret asynchronously
   // after settings:update has already returned, so mirror the freshly minted
@@ -14599,7 +13630,6 @@ window.tokenMonitor.onStatsPush?.((payload) => {
   if (payload.event === 'status') {
     state.streamConnected = Boolean(payload.data?.connected);
     if (payload.data?.mode) state.mode = payload.data.mode;
-    if (payload.data?.icloud) state.icloudStatus = payload.data.icloud;
     state.streamFailure = state.streamConnected ? null : (payload.data?.reason ? { reason: payload.data.reason, detail: payload.data.detail ?? null } : state.streamFailure);
   } else if (payload.data?.stats) {
     // Local overlays and adopted reads update data independently of the
@@ -14610,7 +13640,6 @@ window.tokenMonitor.onStatsPush?.((payload) => {
       state.streamFailure = null;
     }
     if (payload.data?.mode) state.mode = payload.data.mode;
-    if (payload.data?.icloud) state.icloudStatus = payload.data.icloud;
     allTimeSessions.invalidate();
     state.stats = sessionStatsForDisplay(allTimeSessions.attach(payload.data.stats));
     observeLiveTokenRate(state.stats);
@@ -15331,14 +14360,8 @@ function renderCustomTrayItemCanvas(item, height = 44, colors = {}, options = {}
 }
 
 // Author drawing uses the App's bitmap composition; the OS still owns the menu.
-function renderPluginTrayItemCanvas(item, h, { trackColor, textColor }) {
-  const view = item.plugin;
+function renderPluginTrayItemCanvas(item, h) {
   const canvas = document.createElement('canvas'); canvas.width = h; canvas.height = h;
-  if (view?.entry && pluginViewHost?.renderTray(view, canvas, { height: h, textColor, trackColor })) return canvas;
-  const size = Math.round(h * 0.7);
-  pluginViewsApi.drawIcon(canvas.getContext('2d'), view?.icon || 'dot', {
-    x: (h - size) / 2, y: (h - size) / 2, size, color: textColor
-  });
   return canvas;
 }
 
@@ -15430,7 +14453,6 @@ async function maybeUpdateBarsIcon(options = {}) {
   if (options.refreshComposers !== false && isSettingsSurfaceVisible()) {
     refreshTrayComposers();
     if (edgeDockAvailable() && state.settings?.edgeDockEnabled === true) edgeDockComposer?.render();
-    if (state.appInfo?.platform === 'darwin' && state.settings?.notchEnabled === true) notchItemsComposer?.render();
   } else {
     syncCustomTrayClockTimer();
   }
@@ -15637,9 +14659,6 @@ function renderStandardTrayPreview(mode, stats) {
 }
 
 function trayComposerPreview(surface) {
-  if (surface === 'notch') {
-    return { src: renderCustomTrayLayout(statsForTrayComposer(), state.settings?.notchCustomLayout, currentFloatingBubbleBitmapHeight(), floatingBubbleGeneratedColors(), { showProviderBadge: false }) };
-  }
   const isTray = surface === 'tray';
   const contentKey = isTray ? 'trayContent' : 'floatingBubbleContent';
   const layoutKey = isTray ? 'trayCustomLayout' : 'floatingBubbleCustomLayout';
@@ -15685,9 +14704,8 @@ function activateTrayComposer(surface) {
 
 function createTrayComposer(surface) {
   const isTray = surface === 'tray';
-  const isNotch = surface === 'notch';
-  const root = isNotch ? els.notchComposer : isTray ? els.trayComposer : els.floatingBubbleComposer;
-  const layoutKey = isNotch ? 'notchCustomLayout' : isTray ? 'trayCustomLayout' : 'floatingBubbleCustomLayout';
+  const root = isTray ? els.trayComposer : els.floatingBubbleComposer;
+  const layoutKey = isTray ? 'trayCustomLayout' : 'floatingBubbleCustomLayout';
   const contentKey = isTray ? 'trayContent' : 'floatingBubbleContent';
   return window.TokenMonitorTrayComposer.createTrayComposer({
     root,
@@ -15708,7 +14726,7 @@ function createTrayComposer(surface) {
       showProviderBadge: isTray && state.settings?.showTrayProviderBadge === true
     }),
     getPreview: () => trayComposerPreview(surface),
-    isEditable: () => isNotch || state.settings?.[contentKey] === 'custom',
+    isEditable: () => state.settings?.[contentKey] === 'custom',
     onCustomize: () => activateTrayComposer(surface),
     pluginChoices: () => (state.pluginCatalog?.plugins || []).filter(plugin => plugin.status === 'active')
       .flatMap(plugin => (plugin.views || []).filter(view => view.surfaces.includes('tray')).map(view => ({ ref: view.ref, title: `${plugin.name} · ${view.title || view.ref}` }))),
@@ -15720,7 +14738,7 @@ function createTrayComposer(surface) {
       state.settings[layoutKey] = trayLayoutApi.normalizeTrayLayout(nextLayout);
       observeDisplayLiveTokenRates(state.stats);
       if (isTray) void maybeUpdateBarsIcon({ refreshComposers: commit });
-      else if (isNotch) { if (commit) refreshTrayComposers(); }
+      else if (commit) refreshTrayComposers();
       else {
         renderFloatingBubbleContent();
         if (commit) refreshTrayComposers();
@@ -15754,7 +14772,6 @@ function refreshTrayComposers() {
   const surfaces = [
     { id: 'tray', root: els.trayComposer, visible: true },
     { id: 'floatingBubble', root: els.floatingBubbleComposer, visible: true },
-    { id: 'notch', root: els.notchComposer, visibilityRoot: els.notchComposerDetails, visible: state.appInfo?.platform === 'darwin' && state.settings?.notchSummaryMode === 'custom' }
   ];
   window.TokenMonitorTrayComposer.syncTrayComposerSurfaces(
     surfaces,
@@ -16944,6 +15961,35 @@ function claudeWebSettingsAccounts(providers) {
       && !accounts.some((account) => account.accountKey === provider.accountKey));
     accounts.unshift({ ...legacy, id: 'legacy', enabled: true, organizationId: state.settings.claudeWebOrganizationId || '' });
   }
+  const cliProvider = providers.find((p) => p.source && p.source !== 'web' && p.status !== 'notConfigured');
+  if (cliProvider || state.settings?.claudeAutoDetected) {
+    const cliEmail = (cliProvider?.accountEmail || '').trim().toLowerCase();
+    const cliOrg = (cliProvider?.organizationId || '').trim();
+    const duplicate = accounts.some((a) => {
+      if (a.id === 'cli') return true;
+      if (cliProvider?.accountKey && a.accountKey === cliProvider.accountKey) return true;
+      const aEmail = (a.accountEmail || '').trim().toLowerCase();
+      if (cliEmail && aEmail && cliEmail === aEmail) {
+        if (!cliOrg || !a.organizationId || cliOrg === a.organizationId.trim()) return true;
+      }
+      return false;
+    });
+    if (!duplicate) {
+      const accountEmail = cliProvider?.accountEmail || '';
+      const accountName = cliProvider?.accountName || 'Claude Code';
+      const accountLabel = cliProvider?.accountLabel || state.settings?.claudeDiscoveredAccountLabel || 'Auto-detected';
+      accounts.unshift({
+        id: 'cli',
+        source: cliProvider?.source || 'cli',
+        accountKey: cliProvider?.accountKey || 'claude-cli',
+        accountEmail,
+        accountName,
+        accountLabel,
+        enabled: true,
+        readOnly: true
+      });
+    }
+  }
   return accounts;
 }
 
@@ -16973,10 +16019,11 @@ function renderClaudeWebAccounts() {
   if (!list) return;
   const providers = localProviderStatuses('claude');
   const accounts = claudeWebSettingsAccounts(providers);
-  const statusTexts = accounts.map((account) => [account.id === 'legacy' ? t('settings.claude.legacyLogin') : '', account.accountName, account.accountLabel,
+  const statusTexts = accounts.map((account) => [account.id === 'legacy' ? t('settings.claude.legacyLogin') : (account.id === 'cli' ? 'Claude Code CLI' : ''), account.accountName, account.accountLabel,
     account.enabled === false ? t('settings.codex.disabled')
+      : (account.id === 'cli' ? (limitProviderEnabled('claude') ? t('settings.limits.connection.connected') : t('settings.codex.disabled'))
       : apiKeyAccountStatusText('claude', { status: state.settings?.claudeWebLoginStatuses?.[account.id] || 'notChecked' },
-        true, 'settings', limitProviderEnabled('claude'))].filter(Boolean).join(' · '));
+        true, 'settings', limitProviderEnabled('claude')))].filter(Boolean).join(' · '));
   const signature = JSON.stringify([accounts.map((account) => [account.id, account.accountKey, account.accountEmail,
     account.accountName, account.accountLabel, account.organizationId, account.enabled]),
   claudeWebAccountId, claudeWebFormOpen, state.settings?.claudeWebLegacyCookieSource, currentLocale()]);
@@ -16998,9 +16045,10 @@ function renderClaudeWebAccounts() {
     input.type = 'checkbox';
     input.className = 'managed-account-checkbox';
     input.checked = account.enabled !== false;
-    input.disabled = account.id === 'legacy';
+    input.disabled = account.id === 'legacy' || account.readOnly;
     input.setAttribute('aria-label', t('settings.codex.toggleAccount', { account: labelText }));
     input.addEventListener('change', async () => {
+      if (account.readOnly) return;
       await runClaudeAccountAction(input, () => window.tokenMonitor.claude.setAccountEnabled(account.id, input.checked));
       input.checked = (state.settings?.claudeManagedAccounts || []).find((entry) => entry.id === account.id)?.enabled !== false;
     });
@@ -17049,8 +16097,15 @@ function renderClaudeWebAccounts() {
     remove.classList.toggle('hidden', account.id === 'legacy' && state.settings?.claudeWebLegacyCookieSource === 'env');
     const controls = document.createElement('span');
     controls.className = 'settings-actions';
-    controls.append(edit);
-    actions.append(controls, remove);
+    if (!account.readOnly) {
+      controls.append(edit);
+      actions.append(controls, remove);
+    } else {
+      const badge = document.createElement('span');
+      badge.className = 'status-tag ok';
+      badge.textContent = 'CLI';
+      actions.append(badge);
+    }
     row.append(input, main, actions);
     list.append(row);
   }
@@ -17128,10 +16183,13 @@ function renderExternalProviderStatus(providerName) {
   if (providerName === 'zai' && !enabled && state.settings?.zcodeLoginDetected === true) {
     setCursorStatusText(statusEl, t('settings.limits.connection.autoDetect'));
   }
+  if (providerName === 'claude' && !enabled && state.settings?.claudeAutoDetected === true) {
+    setCursorStatusText(statusEl, t('settings.limits.connection.autoDetect'));
+  }
   manualPanel.classList.toggle('hidden', linked);
   openBtn.classList.toggle('hidden', linked);
   if (providerName === 'claude') {
-    const showForm = claudeWebFormOpen ?? (!(state.settings?.claudeManagedAccounts || []).length && !state.settings?.claudeWebLegacyCookieConfigured);
+    const showForm = claudeWebFormOpen ?? (!(state.settings?.claudeManagedAccounts || []).length && !state.settings?.claudeWebLegacyCookieConfigured && !state.settings?.claudeAutoDetected);
     manualPanel.classList.toggle('hidden', !showForm);
     document.getElementById('claudeWebOrganizationRow')?.classList.toggle('hidden', !showForm || !document.getElementById('claudeWebOrganizationIdInput')?.options.length);
     openBtn.classList.remove('hidden');

@@ -6,6 +6,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const {
+  COLOUR_MARKS,
   DEFAULT_VENDOR_COLOR,
   MARK_IDS,
   ROW_ICON_MASKS,
@@ -16,7 +17,7 @@ const {
   vendorColors,
   widgetVendorPalette
 } = require('../../src/shared/vendorPresentation');
-const { rowIconMaskRules } = require('../../src/electron/renderer/rowIconMasks');
+const { rowIconColourRules, rowIconMaskRules } = require('../../src/electron/renderer/rowIconMasks');
 
 const iconsDir = path.join(__dirname, '..', '..', 'assets', 'icons');
 const HEX = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
@@ -74,10 +75,28 @@ test('the widget palette omits entries that restate the defaults', () => {
   assert.deepEqual(palette.hermes, { color: '#d4af37', icon: 'hermes-agent' });
 });
 
-test('one mask rule is installed per mark id', () => {
-  const rules = rowIconMaskRules('../../../assets/icons/').split('\n');
-  assert.equal(rules.length, MARK_IDS.length);
-  assert.ok(rules.includes('.row-icon-grok { -webkit-mask-image: url("../../../assets/icons/xai.svg"); mask-image: url("../../../assets/icons/xai.svg"); }'));
+test('every mark is either masked or painted, never both', () => {
+  const masks = rowIconMaskRules('../../../assets/icons/').split('\n');
+  const painted = rowIconColourRules('../../../assets/icons/').split('\n');
+  assert.equal(masks.length + painted.length, MARK_IDS.length);
+  assert.equal(painted.length, COLOUR_MARKS.length);
+  assert.ok(masks.includes('.row-icon-grok { -webkit-mask-image: url("../../../assets/icons/xai.svg"); mask-image: url("../../../assets/icons/xai.svg"); }'));
+  assert.ok(painted.includes('.row-icon-claude { -webkit-mask-image: none; mask-image: none; background: transparent url("../../../assets/icons/claude.svg") center / contain no-repeat; }'));
+});
+
+test('the painted marks are exactly the artwork that has a colour of its own', () => {
+  // White ink on a stripped tile: legible only as an ink, so it stays masked
+  // until a dark-surface variant exists. Everything else that is not painted
+  // must be drawn in currentColor, or it silently loses its colour.
+  const whiteInk = new Set(['kimi', 'pi', 'proma', 'catpaw']);
+  const artwork = (id) => fs.readFileSync(path.join(iconsDir, `${ROW_ICON_MASKS[id]}.svg`), 'utf8');
+  for (const id of COLOUR_MARKS) {
+    assert.ok(!/currentcolor/i.test(artwork(id)), `${id} is painted but its artwork uses currentColor`);
+  }
+  for (const id of MARK_IDS) {
+    if (COLOUR_MARKS.includes(id) || /currentcolor/i.test(artwork(id))) continue;
+    assert.ok(whiteInk.has(id), `${id} names artwork with its own colour: put it in COLOUR_MARKS, or explain why it must stay a mask`);
+  }
 });
 
 test('a mask url survives an install path with parentheses', () => {
@@ -86,14 +105,18 @@ test('a mask url survives an install path with parentheses', () => {
   // token has to be quoted, or the token ends at that `)`, the declaration is
   // invalid CSS and every vendor mark degrades to a solid currentColor square.
   const base = 'file:///C:/Program%20Files%20(x86)/Token%20Monitor/resources/app.asar/assets/icons/';
-  const rules = rowIconMaskRules(base).split('\n');
-  assert.equal(rules.length, MARK_IDS.length);
+  const masks = rowIconMaskRules(base).split('\n');
+  const painted = rowIconColourRules(base).split('\n');
+  assert.equal(masks.length + painted.length, MARK_IDS.length);
   assert.ok(
-    rules.includes(`.row-icon-grok { -webkit-mask-image: url("${base}xai.svg"); mask-image: url("${base}xai.svg"); }`)
+    masks.includes(`.row-icon-grok { -webkit-mask-image: url("${base}xai.svg"); mask-image: url("${base}xai.svg"); }`)
   );
-  for (const rule of rules) {
+  for (const rule of masks) {
     // Exactly the two quoted url() tokens, each containing no bare `)`.
     assert.match(rule, /^\.row-icon-[a-z0-9-]+ \{ -webkit-mask-image: url\("([^"\\]|\\.)*"\); mask-image: url\("([^"\\]|\\.)*"\); \}$/);
+  }
+  for (const rule of painted) {
+    assert.match(rule, /^\.row-icon-[a-z0-9-]+ \{ -webkit-mask-image: none; mask-image: none; background: transparent url\("([^"\\]|\\.)*"\) center \/ contain no-repeat; \}$/);
   }
 });
 

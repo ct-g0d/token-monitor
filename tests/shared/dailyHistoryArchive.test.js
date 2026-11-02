@@ -1175,3 +1175,44 @@ test('a Cursor graph day kept on a tied aggregate cost still fills a price only 
   assert.equal(day.perModel['gpt-5.5'].cost, 3);
   assert.equal(day.cost, 4);
 });
+
+test('a stored day folds a disjoint-reasoning client remainder back into its models', () => {
+  // Written by the old rule: the client's reasoning tokens arrived as a model
+  // named `unknown` because they were the client total minus the model rows.
+  const archive = {
+    version: 1,
+    days: {
+      '2026-08-18': {
+        date: '2026-08-18',
+        activeTimeMs: 0,
+        observations: [
+          { client: 'antigravity', modelId: 'gemini-3.8-flash', tokens: 600, cost: 6, messages: 1 },
+          { client: 'antigravity', modelId: 'gemini-3.8-flash-n', tokens: 400, cost: 4, messages: 1 },
+          { client: 'antigravity', modelId: 'unknown', tokens: 500, cost: 5, messages: 0 }
+        ]
+      },
+      '2026-08-17': {
+        date: '2026-08-17',
+        activeTimeMs: 0,
+        observations: [
+          { client: 'claude', modelId: 'claude-opus-5-5', tokens: 100, cost: 1, messages: 1 },
+          { client: 'claude', modelId: 'unknown', tokens: 50, cost: 0.5, messages: 0 }
+        ]
+      }
+    }
+  };
+  const normalized = normalizeDailyHistoryArchive(archive);
+  const models = (date) => Object.values(normalized.days[date].observations)
+    .reduce((sum, observation) => sum + observation.tokens, 0);
+  const byModel = (date, modelId) => Object.values(normalized.days[date].observations)
+    .find((observation) => observation.modelId === modelId);
+
+  assert.equal(byModel('2026-08-18', 'unknown'), undefined);
+  assert.equal(byModel('2026-08-18', 'gemini-3.8-flash').tokens, 900);
+  assert.equal(byModel('2026-08-18', 'gemini-3.8-flash-n').tokens, 600);
+  assert.equal(models('2026-08-18'), 1500, 'the client total is preserved');
+
+  // Claude does not separate reasoning, so its remainder keeps its own row.
+  assert.equal(byModel('2026-08-17', 'unknown').tokens, 50);
+  assert.equal(models('2026-08-17'), 150);
+});

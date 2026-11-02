@@ -177,8 +177,11 @@ function addSpan(start, end, pixelWidth) {
 }
 
 // setShape() supplies the Windows input region and keeps transparent corners
-// click-through. Include every antialiased edge pixel plus a one-pixel fringe:
-// clipping at 50% alpha cuts Chromium's smoother edge into visible stair steps.
+// click-through. Only pixels the rasterizer actually covered are included: the
+// old one-pixel pad made the region larger than the drawn shape, and on a curved
+// edge that showed as a transparent fringe against the desktop (worst at 125%/
+// 150% display scaling, where one logical pixel is 1.25/1.5 device pixels and the
+// pad rounded unevenly). Straight edges lose nothing; curves stay antialiased.
 // Consecutive scanlines with identical spans are merged to keep the region small.
 function shapeRectsFromPolygons(polygons, width, height) {
   const { buffer, pixelWidth, pixelHeight } = rasterizeMask(polygons, width, height, 1);
@@ -192,8 +195,6 @@ function shapeRectsFromPolygons(polygons, width, height) {
       end = x + 1;
     }
     if (start >= 0 && end > start) {
-      start = Math.max(0, start - 1);
-      end = Math.min(pixelWidth, end + 1);
       rows.push({ x: start, y, width: end - start, height: 1 });
     }
   }

@@ -7,18 +7,16 @@
     <script src="floatingBubbleBoot.js"></script>
     <link rel="stylesheet" href="styles.css" />
     <link rel="stylesheet" href="edgeDock/composer.css" />
-    <link rel="stylesheet" href="pluginViews.css" />
-  </head>
+      </head>
   <body>
     <main class="shell" tabindex="-1">
       <header class="titlebar">
         <div>
-          <div class="app-title"><span class="app-title-text">Token Monitor</span><span class="app-title-mark" aria-hidden="true">Σ</span><span id="liveDot" class="live-dot" aria-label="Stream offline"></span><span id="tokenRateReveal" class="token-rate-reveal" aria-hidden="true"></span><div id="pluginPageHeading" class="plugin-page-heading hidden"></div><span class="app-title-measure" aria-hidden="true">Token Monitor</span></div>
+          <div class="app-title"><span class="app-title-text">Token Monitor</span><span class="app-title-mark" aria-hidden="true">Σ</span><span id="liveDot" class="live-dot" aria-label="Stream offline"></span><span id="tokenRateReveal" class="token-rate-reveal" aria-hidden="true"></span><span class="app-title-measure" aria-hidden="true">Token Monitor</span></div>
           <div id="status" class="status">Starting</div>
         </div>
         <div class="title-controls">
-          <div id="pluginPageActions" class="plugin-page-actions hidden"></div>
-          <nav class="tabs" aria-label="Period tabs">
+                    <nav class="tabs" aria-label="Period tabs">
             <span class="tab-indicator" aria-hidden="true"></span>
             <button class="tab active" data-period="today" data-period-slot="today">DAY</button>
             <button id="monthPeriodTab" class="tab" data-period="month" data-period-slot="month" aria-haspopup="menu" aria-expanded="false">MONTH</button>
@@ -68,110 +66,6 @@
                 <input id="startAtLoginInput" type="checkbox" />
                 <span id="startupNote" class="settings-note settings-item-desc" data-i18n="settings.startup.available">Available in packaged builds. On Linux, run the AppImage build to enable.</span>
               </label>
-            </div>
-            <div class="settings-subgroup maintenance-section app-update-settings">
-              <div class="settings-group-header maintenance-header"><span data-i18n="settings.appUpdate.title">App Updates</span><span data-i18n="settings.appUpdate.source">GitHub releases</span></div>
-              <label id="automaticAppUpdatesRow" class="checkbox-label settings-item">
-                <span class="settings-item-text">
-                  <span class="settings-item-title" data-i18n="settings.appUpdate.automatic">Download updates automatically</span>
-                </span>
-                <input id="automaticAppUpdatesInput" type="checkbox" aria-describedby="automaticAppUpdatesNote" />
-                <span id="automaticAppUpdatesNote" class="settings-note settings-item-desc" data-i18n="settings.appUpdate.automaticDescription">Download new versions in the background. You'll be prompted to restart when ready.</span>
-              </label>
-              <div class="maintenance-version-grid app-update-version-grid">
-                <div class="maintenance-version-item"><span data-i18n="settings.appUpdate.installed">Installed</span><strong id="appUpdateInstalled">—</strong></div>
-                <div class="maintenance-version-item"><span data-i18n="settings.appUpdate.latest">Latest</span><strong id="appUpdateLatest" data-i18n="settings.common.notChecked">Not checked</strong></div>
-              </div>
-              <div class="settings-actions maintenance-actions">
-                <button id="appUpdateCheckButton" type="button" data-i18n="settings.appUpdate.check">Check for updates</button>
-                <button id="appUpdateViewReleaseButton" type="button" class="hidden" data-i18n="settings.appUpdate.viewRelease">View release</button>
-              </div>
-              <div id="appUpdateNotes" class="app-update-notes hidden">
-                <button id="appUpdateNotesToggle" class="app-update-notes-toggle" type="button" aria-expanded="false" aria-controls="appUpdateNotesDetails">
-                  <span class="settings-section-disclosure app-update-notes-disclosure" aria-hidden="true"></span>
-                  <span id="appUpdateNotesTitle">What's new</span>
-                </button>
-                <div id="appUpdateNotesDetails" class="app-update-notes-details hidden" inert>
-                  <div class="app-update-notes-content">
-                    <div id="appUpdateNotesBody" class="app-update-notes-body"></div>
-                  </div>
-                </div>
-              </div>
-              <div id="appUpdateMessage" class="tokscale-message"></div>
-            </div>
-            <div class="settings-subgroup">
-              <div class="settings-group-header"><span data-i18n="settings.integrations.title">Integrations</span></div>
-              <label class="checkbox-label settings-item">
-                <span class="settings-item-text">
-                  <span class="settings-item-title" data-i18n="settings.integrations.discord">Discord Rich Presence</span>
-                </span>
-                <input id="discordRpcInput" type="checkbox" aria-describedby="discordRpcDescription" />
-                <span id="discordRpcDescription" class="settings-item-desc" data-i18n="settings.integrations.discordDescription">Show today's tokens, cost, and most-used AI tool in your Discord activity.</span>
-              </label>
-            </div>
-            <div id="advancedSettingsGroup" class="settings-subgroup advanced-settings">
-              <button id="advancedSettingsToggle" class="settings-group-header advanced-settings-toggle" type="button" aria-expanded="false" aria-controls="advancedSettingsDetails">
-                <span data-i18n="settings.advanced.title">Advanced</span>
-                <span class="advanced-settings-meta">
-                  <span id="advancedSettingsSummary" class="settings-subgroup-summary" data-i18n="settings.advanced.summary">Maintenance &amp; config</span>
-                  <span class="settings-section-disclosure" aria-hidden="true"></span>
-                </span>
-              </button>
-              <div id="advancedSettingsDetails" class="advanced-settings-details hidden" inert>
-                <div class="advanced-settings-body">
-                  <div id="tokscaleGroup" class="settings-group advanced-settings-block maintenance-panel">
-                    <div class="settings-group-header maintenance-header"><span>Tokscale</span><span data-i18n="settings.tokscale.source">Bundled CLI dependency</span></div>
-                    <div class="maintenance-version-grid tokscale-version-grid">
-                      <div class="maintenance-version-item"><span data-i18n="settings.tokscale.installed">Installed</span><strong id="tokscaleInstalled" data-i18n="settings.common.checking">Checking...</strong></div>
-                      <div id="tokscaleBundledBuildRow" class="maintenance-version-item hidden"><span data-i18n="settings.tokscale.bundledBuild">Bundled build</span><strong id="tokscaleBundledBuild"></strong></div>
-                    </div>
-                    <p class="settings-note"><span data-i18n="settings.tokscale.noteBefore">Token Monitor uses tokscale (MIT, open-source) to read token data.</span> <button id="openTokscaleLinkButton" type="button" class="inline-link" data-i18n="settings.tokscale.learnMore">Learn more</button></p>
-                  </div>
-                  <div id="networkProxyGroup" class="settings-group advanced-settings-block maintenance-panel">
-                    <div class="settings-group-header maintenance-header"><span data-i18n="settings.proxy.title">Network proxy</span><span id="networkProxySource"></span></div>
-                    <label><span data-i18n="settings.proxy.url">Proxy URL</span><input id="proxyUrlInput" type="text" spellcheck="false" autocomplete="off" placeholder="http://127.0.0.1:7890" aria-describedby="networkProxyNote" /></label>
-                    <label><span data-i18n="settings.proxy.noProxy">Bypass proxy for</span><input id="noProxyInput" type="text" spellcheck="false" autocomplete="off" placeholder="example.com, .internal.net, 10.0.0.1:8080" data-i18n-placeholder="settings.proxy.noProxyPlaceholder" /></label>
-                    <p id="networkProxyNote" class="settings-note" data-i18n="settings.proxy.note">Used only for Token Monitor's own limit and account requests; sign-ins in your browser or a CLI are not affected. While set, it replaces HTTP(S)_PROXY and NO_PROXY for these requests, so list any hosts to bypass here; local addresses always stay direct. Leave empty to use the environment or system proxy.</p>
-                    <div id="proxyUrlError" class="hub-status error" role="alert" hidden></div>
-                  </div>
-                  <div class="settings-group advanced-settings-block advanced-config-row">
-                    <p class="settings-note"><span data-i18n="settings.advanced.note">Additional options are available in</span> <code>settings.json</code>.</p>
-                    <div class="settings-actions">
-                      <button id="openConfigButton" type="button" data-i18n="settings.advanced.openConfig">Open Config</button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="settings-subgroup about-settings">
-              <div class="settings-group-header"><span data-i18n="settings.about.title">About Token Monitor</span><span id="aboutVersion">—</span></div>
-              <p class="settings-note" data-i18n="settings.about.description">Open-source AI tool token usage monitor, licensed under MIT.</p>
-              <div class="about-settings-links">
-                <button id="openRepositoryButton" type="button" class="inline-link" data-i18n="settings.about.repository">GitHub</button>
-                <button id="openWebsiteButton" type="button" class="inline-link" data-i18n="settings.about.website">Website</button>
-                <button id="reportIssueButton" type="button" class="inline-link" data-i18n="settings.about.reportIssue">Report an issue</button>
-                <button id="diagnosticToggleButton" type="button" class="inline-link" data-i18n="settings.about.diagnostics.toggle" aria-expanded="false" aria-controls="diagnosticDetails">Diagnostics</button>
-              </div>
-              <div id="diagnosticDetails" class="about-settings-diagnostics accordion-animated-container hidden" aria-hidden="true" inert>
-                <div class="accordion-animation-inner about-settings-diagnostics-inner">
-                  <div class="about-settings-diagnostics-heading" data-i18n="settings.about.diagnostics.title">Diagnostics &amp; support</div>
-                  <p class="settings-note" data-i18n="settings.about.diagnostics.description">Create a redacted system diagnostic to help report issues.</p>
-                  <div class="diagnostic-actions">
-                    <button id="generateDiagnosticButton" type="button" data-i18n="settings.about.diagnostics.generate">Generate report</button>
-                    <button id="copyDiagnosticButton" type="button" class="hidden" data-i18n="settings.about.diagnostics.copy" hidden>Copy report</button>
-                    <button id="previewDiagnosticButton" type="button" class="inline-link hidden" data-i18n="settings.about.diagnostics.preview" aria-expanded="false" aria-controls="diagnosticPreview" hidden>View report</button>
-                    <button id="regenerateDiagnosticButton" type="button" class="inline-link hidden" data-i18n="settings.about.diagnostics.regenerate" hidden>Regenerate</button>
-                  </div>
-                  <p class="settings-note diagnostic-privacy-note" data-i18n="settings.about.diagnostics.privacy">Includes versions, collection state and token totals; excludes credentials, conversations, accounts, full paths and raw errors.</p>
-                  <div id="diagnosticStatus" class="diagnostic-status" role="status" aria-live="polite"></div>
-                  <div id="diagnosticPreview" class="diagnostic-preview hidden" aria-hidden="true" inert aria-label="Report preview" data-i18n-aria-label="settings.about.diagnostics.previewTitle">
-                    <div class="diagnostic-preview-header">
-                      <span data-i18n="settings.about.diagnostics.previewTitle">Report preview</span>
-                    </div>
-                    <pre id="diagnosticReportText" tabindex="0"></pre>
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
         </div>
@@ -318,63 +212,6 @@
                 </div>
                 <div id="edgeDockComposerRow" class="presence-feature-body hidden">
                   <div id="edgeDockComposer" class="edge-dock-composer"></div>
-                </div>
-              </div>
-              <div id="notchFeature" class="presence-feature hidden">
-                <label class="checkbox-label settings-item">
-                  <span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.notch.title">Notch Panel</span></span>
-                  <input id="notchInput" type="checkbox" />
-                </label>
-                <div id="notchOptions" class="presence-feature-body hidden">
-                  <p class="settings-note" data-i18n="settings.notch.note">Click to open. What shows while closed follows Collapsed content.</p>
-                  <div class="settings-item">
-                    <span id="notchHoverActionLabel" class="settings-item-text"><span class="settings-item-title" data-i18n="settings.notch.hoverAction">On hover</span></span>
-                    <div class="inline-options" role="radiogroup" aria-labelledby="notchHoverActionLabel">
-                      <label class="inline-option"><input type="radio" name="notchHoverAction" value="peek" /><span data-i18n="settings.notch.hoverAction.peek">Grow</span></label>
-                      <label class="inline-option"><input type="radio" name="notchHoverAction" value="open" /><span data-i18n="settings.notch.hoverAction.open">Open</span></label>
-                    </div>
-                  </div>
-                  <div id="notchHoverDelayRow" class="settings-item settings-slider-item hidden"><span class="settings-item-text"><span class="slider-label"><span id="notchHoverDelayLabel" class="settings-item-title" data-i18n="settings.notch.hoverDelay">Hover duration</span><button id="resetNotchHoverDelayButton" type="button" class="reset-appearance-button reset-inline" aria-label="Reset hover duration" data-i18n-aria-label="settings.notch.resetHoverDelay">↺</button></span></span><input id="notchHoverDelayInput" type="range" min="0" max="600" step="100" aria-labelledby="notchHoverDelayLabel" /><span class="slider-value" aria-hidden="true"></span></div>
-                  <div class="settings-item">
-                    <span id="notchShapeLabel" class="settings-item-text"><span class="settings-item-title" data-i18n="settings.notch.shape">Entry shape</span></span>
-                    <div class="inline-options" role="radiogroup" aria-labelledby="notchShapeLabel">
-                      <label class="inline-option"><input type="radio" name="notchShape" value="auto" /><span data-i18n="settings.notch.shape.auto">Auto</span></label>
-                      <label class="inline-option"><input type="radio" name="notchShape" value="notch" /><span data-i18n="settings.notch.shape.notch">Notch</span></label>
-                      <label class="inline-option"><input type="radio" name="notchShape" value="pill" /><span data-i18n="settings.notch.shape.pill">Pill</span></label>
-                    </div>
-                  </div>
-                  <div class="settings-item">
-                    <span id="notchSizeLabel" class="settings-item-text"><span class="settings-item-title" data-i18n="settings.edgeDock.size">Size</span></span>
-                    <div class="inline-options is-wrapping" role="radiogroup" aria-labelledby="notchSizeLabel">
-                      <label class="inline-option"><input type="radio" name="notchSize" value="small" /><span data-i18n="settings.edgeDock.size.small">Small</span></label>
-                      <label class="inline-option"><input type="radio" name="notchSize" value="medium" /><span data-i18n="settings.edgeDock.size.medium">Medium</span></label>
-                      <label class="inline-option"><input type="radio" name="notchSize" value="large" /><span data-i18n="settings.edgeDock.size.large">Large</span></label>
-                      <label class="inline-option"><input type="radio" name="notchSize" value="custom" /><span data-i18n="settings.edgeDock.size.custom">Custom</span></label>
-                    </div>
-                  </div>
-                  <div id="notchCustomScaleRow" class="settings-item settings-slider-item hidden"><span class="settings-item-text"><span class="slider-label"><span id="notchCustomScaleLabel" class="settings-item-title" data-i18n="settings.edgeDock.customScale">Custom size</span></span></span><input id="notchCustomScaleInput" type="range" min="75" max="150" step="5" aria-labelledby="notchCustomScaleLabel" /><span class="slider-value" aria-hidden="true"></span></div>
-                  <div class="notch-page-settings"><div class="edge-dock-composer-heading"><span id="notchPagesLabel" data-i18n="settings.notch.pages">Pages</span><span class="edge-dock-composer-heading-actions"><span class="edge-dock-composer-heading-hint" data-i18n="settings.notch.pagesHint">Drag to reorder · Click to show or hide</span><button id="resetNotchPageOrderButton" class="edge-dock-composer-reset" type="button" aria-label="Reset order" data-i18n="settings.edgeDock.reset" data-i18n-aria-label="settings.views.resetOrder" hidden>Reset</button></span></div><div id="notchPageChoices" class="notch-page-chips" role="group" aria-labelledby="notchPagesLabel"></div><p class="settings-note" data-i18n="settings.notch.pagesNote">Use the arrows to browse when space is limited.</p></div>
-                  <div id="notchMoreOptionsGroup" class="settings-group cursor-account-group">
-                    <button id="notchMoreOptionsToggle" class="settings-group-header cursor-settings-toggle" type="button" aria-expanded="false" aria-controls="notchMoreOptionsDetails">
-                      <span data-i18n="settings.edgeDock.moreOptions">More options</span>
-                      <span class="cursor-settings-summary"><span class="cursor-disclosure-icon" aria-hidden="true"></span></span>
-                    </button>
-                    <div id="notchMoreOptionsDetails" class="cursor-settings-details hidden" inert>
-                      <label class="settings-item"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.edgeDock.macBackdrop">Glass style</span></span><select id="notchStyleInput"><option value="inherit" data-i18n="settings.edgeDock.macBackdropInherit">Same as widget</option><option value="black" data-i18n="settings.notch.black">Pure black</option><option value="vibrancy" data-i18n="settings.appearance.macBackdropVibrancy">Frosted Glass</option><option value="liquid-glass" data-i18n="settings.appearance.macBackdropLiquidGlass">Liquid Glass (Regular)</option><option value="liquid-glass-clear" data-i18n="settings.appearance.macBackdropLiquidGlassClear">Liquid Glass (Clear)</option></select></label>
-                      <label class="checkbox-label settings-item"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.notch.progressiveBlur">Blur behind the panel</span></span><input id="notchProgressiveBlurInput" type="checkbox" /></label>
-                      <label class="checkbox-label settings-item"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.notch.showSummary">Show collapsed summary</span></span><input id="notchSummaryInput" type="checkbox" /><span class="settings-item-desc" data-i18n="settings.notch.showSummaryNote">Off: hide the summary while closed.</span></label>
-                      <label class="checkbox-label settings-item"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.notch.hideSummaryInFullScreen">Hide summary in full screen</span></span><input id="notchHideSummaryInFullScreenInput" type="checkbox" /><span class="settings-item-desc" data-i18n="settings.notch.hideSummaryInFullScreenNote">Other apps only.</span></label>
-                      <label id="notchRunningIndicatorRow" class="checkbox-label settings-item"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.notch.iconRings">Quota &amp; activity status</span></span><input id="notchRunningIndicatorInput" type="checkbox" /></label>
-                      <label class="checkbox-label settings-item"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.notch.warnColors">Highlight low limits in colour</span></span><input id="notchWarnColorsInput" type="checkbox" /></label>
-                      <label class="checkbox-label settings-item"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.edgeDock.haptic">Trackpad haptic feedback</span></span><input id="notchHapticInput" type="checkbox" /></label>
-                      <label class="checkbox-label settings-item"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.notch.swipeGestures">Swipe gestures</span></span><input id="notchSwipeGesturesInput" type="checkbox" aria-describedby="notchSwipeGesturesNote" /><span id="notchSwipeGesturesNote" class="settings-item-desc" data-i18n="settings.notch.swipeGesturesNote">Swipe sideways to change pages. Grow mode: down on the entry opens, up on the top row closes; up again hides the summary, down restores it.</span></label>
-                      <label class="settings-item"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.notch.summaryMode">Collapsed content</span></span><select id="notchSummaryModeInput" aria-describedby="notchSummaryModeNote"><option value="sessions" data-i18n="settings.notch.summaryMode.sessions">Session activity only</option><option value="auto" data-i18n="settings.notch.summaryMode.auto">Automatic</option><option value="tray" data-i18n="settings.notch.summaryMode.tray">Same as tray</option><option value="custom" data-i18n="settings.notch.summaryMode.custom">Custom</option></select><span id="notchSummaryModeNote" class="settings-item-desc" data-i18n="settings.notch.summaryMode.sessionsNote">Show running or waiting sessions. Hide the summary when there is no activity.</span></label>
-                      <div id="notchComposerDetails" class="cursor-settings-details hidden" inert>
-                        <div id="notchComposer" class="tray-composer" data-surface="notch"></div>
-                      </div>
-                    </div>
-                  </div>
-                  <div id="notchItemsComposer" class="edge-dock-composer notch-limits-composer"></div>
                 </div>
               </div>
               <div class="presence-feature">
@@ -1516,7 +1353,6 @@
                     <option value="local" data-i18n="settings.sync.localOnly">Local only</option>
                     <option value="client" data-i18n="settings.sync.connectHub">Connect to a hub</option>
                     <option value="host" data-i18n="settings.sync.hostHub">Host hub on this device</option>
-                    <option value="icloud" data-i18n="settings.sync.icloud">iCloud Drive</option>
                   </select>
                   <span class="settings-section-disclosure" aria-hidden="true"></span>
                 </span>
@@ -1579,11 +1415,6 @@
                 <p class="settings-note" data-i18n="settings.sync.hostNote">Other devices connect using one of the URLs above with the shared secret. macOS / Windows may prompt to allow incoming connections the first time. For cross-network use, run Tailscale or ZeroTier on both sides - the virtual IP works the same.</p>
                 <p class="settings-note hub-warning" data-i18n="settings.sync.hostWarning">The hub runs while Token Monitor is running. Quitting (not just closing the window) stops the hub for all connected devices.</p>
               </div>
-              <div id="icloudFields" class="hub-mode-fields hidden">
-                <div id="icloudStatus" class="hub-status" role="status" aria-live="polite"></div>
-                <div id="icloudRootStatus" class="icloud-root-status"></div>
-                <p class="settings-note" data-i18n="settings.sync.icloudNote">Sync usage, limits, history, devices and subscriptions across Macs signed into the same Apple ID. No Token Monitor server is used; updates may take a moment to appear.</p>
-              </div>
               <div id="syncDeviceSettings" class="sync-device-settings">
                 <label><span data-i18n="settings.sync.deviceId">Device ID</span><input id="deviceIdInput" type="text" spellcheck="false" placeholder="auto (hostname)" data-i18n-placeholder="settings.sync.deviceIdPlaceholder" /></label>
                 <div class="settings-actions">
@@ -1642,15 +1473,6 @@
           </div>
         </div>
 
-        <div class="settings-group settings-collapsible-group settings-plugins-group">
-          <button class="settings-section-toggle" type="button" data-settings-section="plugins" aria-expanded="false" aria-controls="pluginsSettingsDetails">
-            <span class="settings-section-heading"><span class="settings-section-icon settings-section-icon-plugins" aria-hidden="true"></span><span data-i18n="settings.plugins.title">Plugins</span><span class="plugin-section-experimental" data-i18n="settings.plugins.experimental">Experimental</span></span>
-            <span class="settings-section-meta"><span id="pluginsSettingsSummary" class="settings-section-summary"></span><span class="settings-section-disclosure" aria-hidden="true"></span></span>
-          </button>
-          <div id="pluginsSettingsDetails" class="settings-section-details hidden">
-            <div id="pluginSettingsList" class="plugin-settings-list"></div>
-          </div>
-        </div>
       </section>
 
       <section class="total-panel">
@@ -1668,8 +1490,7 @@
 
       <section id="fixedPeriodMessage" class="fixed-period-message hidden" role="status" aria-live="polite"></section>
 
-      <section id="pluginMainPanel" class="plugin-main-panel hidden"></section>
-      <section id="homePanel" class="home-panel hidden"></section>
+            <section id="homePanel" class="home-panel hidden"></section>
       <section id="breakdown" class="breakdown"></section>
       <div id="session-detail-head" class="detail-head hidden"></div>
       <div id="session-detail" class="session-detail hidden"></div>
@@ -1692,15 +1513,6 @@
           <span id="liveTokenRateValue" class="live-token-rate-value">— tok/s</span>
         </button>
         <div class="footer-update-actions">
-          <div id="appUpdatePill" class="update-pill hidden">
-            <button id="appUpdatePillAction" type="button" class="update-pill-action" data-status="available">
-              <svg class="update-pill-progress" viewBox="0 0 34 30" aria-hidden="true">
-                <path id="appUpdatePillProgress" class="update-pill-progress-bar" pathLength="100" d="M17 .5H27A6.5 6.5 0 0 1 33.5 7V23A6.5 6.5 0 0 1 27 29.5H7A6.5 6.5 0 0 1 .5 23V7A6.5 6.5 0 0 1 7 .5Z" />
-              </svg>
-              <span class="update-pill-icon" aria-hidden="true"></span>
-              <span class="update-pill-badge" aria-hidden="true"></span>
-            </button>
-          </div>
           <span id="footerActionSlot">
             <span id="utilityActions" class="utility-actions">
               <button id="refreshButton" class="refresh-button" aria-label="Refresh"><span class="refresh-button-icon" aria-hidden="true"></span><span class="refresh-button-spinner" aria-hidden="true"></span></button>
@@ -1709,16 +1521,8 @@
           </span>
         </div>
       </footer>
-      <div id="appUpdatePopover" class="app-update-popover" popover="manual" role="dialog" aria-labelledby="appUpdatePopoverTitle">
-        <div class="app-update-popover-header">
-          <strong id="appUpdatePopoverTitle"></strong>
-          <span id="appUpdatePopoverSubtitle" class="app-update-popover-subtitle"></span>
-          <button id="appUpdatePopoverDismiss" type="button" class="app-update-popover-dismiss" data-i18n="settings.appUpdate.dismiss">Dismiss this version</button>
-        </div>
-        <div id="appUpdatePopoverBody" class="app-update-popover-body" tabindex="0"></div>
-      </div>
     </main>
-    <div id="syncContentTitleHelpPopover" class="settings-help-popover" popover="auto" role="tooltip">
+<div id="syncContentTitleHelpPopover" class="settings-help-popover" popover="auto" role="tooltip">
       <strong data-i18n="settings.sync.content.helpTitle">Enable title sync on the server</strong>
       <dl>
         <dt data-i18n="settings.sync.content.helpDesktop">Desktop Hub</dt>
@@ -1746,6 +1550,7 @@
         <button id="syncContentConfirm" class="sync-content-primary" type="button" data-i18n="settings.sync.content.enableTitles">Enable title sync</button>
       </div>
     </dialog>
+    
     <button id="floatingBubbleTab" class="floating-bubble-tab" type="button" aria-label="Show Token Monitor" data-i18n-aria-label="floatingBubble.expand">
       <span id="floatingBubbleContent" aria-hidden="true">Σ</span>
     </button>
@@ -1768,8 +1573,7 @@
     <script src="limits/accountPanels.js"></script>
     <script src="limits/accountShell.js"></script>
     <script src="accountIdentity.js"></script>
-    <script src="appUpdatePresentation.js"></script>
-    <script src="../../shared/providers/workbuddy/identity.js"></script>
+        <script src="../../shared/providers/workbuddy/identity.js"></script>
     <script src="limits/providerPresentation.js"></script>
     <script src="../providers/codex/accountControl.js"></script>
     <script src="limits/displayMode.js"></script>
@@ -1821,8 +1625,7 @@
     <script src="../../shared/compactMoney.js"></script>
     <script src="../../shared/fontSettings.js"></script>
     <script src="../../shared/trayText.js"></script>
-    <script src="../../shared/plugins/placements.js"></script>
-    <script src="edgeDock/items.js"></script>
+        <script src="edgeDock/items.js"></script>
     <script src="edgeDock/presentation.js"></script>
     <script src="edgeDock/composer.js"></script>
     <script src="../../shared/trayLayout.js"></script>
@@ -1830,11 +1633,8 @@
     <script src="../motionPreference.js"></script>
     <script src="../tokenNumberAnimation.js"></script>
     <script src="edgeDock/railNumberRoll.js"></script>
-    <script src="pluginUi.js"></script><script src="pluginContent.js"></script><script src="pluginViews.js"></script>
-    <script src="pluginSettings.js"></script>
-
-    <script src="pluginMainPages.js"></script>
-    <script src="windowActivationFocus.js"></script>
+        
+        <script src="windowActivationFocus.js"></script>
 
     <script src="../windowsBackdropMode.js"></script>
     <script src="windowsGlass.js"></script>
@@ -1842,9 +1642,7 @@
     <script src="glassRendering.js"></script>
     <script src="trayTypography.js"></script>
     <script src="trayComposer.js"></script>
-    <script src="diagnosticsPanel.js"></script>
-    <script src="notch/pageSettings.js"></script>
-    <script src="displaySettings.js"></script>
+        <script src="displaySettings.js"></script>
     <script src="displaySettingsPreview.js"></script>
     <script src="app.js"></script>
   </body>

@@ -78,14 +78,6 @@ test('footer disclosure stays open from utility actions to the update and releas
   const updateButton = { matches: () => true };
   let hovered = false;
   let keyboardFocus = false;
-  let popoverOpen = false;
-  let positions = 0;
-  let anchorObserver;
-  class ResizeObserver {
-    constructor(callback) { this.callback = callback; anchorObserver = this; }
-    observe(target) { this.target = target; }
-    disconnect() { this.disconnected = true; }
-  }
   const actions = {
     classList: { add: (name) => classes.add(name), remove: (name) => classes.delete(name) },
     addEventListener: (name, handler) => handlers.set(name, handler),
@@ -100,8 +92,8 @@ test('footer disclosure stays open from utility actions to the update and releas
   };
   const window = { addEventListener: (name, handler) => handlers.set(`window:${name}`, handler) };
   require('node:vm').runInNewContext(`${source}\ninitFooterActionDisclosure();`, {
-    els: { utilityActions, appUpdatePopover: { matches: () => popoverOpen } },
-    window, ResizeObserver, positionAppUpdatePopover: () => { positions++; }
+    els: { utilityActions },
+    window
   });
   assert.match(app, /^initFooterActionDisclosure\(\);$/m, 'the renderer installs the production event handlers');
 
@@ -129,15 +121,6 @@ test('footer disclosure stays open from utility actions to the update and releas
   handlers.get('utility:pointerenter')();
   handlers.get('window:blur')();
   assert.equal(classes.has('is-disclosed'), false, 'switching away from the window clears pointer disclosure');
-  assert.equal(anchorObserver.target, actions, 'observe the moving footer group, not the fixed-size update button');
-  anchorObserver.callback();
-  assert.equal(positions, 0, 'a closed card does not need positioning');
-  popoverOpen = true;
-  anchorObserver.callback();
-  anchorObserver.callback();
-  assert.equal(positions, 2, 'an open card follows intermediate and final footer sizes');
-  handlers.get('window:unload')();
-  assert.equal(anchorObserver.disconnected, true, 'release the observer with the renderer');
 });
 
 test('window-actions and tabs fade out after a short leave grace delay, in instantly', () => {

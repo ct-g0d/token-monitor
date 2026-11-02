@@ -10,10 +10,10 @@ const documentUrl = pathToFileURL(path.resolve(__dirname, '../../src/electron/re
 const previewUrl = `${documentUrl}?surface=notch&settingsPreview=1`;
 
 test('only local display preview subframes permit same-origin embedding', () => {
-  for (const surface of ['notch', 'rail', 'peek']) {
+  for (const surface of ['rail', 'peek']) {
     const policy = contentSecurityPolicyForRequest({ resourceType: 'subFrame', url: `${documentUrl}?surface=${surface}&settingsPreview=1` });
     assert.equal(policy, CSP_HEADER.replace("frame-ancestors 'none'", "frame-ancestors 'self'"));
-    assert.match(policy, /script-src 'self' tm-plugin:; style-src 'self'/);
+    assert.match(policy, /script-src 'self'; style-src 'self'/);
   }
 });
 

@@ -77,11 +77,10 @@ function devicesWithLocalHistory(records, localDevice) {
 // the branches, so the cost model cannot drift from the resolver: only 'remote'
 // is a network round trip, and the other four are in-process.
 function completeHistorySource(options = {}) {
-  const { embeddedHub, hubMode, hubUrl, icloudSync, mode, historyEnabled = true } = options;
+  const { embeddedHub, hubMode, hubUrl, mode, historyEnabled = true } = options;
   if (historyEnabled === false) return 'empty';
   if (mode === 'local') return 'local';
   if (hubMode === 'host' && embeddedHub) return 'embedded';
-  if (hubMode === 'icloud' && icloudSync) return 'icloud';
   if (!hubUrl) return 'empty';
   return 'remote';
 }
@@ -92,7 +91,6 @@ async function resolveCompleteHistory(options = {}) {
     embeddedHub,
     fetchImpl = globalThis.fetch,
     hubUrl,
-    icloudSync,
     localDevice,
     secret,
     timeoutMs = 15_000
@@ -105,8 +103,6 @@ async function resolveCompleteHistory(options = {}) {
       return parseCompleteHistory(aggregate(localDevice ? [localDevice] : []));
     case 'embedded':
       return parseCompleteHistory(embeddedHub.hub.getHistory());
-    case 'icloud':
-      return parseCompleteHistory(await icloudSync.getHistory());
     default:
       break;
   }
@@ -138,7 +134,6 @@ async function resolveCompleteHistoryWithDevices(options = {}) {
     embeddedHub,
     fetchImpl = globalThis.fetch,
     hubUrl,
-    icloudSync,
     localDevice,
     secret,
     timeoutMs = 15_000
@@ -154,12 +149,6 @@ async function resolveCompleteHistoryWithDevices(options = {}) {
       break;
     case 'embedded':
       records = devicesWithLocalHistory(embeddedHub.hub.getDevices(), localDevice);
-      break;
-    case 'icloud':
-      // iCloud is itself the source of truth for every device view. Overlaying
-      // the local producer here would make History disagree with the aggregate
-      // that the dashboard and Widget read, especially while a write is queued.
-      records = await icloudSync.getDevices();
       break;
     default: {
       if (typeof fetchImpl !== 'function') throw new Error('Device History fetch is unavailable');
