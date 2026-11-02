@@ -8824,11 +8824,14 @@ html.native-liquid-glass .view-switcher-menu-item { border-radius: 9px; }
 /* Providers with no signed-in account have no reading to show, so they collapse
    into one block at the end of the Limits page instead of a stack of empty cards:
    a caption on its own line, then the marks, wrapping as needed. */
+/* The strip owns the divider above it; the last row's own hairline would
+   otherwise sit 10px higher and read as a second, stray line. */
+.limit-row:has(+ .limit-signed-out-strip) { border-bottom: 0; }
 .limit-signed-out-strip {
   display: grid;
   gap: 8px;
-  margin-top: 10px;
-  padding-top: 10px;
+  margin-top: 2px;
+  padding-top: 8px;
   border-top: 1px solid rgba(var(--line-rgb), 0.4);
 }
 .limit-signed-out-label {
@@ -8860,6 +8863,12 @@ html.native-liquid-glass .view-switcher-menu-item { border-radius: 9px; }
    otherwise drop the filter animation and reveal the address instantly. */
 .limit-name-title.limit-name-email {
   cursor: pointer;
+  /* The title clips for its ellipsis, which cuts the blur's falloff into a
+     visible rectangle; padding lets the blur fade inside the box and the margin
+     keeps the text where it was. */
+  overflow: visible;
+  margin: -4px -12px;
+  padding: 4px 12px;
   filter: blur(2.5px);
   transition: filter 300ms cubic-bezier(0.22, 1, 0.36, 1), color 300ms cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -8870,8 +8879,11 @@ html.native-liquid-glass .view-switcher-menu-item { border-radius: 9px; }
 .home-limit-email {
   appearance: none;
   -webkit-appearance: none;
-  margin: 0;
-  padding: 0;
+  /* Room for the blur to fade inside the element, cancelled by the margin so the
+     text sits where it did. Without it the falloff is cut at the box edge and
+     the mask shows a faint rectangle around the glyphs. */
+  margin: -4px -12px;
+  padding: 4px 12px;
   border: 0;
   background: none;
   color: var(--muted);
